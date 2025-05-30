@@ -1,0 +1,7 @@
+patchright
+openai
+loguru
+python-dotenv
+pillow
+pydantic
+uuid 
