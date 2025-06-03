@@ -27,7 +27,7 @@ from loguru import logger
 # For creating movies from screenshots
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 import io
 
 
@@ -68,7 +68,7 @@ class BugNinja:
         self.initial_tab_count = 0
         self.last_known_url = ""
 
-        # Recording management
+        # Recording managementimage.png
         self.session_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.recording_dir = (
             Path(__file__).parent / "recording" / self.session_timestamp
@@ -320,6 +320,17 @@ class BugNinja:
                 action_info = f"{ai_decision.action_type}"
                 if ai_decision.element_id:
                     action_info += f"_{ai_decision.element_id}"
+                    # Take screenshot with the selected element highlighted
+                    action_screenshot_path = await self._save_screenshot(
+                        step,
+                        f"action_{action_info}",
+                        highlight_element_id=ai_decision.element_id,
+                    )
+                else:
+                    # Take screenshot without highlighting if no element selected
+                    action_screenshot_path = await self._save_screenshot(
+                        step, f"action_{action_info}"
+                    )
 
                 # 7. Perform action
                 action_result = await self._execute_action(ai_decision)
@@ -617,8 +628,10 @@ class BugNinja:
         logger.info(f"📁 Session log saved to: {log_file}")
         return str(log_file)
 
-    async def _save_screenshot(self, step_number: int, action_info: str = "") -> str:
-        """Save a screenshot for the current step, ensuring 1280x720 resolution"""
+    async def _save_screenshot(
+        self, step_number: int, action_info: str = "", highlight_element_id: str = None
+    ) -> str:
+        """Save a screenshot for the current step, ensuring 1280x720 resolution, optionally highlighting an element"""
         try:
             filename = f"step_{step_number:03d}_{action_info}.png"
             screenshot_path = self.recording_dir / filename
@@ -644,12 +657,70 @@ class BugNinja:
                     (self.target_width, self.target_height), Image.Resampling.LANCZOS
                 )
 
+            # Draw red bounding box around selected element if specified
+            if highlight_element_id:
+                # Find the element with the specified ID
+                target_element = None
+                for element in self.element_selector.elements:
+                    if element.id == highlight_element_id:
+                        target_element = element
+                        break
+
+                if target_element and target_element.bounding_box:
+                    draw = ImageDraw.Draw(image)
+                    bbox = target_element.bounding_box
+
+                    # Extract coordinates
+                    x = bbox.get("x", 0)
+                    y = bbox.get("y", 0)
+                    width = bbox.get("width", 0)
+                    height = bbox.get("height", 0)
+
+                    # Calculate rectangle coordinates with 5px external padding
+                    padding = 5
+                    left = int(x - padding)
+                    top = int(y - padding)
+                    right = int(x + width + padding)
+                    bottom = int(y + height + padding)
+
+                    # Ensure the rectangle stays within image bounds
+                    left = max(0, left)
+                    top = max(0, top)
+                    right = min(image.width, right)
+                    bottom = min(image.height, bottom)
+
+                    # Draw red rounded rectangle with thick border
+                    try:
+                        # Try to use rounded_rectangle if available (newer PIL versions)
+                        draw.rounded_rectangle(
+                            [left, top, right, bottom], radius=5, outline="red", width=3
+                        )
+                    except AttributeError:
+                        # Fallback to regular rectangle for older PIL versions
+                        draw.rectangle(
+                            [left, top, right, bottom], outline="red", width=3
+                        )
+
+                    logger.info(
+                        f"🎯 Highlighted element {highlight_element_id} at ({left},{top},{right},{bottom}) with external padding"
+                    )
+                else:
+                    logger.warning(
+                        f"⚠️ Could not find element {highlight_element_id} for highlighting"
+                    )
+
             # Save the processed image
             image.save(screenshot_path, "PNG")
 
             self.screenshot_paths.append(str(screenshot_path))
+            highlight_info = (
+                f" (highlighted: {highlight_element_id})"
+                if highlight_element_id
+                else ""
+            )
+            screenshot_type = "action" if "action_" in action_info else "context"
             logger.info(
-                f"📸 Screenshot saved: {filename} ({self.target_width}x{self.target_height})"
+                f"📸 Screenshot saved: {filename} ({self.target_width}x{self.target_height}){highlight_info} [{screenshot_type}]"
             )
 
             return str(screenshot_path)
@@ -659,51 +730,65 @@ class BugNinja:
             return ""
 
     def _create_navigation_movie(self) -> str:
-        """Create a movie from all saved screenshots with consistent 1280x720 resolution"""
+        """Create a movie from highlighted action screenshots with consistent 1280x720 resolution"""
         try:
             if not self.screenshot_paths:
                 logger.warning("⚠️ No screenshots to create movie")
                 return ""
 
-            movie_path = self.recording_dir / "navigation_movie.mp4"
+            # Filter to only include action screenshots (the ones with highlights)
+            action_screenshots = [
+                path
+                for path in self.screenshot_paths
+                if "action_" in Path(path).name
+                and "before_action" not in Path(path).name
+            ]
+
+            if not action_screenshots:
+                logger.warning(
+                    "⚠️ No action screenshots found, using all screenshots for movie"
+                )
+                action_screenshots = self.screenshot_paths
+
+            movie_path = self.recording_dir / "navigation_movie.avi"
 
             logger.info(
-                f"🎬 Creating navigation movie from {len(self.screenshot_paths)} screenshots..."
+                f"🎬 Creating navigation movie from {len(action_screenshots)} screenshots..."
             )
 
-            # Define the codec and create VideoWriter object with target resolution
-            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-            fps = 0.5  # Each screenshot shows for 2 seconds (1/0.5 = 2)
+            # Use MJPG codec - much more reliable with PNG images
+            fourcc = cv2.VideoWriter_fourcc(*"MJPG")
+            fps = 2.0  # Each screenshot shows for 0.5 seconds
             video = cv2.VideoWriter(
                 str(movie_path), fourcc, fps, (self.target_width, self.target_height)
             )
 
+            frames_added = 0
             # Add each screenshot to the video
-            for i, screenshot_path in enumerate(self.screenshot_paths):
+            for i, screenshot_path in enumerate(sorted(action_screenshots)):
                 img = cv2.imread(screenshot_path)
                 if img is not None:
-                    # Ensure image is exactly the target resolution
+                    # Resize to target resolution if needed
                     current_height, current_width = img.shape[:2]
-
                     if (current_width, current_height) != (
                         self.target_width,
                         self.target_height,
                     ):
-                        # Resize to target resolution
                         img = cv2.resize(img, (self.target_width, self.target_height))
 
                     video.write(img)
+                    frames_added += 1
                     logger.debug(
-                        f"Added screenshot {i+1}/{len(self.screenshot_paths)} to movie"
+                        f"Added screenshot {i+1}/{len(action_screenshots)}: {Path(screenshot_path).name}"
                     )
-                else:
-                    logger.warning(f"⚠️ Could not read screenshot: {screenshot_path}")
 
             # Release everything
             video.release()
             cv2.destroyAllWindows()
 
-            logger.success(f"🎬 Navigation movie created: {movie_path}")
+            logger.success(
+                f"🎬 Navigation movie created with {frames_added} frames: {movie_path}"
+            )
             return str(movie_path)
 
         except Exception as e:
@@ -825,7 +910,7 @@ async def main():
 
     # Example usage
     debug_mode = "--debug" in sys.argv
-    bug_ninja = BugNinja(headless=False, max_steps=15, debug_elements=debug_mode)
+    bug_ninja = BugNinja(headless=False, max_steps=20, debug_elements=debug_mode)
 
     try:
         # Initialize
@@ -835,7 +920,7 @@ async def main():
 
         # Example goal - modify these for your needs
         url = "https://bacprep.ro"
-        goal = "Log in using imetstamas@gmail.com and lolxd123 and then complete a section 3 Type test with a proper input and then evaulauate it to see the scores"
+        goal = "Log in using imetstamas@gmail.com and lolxd123 and then complete a section 3 Type test with a proper text input and then evaulauate it to see the scores, for the input you must generate a proper text input according to the interface instructions you see"
 
         # You can also get these from command line arguments
         if len(sys.argv) >= 3:

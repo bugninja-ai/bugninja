@@ -175,20 +175,27 @@ Respond with this JSON structure:
     "recommended_next_step": "suggestion for next testing step"
 }
 
+CRITICAL ELEMENT SELECTION RULES:
+- When you need to INPUT TEXT or WRITE CONTENT: ALWAYS choose textarea, input, or contenteditable elements - NEVER buttons
+- For type actions: ONLY use elements with type "textarea", "input", or "contenteditable" 
+- NEVER use buttons for typing text - buttons are for clicking only
+- If the goal requires writing/typing text and you see textarea/input elements, you MUST choose them
+- Buttons with labels like "Type here" or "Enter text" are NOT for typing - find the actual text input field
+
 IMPORTANT RULES:
 - For actions click, type, hover, scroll, select: ALWAYS provide a valid element_id from the elements list
-- For type actions: Use textarea, input, or contenteditable elements
+- For type actions: Use textarea, input, or contenteditable elements ONLY
 - For scroll actions: Specify which element to scroll to (don't leave element_id as null)
 - Only use element IDs that exist in the provided elements list
 - If you see a text area or input field that needs content, choose "type" action with that element's ID
-- The website you are testing can be in any language but you shuold keep everything in English in the responses 
+- The website you are testing can be in any language but you should keep everything in English in the responses 
 
 Analysis guidelines:
 - Examine the provided screenshot to understand the current interface state
 - Identify which interactive element from the element list would be most relevant for testing
 - Recommend the appropriate testing interaction for that element
 - Prioritize interface elements that might block other interactions (like modals or popups)
-- For text input requirements, look for textarea, input, or contenteditable elements
+- For text input requirements, ALWAYS look for textarea, input, or contenteditable elements - ignore buttons
 
 Available interaction types: click, type, hover, scroll, select, wait, complete"""
 
@@ -203,11 +210,32 @@ Available interaction types: click, type, hover, scroll, select, wait, complete"
         # Simple element listing with position info for modal detection
         elements_text = "Available Elements:\n"
 
-        for element in elements_summary[:15]:  # Show first 15 elements
+        # Sort elements to prioritize text inputs when goal involves typing
+        def element_priority(element):
+            # Higher priority (lower number) for text inputs if goal involves typing
+            if any(
+                keyword in context.goal.lower()
+                for keyword in ["type", "write", "input", "text", "enter"]
+            ):
+                if element["type"] in ["textarea", "input", "contenteditable"]:
+                    return 0  # Highest priority
+                elif element["type"] == "button":
+                    return 2  # Lower priority
+                else:
+                    return 1
+            return 1
+
+        sorted_elements = sorted(elements_summary[:15], key=element_priority)
+
+        for element in sorted_elements:
             position = element["position"]
-            element_info = (
-                f"- {element['id']}: {element['type']} '{element['text'][:50]}'"
-            )
+
+            # Add special markers for text input elements
+            type_marker = ""
+            if element["type"] in ["textarea", "input", "contenteditable"]:
+                type_marker = "🔥 TEXT INPUT 🔥 "
+
+            element_info = f"- {element['id']}: {type_marker}{element['type']} '{element['text'][:50]}'"
 
             # Add key attributes
             if element["placeholder"]:
@@ -350,6 +378,46 @@ What element and interaction would you recommend for the next testing step?"""
                         available_ids = [elem["id"] for elem in elements_summary[:5]]
                         raise ValueError(
                             f"Action '{data['action_type']}' requires an element ID but none provided. Available: {', '.join(available_ids)}"
+                        )
+
+            # CRITICAL VALIDATION: Prevent AI from choosing buttons for typing
+            if data["action_type"] == "type" and element_id:
+                selected_element = None
+                for elem in elements_summary:
+                    if elem["id"] == element_id:
+                        selected_element = elem
+                        break
+
+                if selected_element and selected_element["type"] not in [
+                    "textarea",
+                    "input",
+                    "contenteditable",
+                ]:
+                    if self.debug:
+                        print(
+                            f"🚨 AI incorrectly chose {selected_element['type']} {element_id} for typing! Finding proper text input..."
+                        )
+
+                    # Find a proper text input element
+                    text_input_found = None
+                    for elem in elements_summary:
+                        if elem["type"] in ["textarea", "input", "contenteditable"]:
+                            text_input_found = elem["id"]
+                            if self.debug:
+                                print(
+                                    f"✅ Corrected to use text input: {text_input_found} (type: {elem['type']})"
+                                )
+                            break
+
+                    if text_input_found:
+                        element_id = text_input_found
+                        # Update the reasoning to reflect the correction
+                        data["reasoning"] = (
+                            f"🚨 CORRECTED: AI chose {selected_element['type']} for typing, auto-corrected to proper text input {text_input_found}. {data['reasoning']}"
+                        )
+                    else:
+                        raise ValueError(
+                            f"AI chose {selected_element['type']} for typing but no text input elements available!"
                         )
 
             # Validate confidence
