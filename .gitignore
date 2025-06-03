@@ -263,3 +263,4 @@ yarn-error.log*
 tmp/
 temp/
 .tmp/ 
+recording/
