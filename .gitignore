@@ -264,3 +264,8 @@ tmp/
 temp/
 .tmp/ 
 recording/
+
+data
+saved_paths
+test_output
+graph.html

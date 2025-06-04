@@ -1,0 +1,1 @@
+What I want you to do is to go to the emag.hu website, try to search for wireless mouses. Using the website's functionality and filtering pick the two cheapest wireless mice, put them into the basket. After that go into the basket, remove both items, and leave the website.
