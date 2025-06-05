@@ -17,7 +17,7 @@ llm = AzureChatOpenAI(
 
 async def main():
     agent = Agent(
-        task="navigate to bacprep.ro and log in using imetstamas@gmail.com and lolxd123 and then complete a section 3 Type test with a proper text input and then evaulauate it to see the scores, for the input you must generate a proper text input according to the interface instructions you see",
+        task="navigate to emag.ro search for wireless mice, select the two cheapest ones and add them to the cart, then go to the cart and check the total price",
         llm=llm,
     )
     await agent.run()
