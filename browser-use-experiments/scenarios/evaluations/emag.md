@@ -45,4 +45,6 @@ I will provide you with a clean list of tasks to complete. Be mindful to complet
 8. Close the browser
 ```
 
-Still fails to order the mouses from cheapest to most expensive
+Still fails to order the mouses from cheapest to most expensive...
+
+After fourth random run, it worked properly!!!

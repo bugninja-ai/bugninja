@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any, Dict
 from dotenv import load_dotenv
 from browser_use import Agent
 from langchain_openai import AzureChatOpenAI
@@ -6,6 +7,8 @@ from browser_use import Agent
 from pydantic import SecretStr
 import os
 from rich import print as rich_print
+import json
+from cuid2 import Cuid as CUID
 
 load_dotenv()
 
@@ -37,21 +40,46 @@ async def main():
     await agent.run()
 
     print("###" * 10)
+    steps: Dict[str, Any] = {}
 
-    for idx, (brain, model_taken_action, action_details) in enumerate(
+    for idx, (model_taken_action, brain, action_details) in enumerate(
         zip(
             agent.state.history.model_actions(),
             agent.state.history.model_thoughts(),
             agent.state.history.model_outputs(),
         )
     ):
-        print(f"Step #{idx}")
-        print("------")
+        brain_dict = brain.model_dump()
+        action_details_dict = action_details.model_dump()
 
-        rich_print(brain)
+        rich_print(f"Step {idx + 1}:")
+        rich_print(f"Model Action:")
         rich_print(model_taken_action)
+        rich_print(f"Brain:")
+        rich_print(brain)
+        rich_print(f"Action Details:")
         rich_print(action_details)
-        rich_print("---" * 10)
+
+        steps |= {
+            str(idx): {
+                "model_taken_action": model_taken_action,
+                "brain": brain_dict,
+                "action_details": action_details_dict,
+            }
+        }
+
+    # Create traversals directory if it doesn't exist
+    os.makedirs("./traversals", exist_ok=True)
+
+    # Generate a unique ID for this traversal
+    traversal_id = CUID().generate()
+
+    # Save the traversal data with the unique ID
+    traversal_file = f"./traversals/{traversal_id}.json"
+    with open(traversal_file, "w") as f:
+        json.dump(steps, f, indent=2)
+
+    print(f"Traversal saved with ID: {traversal_id}")
 
 
 if __name__ == "__main__":

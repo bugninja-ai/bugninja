@@ -1,0 +1,8 @@
+---
+description: 
+globs: **/*.ts,**/*.tsx,frontend/messages/*,frontend/app/*
+alwaysApply: false
+---
+This project is using localization in three languages, English Romanian and Hungarian. It is very important to take care of this after every modification. You can find the localization text in frontend/messages folder. I expect you to always use localized buttons and interface elements input fields or just text in the web application.
+
+I already have a component set up for localization change, this is the LanguageSwitcher.

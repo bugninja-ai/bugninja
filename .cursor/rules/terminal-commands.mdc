@@ -1,0 +1,17 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Gereral Rules Regarding Terminal commands
+
+This project is ran from a docker container. We have a frontend, a CMS server with Strapi and a DB for the articles in the CMS server and a Umami instance for tracking. It's very important to note that the node packages are installed locally too so that we don't get linter errors, but the server itself is run from the docker container. 
+
+So whenever we have to debug we have to use docker-compose commands.
+
+For fixing linter errors we usually have to install the package locally. If you install a new package you have to rebuild the frontend too. But whenever you install a package also install using docker compose exec.
+
+We have a "frontend", "umami", "db" and a "cms" container running. Feel free to interact with these directly if you want to see the logs or anything, you may not even need docker-compose ps to see the their names. 
+
+We are in dev mode as well, so if you just edit the code you don't have to restart the server. Only if you do some major change, like DB edits, new libraries, etc. 
+
