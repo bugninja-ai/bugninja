@@ -5,10 +5,50 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "black>=25.1.0",
     "browser-use[memory]>=0.2.5",
     "cuid2>=2.0.1",
+    "isort>=6.0.1",
+    "mypy>=1.16.0",
     "openai>=1.84.0",
     "pydantic>=2.10.6",
     "python-dotenv>=1.1.0",
     "rich>=14.0.0",
+    "ruff>=0.11.13",
 ]
+
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401", "F403"] # ignore unused imports in __init__.py files
+"test_*.py" = ["F401", "F403", "F811"]  # ignore unused imports in test files as well
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.isort]
+profile = "black"
+extend_skip = ["__init__.py"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+check_untyped_defs = true
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+
+
+[tool.poe.tasks]
+
+#? Development related commands
+[tool.poe.tasks.run]
+help   = "Start agent"
+shell = "uv run main.py"
+
+[tool.poe.tasks.lint]
+help   = "Lints the whole project searching for inefficiencies in the code"
+shell = "uv run ruff check --fix . && uv run isort . && uv run black . && uv run mypy main.py src"
