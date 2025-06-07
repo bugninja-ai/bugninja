@@ -12,7 +12,7 @@ The JSON log file contains steps with:
 - action_details: Specific details about the action
 """
 
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
 import json
 import asyncio
 import logging
@@ -57,7 +57,7 @@ class Replicator:
     for element selection.
     """
 
-    def __init__(self, json_path: str):
+    def __init__(self, json_path: str, fail_on_unimplemented_action: bool = False):
         """
         Initialize the Replicator with a JSON file path.
 
@@ -74,6 +74,8 @@ class Replicator:
         self.retry_delay = 1  # seconds
         self.failed = False
         logger.info(f"🚀 Initialized Replicator with {len(self.steps)} steps to process")
+
+        self.fail_on_unimplemented_action = fail_on_unimplemented_action
 
     def _load_json(self) -> Dict[str, Any]:
         """
@@ -158,6 +160,155 @@ class Replicator:
         logger.debug(f"🎯 Using fallback selector: {selector}")
         return ("css", selector)
 
+    async def _execute_with_retry(
+        self,
+        action_type: str,
+        element_info: Dict[str, Any],
+        action_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        Execute an action with retry mechanism and selector fallback.
+
+        Args:
+            action_type: Type of action to perform ('click' or 'fill')
+            element_info: Information about the element to interact with
+            action_kwargs: Additional arguments for the action
+
+        Raises:
+            ActionError: If the action fails after all retries
+        """
+        selector_type, selector = await self._get_element_selector(element_info)
+        logger.info(f"🖱️ Attempting to {action_type} element using {selector_type}")
+
+        for attempt in range(self.max_retries):
+            if await self._try_selector(self.page, selector, action_type, **(action_kwargs or {})):
+                logger.info(f"✅ Successfully {action_type}ed element using {selector_type}")
+                return
+
+            if attempt < self.max_retries - 1:
+                logger.warning(
+                    f"🔄 Retry {attempt + 1}/{self.max_retries} for {action_type} action"
+                )
+                await asyncio.sleep(self.retry_delay)
+                # Try alternative selector if available
+                if selector_type == "xpath" and element_info.get("css_selector"):
+                    selector = element_info["css_selector"]
+                    selector_type = "css"
+                    logger.info(f"🔄 Falling back to CSS selector: {selector}")
+                elif selector_type == "css" and element_info.get("xpath"):
+                    selector = element_info["xpath"]
+                    selector_type = "xpath"
+                    logger.info(f"🔄 Falling back to XPath selector: {selector}")
+
+        raise ActionError(f"Failed to {action_type} element after {self.max_retries} attempts")
+
+    async def _handle_go_to_url(self, action: Dict[str, Any]) -> None:
+        """Handle navigation to a URL."""
+        url = action["go_to_url"]["url"]
+        logger.info(f"🌐 Navigating to URL: {url}")
+        await self.page.goto(url)
+
+    async def _handle_click(self, action: Dict[str, Any], element_info: Dict[str, Any]) -> None:
+        """Handle clicking an element."""
+        await self._execute_with_retry("click", element_info)
+
+    async def _handle_input_text(
+        self, action: Dict[str, Any], element_info: Dict[str, Any]
+    ) -> None:
+        """Handle text input."""
+        text = action["input_text"]["text"]
+        await self._execute_with_retry("fill", element_info, {"text": text})
+
+    async def __handle_not_implemented_action(self, feature_name: str) -> None:
+        if self.fail_on_unimplemented_action:
+            raise ActionError(f"{feature_name} not yet implemented")
+
+    async def _handle_extract_content(self) -> None:
+        """Handle content extraction."""
+        logger.info("📋 Content extraction requested")
+        self.__handle_not_implemented_action("Content extraction")
+
+    async def _handle_wait(self) -> None:
+        """Handle waiting."""
+        logger.info("⏳ Waiting requested")
+        self.__handle_not_implemented_action("Waiting functionality")
+
+    async def _handle_go_back(self) -> None:
+        """Handle navigation back."""
+        logger.info("⬅️ Go back requested")
+        self.__handle_not_implemented_action("Back navigation")
+
+    async def _handle_search_google(self) -> None:
+        """Handle Google search."""
+        logger.info("🔍 Google search requested")
+        self.__handle_not_implemented_action("Google search")
+
+    async def _handle_save_pdf(self) -> None:
+        """Handle PDF saving."""
+        logger.info("📄 PDF save requested")
+        self.__handle_not_implemented_action("PDF saving")
+
+    async def _handle_switch_tab(self) -> None:
+        """Handle tab switching."""
+        logger.info("🔄 Tab switch requested")
+        self.__handle_not_implemented_action("Tab switching")
+
+    async def _handle_open_tab(self) -> None:
+        """Handle opening new tab."""
+        logger.info("➕ New tab requested")
+        self.__handle_not_implemented_action("New tab")
+
+    async def _handle_close_tab(self) -> None:
+        """Handle closing tab."""
+        logger.info("❌ Tab close requested")
+        self.__handle_not_implemented_action("Tab closing")
+
+    async def _handle_get_ax_tree(self) -> None:
+        """Handle getting accessibility tree."""
+        logger.info("🌳 Accessibility tree requested")
+        self.__handle_not_implemented_action("Accessability tree request")
+
+    async def _handle_scroll_down(self) -> None:
+        """Handle scrolling down."""
+        logger.info("⬇️ Scroll down requested")
+        self.__handle_not_implemented_action("Scroll down")
+
+    async def _handle_scroll_up(self) -> None:
+        """Handle scrolling up."""
+        logger.info("⬆️ Scroll up requested")
+        raise ActionError("Scroll up functionality not yet implemented")
+
+    async def _handle_send_keys(self) -> None:
+        """Handle sending keys."""
+        logger.info("⌨️ Send keys requested")
+        raise ActionError("Send keys functionality not yet implemented")
+
+    async def _handle_scroll_to_text(self) -> None:
+        """Handle scrolling to text."""
+        logger.info("🔍 Scroll to text requested")
+        raise ActionError("Scroll to text functionality not yet implemented")
+
+    async def _handle_get_dropdown_options(self) -> None:
+        """Handle getting dropdown options."""
+        logger.info("📝 Dropdown options requested")
+        raise ActionError("Dropdown options functionality not yet implemented")
+
+    async def _handle_select_dropdown_option(self) -> None:
+        """Handle selecting dropdown option."""
+        logger.info("✅ Dropdown selection requested")
+        raise ActionError("Dropdown selection functionality not yet implemented")
+
+    async def _handle_drag_drop(self) -> None:
+        """Handle drag and drop."""
+        logger.info("🔄 Drag and drop requested")
+        raise ActionError("Drag and drop functionality not yet implemented")
+
+    async def _handle_done(self) -> None:
+        """Handle done action."""
+        logger.info("✅ Done action received")
+        # This is a status indicator, not an error
+        return
+
     #! The 'can_be_skipped flag has been added for a specific reason.
     #! If there are steps taken by the original AI agent that do not necessarily contribute for the completion of the whole flow, the specific element can be skipped.
     #! Right now, we do not have a solution to automatically map which steps of specific flows can be or should be skipped, but in the upcoming features,
@@ -174,7 +325,6 @@ class Replicator:
         Raises:
             ActionError: If the action fails after all retries
         """
-
         if can_be_skipped:
             logger.info(f"📝 Skipping step: {step['model_taken_action']}")
             return
@@ -182,130 +332,34 @@ class Replicator:
         action = step["model_taken_action"]
         element_info = action.get("interacted_element", {})
 
-        # Handle different action types
-        if "go_to_url" in action:
-            url = action["go_to_url"]["url"]
-            logger.info(f"🌐 Navigating to URL: {url}")
-            await self.page.goto(url)
+        # Map actions to their handlers
+        action_handlers = {
+            "go_to_url": lambda: self._handle_go_to_url(action),
+            "click_element_by_index": lambda: self._handle_click(action, element_info),
+            "input_text": lambda: self._handle_input_text(action, element_info),
+            "extract_content": self._handle_extract_content,
+            "wait": self._handle_wait,
+            "go_back": self._handle_go_back,
+            "search_google": self._handle_search_google,
+            "save_pdf": self._handle_save_pdf,
+            "switch_tab": self._handle_switch_tab,
+            "open_tab": self._handle_open_tab,
+            "close_tab": self._handle_close_tab,
+            "get_ax_tree": self._handle_get_ax_tree,
+            "scroll_down": self._handle_scroll_down,
+            "scroll_up": self._handle_scroll_up,
+            "send_keys": self._handle_send_keys,
+            "scroll_to_text": self._handle_scroll_to_text,
+            "get_dropdown_options": self._handle_get_dropdown_options,
+            "select_dropdown_option": self._handle_select_dropdown_option,
+            "drag_drop": self._handle_drag_drop,
+            "done": self._handle_done,
+        }
 
-        elif "click_element_by_index" in action:
-            selector_type, selector = await self._get_element_selector(element_info)
-            logger.info(f"🖱️ Attempting to click element using {selector_type}")
-
-            for attempt in range(self.max_retries):
-                if await self._try_selector(self.page, selector, "click"):
-                    logger.info(f"✅ Successfully clicked element using {selector_type}")
-                    return
-
-                if attempt < self.max_retries - 1:
-                    logger.warning(f"🔄 Retry {attempt + 1}/{self.max_retries} for click action")
-                    await asyncio.sleep(self.retry_delay)
-                    # Try alternative selector if available
-                    if selector_type == "xpath" and element_info.get("css_selector"):
-                        selector = element_info["css_selector"]
-                        selector_type = "css"
-                        logger.info(f"🔄 Falling back to CSS selector: {selector}")
-                    elif selector_type == "css" and element_info.get("xpath"):
-                        selector = element_info["xpath"]
-                        selector_type = "xpath"
-                        logger.info(f"🔄 Falling back to XPath selector: {selector}")
-
-            raise ActionError(f"Failed to click element after {self.max_retries} attempts")
-
-        elif "input_text" in action:
-            selector_type, selector = await self._get_element_selector(element_info)
-            text = action["input_text"]["text"]
-            logger.info(f"⌨️ Attempting to input text using {selector_type}")
-
-            for attempt in range(self.max_retries):
-                if await self._try_selector(self.page, selector, "fill", text=text):
-                    logger.info(f"✅ Successfully filled text using {selector_type}")
-                    return
-
-                if attempt < self.max_retries - 1:
-                    logger.warning(f"🔄 Retry {attempt + 1}/{self.max_retries} for text input")
-                    await asyncio.sleep(self.retry_delay)
-                    # Try alternative selector if available
-                    if selector_type == "xpath" and element_info.get("css_selector"):
-                        selector = element_info["css_selector"]
-                        selector_type = "css"
-                        logger.info(f"🔄 Falling back to CSS selector: {selector}")
-                    elif selector_type == "css" and element_info.get("xpath"):
-                        selector = element_info["xpath"]
-                        selector_type = "xpath"
-                        logger.info(f"🔄 Falling back to XPath selector: {selector}")
-
-            raise ActionError(f"Failed to input text after {self.max_retries} attempts")
-
-        elif "extract_content" in action:
-            logger.info("📋 Content extraction requested")
-            raise ActionError("Content extraction not yet implemented")
-
-        elif "wait" in action:
-            logger.info("⏳ Waiting requested")
-            raise ActionError("Waiting functionality not yet implemented")
-
-        elif "go_back" in action:
-            logger.info("⬅️ Go back requested")
-            raise ActionError("Navigation back functionality not yet implemented")
-
-        elif "search_google" in action:
-            logger.info("🔍 Google search requested")
-            raise ActionError("Google search functionality not yet implemented")
-
-        elif "save_pdf" in action:
-            logger.info("📄 PDF save requested")
-            raise ActionError("PDF saving functionality not yet implemented")
-
-        elif "switch_tab" in action:
-            logger.info("🔄 Tab switch requested")
-            raise ActionError("Tab switching functionality not yet implemented")
-
-        elif "open_tab" in action:
-            logger.info("➕ New tab requested")
-            raise ActionError("New tab functionality not yet implemented")
-
-        elif "close_tab" in action:
-            logger.info("❌ Tab close requested")
-            raise ActionError("Tab closing functionality not yet implemented")
-
-        elif "get_ax_tree" in action:
-            logger.info("🌳 Accessibility tree requested")
-            raise ActionError("Accessibility tree functionality not yet implemented")
-
-        elif "scroll_down" in action:
-            logger.info("⬇️ Scroll down requested")
-            raise ActionError("Scroll down functionality not yet implemented")
-
-        elif "scroll_up" in action:
-            logger.info("⬆️ Scroll up requested")
-            raise ActionError("Scroll up functionality not yet implemented")
-
-        elif "send_keys" in action:
-            logger.info("⌨️ Send keys requested")
-            raise ActionError("Send keys functionality not yet implemented")
-
-        elif "scroll_to_text" in action:
-            logger.info("🔍 Scroll to text requested")
-            raise ActionError("Scroll to text functionality not yet implemented")
-
-        elif "get_dropdown_options" in action:
-            logger.info("📝 Dropdown options requested")
-            raise ActionError("Dropdown options functionality not yet implemented")
-
-        elif "select_dropdown_option" in action:
-            logger.info("✅ Dropdown selection requested")
-            raise ActionError("Dropdown selection functionality not yet implemented")
-
-        elif "drag_drop" in action:
-            logger.info("🔄 Drag and drop requested")
-            raise ActionError("Drag and drop functionality not yet implemented")
-
-        elif "done" in action:
-            logger.info("✅ Done action received")
-            # This is a status indicator, not an error
-            return
-
+        # Get the appropriate handler for the action
+        handler = action_handlers.get(next(iter(action.keys())))
+        if handler:
+            await handler()
         else:
             raise ActionError(f"Unknown action type: {action}")
 

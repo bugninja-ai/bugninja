@@ -25,10 +25,11 @@ async def main() -> None:
         api_version="2024-02-15-preview",
         azure_endpoint=AZURE_OPENAI_ENDPOINT,
         api_key=SecretStr(AZURE_OPENAI_KEY),
+        temperature=0.05,
     )
 
     task: str = (
-        "Go to https://app.bacprep.ro/ and log in via Google authentication using the provided credentials. Once you are in, log out and close the browser"
+        "Go to Bestbyte.hu website, search for bluetooth mices and click on search button. After the mices list is displayed, scroll down to the last element on the page. Open it's link, and close the browser"
     )
 
     agent = QuinoAgent(
