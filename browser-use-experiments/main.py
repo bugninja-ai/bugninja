@@ -27,7 +27,9 @@ async def main() -> None:
         api_key=SecretStr(AZURE_OPENAI_KEY),
     )
 
-    task: str = "Go to Bestbyte select the two cheapest keyboards from the offerings of the website"
+    task: str = (
+        "Go to https://app.bacprep.ro/ and log in via Google authentication using the provided credentials. Once you are in, log out and close the browser"
+    )
 
     agent = QuinoAgent(
         task=task,

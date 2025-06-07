@@ -19,6 +19,7 @@ from cuid2 import Cuid as CUID
 from rich import print as rich_print
 from browser_use.dom.history_tree_processor.service import DOMHistoryElement
 
+
 AgentHookFunc = Callable[["Agent"], Awaitable[None]]
 
 
