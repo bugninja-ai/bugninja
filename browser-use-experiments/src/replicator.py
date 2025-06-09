@@ -268,40 +268,92 @@ class Replicator:
         logger.info("🌳 Accessibility tree requested")
         self.__handle_not_implemented_action("Accessability tree request")
 
+    def _load_js_file(self, file_path: str) -> str:
+        """
+        Load JavaScript code from a file.
+
+        Args:
+            file_path: Path to the JavaScript file
+
+        Returns:
+            str: The JavaScript code as a string
+
+        Raises:
+            ReplicatorError: If the file cannot be loaded
+        """
+        try:
+            js_path = Path(__file__).parent / file_path
+            with open(js_path, "r") as f:
+                return f.read()
+        except Exception as e:
+            logger.error(f"❌ Failed to load JavaScript file {file_path}: {str(e)}")
+            raise ReplicatorError(f"Failed to load JavaScript file: {str(e)}")
+
+    async def _scroll(self, how: str) -> None:
+        """Handle scrolling to a specific direction."""
+
+        logger.info(f"⬇️ Scroll {how} requested")
+        """
+			(a) Use browser._scroll_container for container-aware scrolling.
+			(b) If that JavaScript throws, fall back to window.scrollBy().
+		"""
+        dy = await self.page.evaluate("() => window.innerHeight")
+
+        rich_print(f"DY: {dy}")
+
+        if how == "up":
+            dy = -dy
+
+        try:
+
+            await self.page.wait_for_timeout(500)
+            await self.page.mouse.wheel(0, dy)
+            await self.page.wait_for_timeout(500)
+
+            # await self.page.evaluate("window.scrollBy(0, 500)")
+            # TODO! reenable
+            # SMART_SCROLL_JS = self._load_js_file("./js/smart_scroll.js")
+            # await self.page.evaluate(SMART_SCROLL_JS, dy)
+        except Exception as e:
+            # Hard fallback: always works on root scroller
+            await self.page.evaluate("(y) => window.scrollBy(0, y)", dy)
+            logger.debug("Smart scroll failed; used window.scrollBy fallback", exc_info=e)
+
+        msg = f"🔍 Scrolled {how} the page by one page"
+        logger.info(msg)
+
     async def _handle_scroll_down(self) -> None:
         """Handle scrolling down."""
-        logger.info("⬇️ Scroll down requested")
-        self.__handle_not_implemented_action("Scroll down")
+        await self._scroll("down")
 
     async def _handle_scroll_up(self) -> None:
         """Handle scrolling up."""
-        logger.info("⬆️ Scroll up requested")
-        raise ActionError("Scroll up functionality not yet implemented")
+        await self._scroll("up")
 
     async def _handle_send_keys(self) -> None:
         """Handle sending keys."""
         logger.info("⌨️ Send keys requested")
-        raise ActionError("Send keys functionality not yet implemented")
+        self.__handle_not_implemented_action("Send keys")
 
     async def _handle_scroll_to_text(self) -> None:
         """Handle scrolling to text."""
         logger.info("🔍 Scroll to text requested")
-        raise ActionError("Scroll to text functionality not yet implemented")
+        self.__handle_not_implemented_action("Scroll to text")
 
     async def _handle_get_dropdown_options(self) -> None:
         """Handle getting dropdown options."""
         logger.info("📝 Dropdown options requested")
-        raise ActionError("Dropdown options functionality not yet implemented")
+        self.__handle_not_implemented_action("Dropdown options")
 
     async def _handle_select_dropdown_option(self) -> None:
         """Handle selecting dropdown option."""
         logger.info("✅ Dropdown selection requested")
-        raise ActionError("Dropdown selection functionality not yet implemented")
+        self.__handle_not_implemented_action("Dropdown selection")
 
     async def _handle_drag_drop(self) -> None:
         """Handle drag and drop."""
         logger.info("🔄 Drag and drop requested")
-        raise ActionError("Drag and drop functionality not yet implemented")
+        self.__handle_not_implemented_action("Drag and drop")
 
     async def _handle_done(self) -> None:
         """Handle done action."""
@@ -363,7 +415,7 @@ class Replicator:
         else:
             raise ActionError(f"Unknown action type: {action}")
 
-    async def run(self, can_be_skipped_steps_list: List[int]) -> None:
+    async def run(self, can_be_skipped_steps_list: List[int] = []) -> None:
         """
         Run through all steps in the JSON file and execute them.
 
