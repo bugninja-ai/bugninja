@@ -180,13 +180,18 @@ class QuinoAgent(Agent):
         ):
             brain_dict = brain.model_dump()
             action_details_dict = action_details.model_dump()
-            model_taken_action = model_taken_action.copy()
+            model_taken_action: Dict[str, Any] = model_taken_action.copy()
 
             interacted_element: Optional[DOMHistoryElement] = model_taken_action.get(
                 "interacted_element", None
             )
 
             if interacted_element is not None:
+
+                #! Ensure the XPath starts with "//"
+                if not interacted_element.xpath.startswith("//"):
+                    interacted_element.xpath = f"//{interacted_element.xpath}"
+
                 model_taken_action["interacted_element"] = interacted_element.to_dict()
 
             if verbose:

@@ -1,13 +1,21 @@
 import asyncio
 from src.replicator import Replicator
+import glob
+import os
 
 
 async def main():
-    # Example usage
-    # replicator = Replicator("./traversals/traverse_20250607_094538_roacl3r7vz3vqxfinu52l915.json")
-    # await replicator.run(can_be_skipped_steps_list=[5, 6, 7, 8])
+    list_of_files = glob.glob("./traversals/*.json")
+    latest_replay_file = max(list_of_files, key=os.path.getctime)
 
-    replicator = Replicator("./traversals/traverse_20250607_172229_kubxeu08jw3pet54lx4uvk0v.json")
+    replicator = Replicator(
+        json_path=latest_replay_file,
+        secrets={
+            "credential_email": "feligaf715@lewou.com",
+            "credential_password": "9945504JA",
+            "new_username": "almafa",
+        },
+    )
     await replicator.run()
 
 

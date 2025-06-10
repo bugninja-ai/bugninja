@@ -19,6 +19,7 @@ import logging
 from pathlib import Path
 from patchright.async_api import Page, async_playwright
 from rich import print as rich_print
+from patchright.async_api import BrowserContext as PatchrightBrowserContext
 
 # Configure logging with custom format
 logging.basicConfig(
@@ -57,7 +58,13 @@ class Replicator:
     for element selection.
     """
 
-    def __init__(self, json_path: str, fail_on_unimplemented_action: bool = False):
+    def __init__(
+        self,
+        json_path: str,
+        fail_on_unimplemented_action: bool = False,
+        sleep_after_actions: float = 0.5,
+        secrets: Dict[str, str] = {},
+    ):
         """
         Initialize the Replicator with a JSON file path.
 
@@ -69,10 +76,13 @@ class Replicator:
         self.current_step = 0
         self.playwright = None
         self.browser = None
-        self.page = None
+        self.current_page = None
         self.max_retries = 5  # Increased to 5 retries
         self.retry_delay = 1  # seconds
+        self.sleep_after_actions = sleep_after_actions
         self.failed = False
+        self.failed_reason: Optional[Exception] = None
+        self.secrets = secrets
         logger.info(f"🚀 Initialized Replicator with {len(self.steps)} steps to process")
 
         self.fail_on_unimplemented_action = fail_on_unimplemented_action
@@ -93,7 +103,9 @@ class Replicator:
             logger.error(f"❌ Failed to load JSON file: {str(e)}")
             raise ReplicatorError(f"Failed to load JSON file: {str(e)}")
 
-    async def _try_selector(self, page: Page, selector: str, action: str, **kwargs) -> bool:
+    async def _try_selector(
+        self, page: Page, selector: str, action: str, selector_type: str, **kwargs
+    ) -> bool:
         """
         Try to execute an action with a specific selector.
 
@@ -101,16 +113,34 @@ class Replicator:
             page: The page to execute the action on
             selector: The selector to use
             action: The action to perform ('click', 'fill', etc.)
+            selector_type: The type of selector ('xpath', 'css', etc.)
             **kwargs: Additional arguments for the action
 
         Returns:
             bool: True if action succeeded, False otherwise
         """
+
+        logger.info(f"📝 Using selector: {selector}")
+
         try:
             if action == "click":
                 await page.click(selector)
             elif action == "fill":
-                await page.fill(selector, kwargs.get("text", ""))
+                value: Optional[str] = kwargs.get("text")
+
+                if value is None:
+                    logger.warning(f"⚠️ No value provided for {action} action")
+                    return False
+
+                for key, secret_value in self.secrets.items():
+                    secret_key = f"<secret>{key}</secret>"
+                    if secret_key in value:
+                        value = value.replace(f"<secret>{key}</secret>", secret_value)
+
+                if selector_type == "xpath":
+                    await page.locator(selector).fill(value)
+                elif selector_type == "css":
+                    await page.fill(selector, value)
             return True
         except Exception as e:
             logger.warning(f"⚠️ Failed to {action} with selector {selector}: {str(e)}")
@@ -181,7 +211,9 @@ class Replicator:
         logger.info(f"🖱️ Attempting to {action_type} element using {selector_type}")
 
         for attempt in range(self.max_retries):
-            if await self._try_selector(self.page, selector, action_type, **(action_kwargs or {})):
+            if await self._try_selector(
+                self.current_page, selector, action_type, selector_type, **(action_kwargs or {})
+            ):
                 logger.info(f"✅ Successfully {action_type}ed element using {selector_type}")
                 return
 
@@ -206,9 +238,9 @@ class Replicator:
         """Handle navigation to a URL."""
         url = action["go_to_url"]["url"]
         logger.info(f"🌐 Navigating to URL: {url}")
-        await self.page.goto(url)
+        await self.current_page.goto(url)
 
-    async def _handle_click(self, action: Dict[str, Any], element_info: Dict[str, Any]) -> None:
+    async def _handle_click(self, element_info: Dict[str, Any]) -> None:
         """Handle clicking an element."""
         await self._execute_with_retry("click", element_info)
 
@@ -226,47 +258,66 @@ class Replicator:
     async def _handle_extract_content(self) -> None:
         """Handle content extraction."""
         logger.info("📋 Content extraction requested")
-        self.__handle_not_implemented_action("Content extraction")
+        await self.__handle_not_implemented_action("Content extraction")
 
     async def _handle_wait(self) -> None:
         """Handle waiting."""
         logger.info("⏳ Waiting requested")
-        self.__handle_not_implemented_action("Waiting functionality")
+        await self.__handle_not_implemented_action("Waiting functionality")
 
     async def _handle_go_back(self) -> None:
         """Handle navigation back."""
         logger.info("⬅️ Go back requested")
-        self.__handle_not_implemented_action("Back navigation")
+        await self.__handle_not_implemented_action("Back navigation")
 
     async def _handle_search_google(self) -> None:
         """Handle Google search."""
         logger.info("🔍 Google search requested")
-        self.__handle_not_implemented_action("Google search")
+        await self.__handle_not_implemented_action("Google search")
 
     async def _handle_save_pdf(self) -> None:
         """Handle PDF saving."""
         logger.info("📄 PDF save requested")
-        self.__handle_not_implemented_action("PDF saving")
+        await self.__handle_not_implemented_action("PDF saving")
 
-    async def _handle_switch_tab(self) -> None:
+    async def _handle_switch_tab(self, switch_tab_id: Optional[int]) -> None:
         """Handle tab switching."""
         logger.info("🔄 Tab switch requested")
-        self.__handle_not_implemented_action("Tab switching")
+
+        #! precautionary sleep, so that the tab has time to load
+        await asyncio.sleep(1)
+
+        if switch_tab_id is None:
+            raise ActionError("No page ID provided for tab switching")
+
+        contexts: List[PatchrightBrowserContext] = self.browser.contexts
+
+        if not len(contexts):
+            raise ActionError("No browser contexts found for tab switching")
+
+        current_context: PatchrightBrowserContext = contexts[0]
+
+        if not len(current_context.pages):
+            raise ActionError("No pages found for tab switching")
+
+        self.current_page = current_context.pages[switch_tab_id]
+
+        await self.current_page.bring_to_front()
 
     async def _handle_open_tab(self) -> None:
         """Handle opening new tab."""
         logger.info("➕ New tab requested")
-        self.__handle_not_implemented_action("New tab")
+        await self.__handle_not_implemented_action("New tab")
 
     async def _handle_close_tab(self) -> None:
         """Handle closing tab."""
         logger.info("❌ Tab close requested")
-        self.__handle_not_implemented_action("Tab closing")
+        await self.__handle_not_implemented_action("Tab closing")
 
     async def _handle_get_ax_tree(self) -> None:
         """Handle getting accessibility tree."""
         logger.info("🌳 Accessibility tree requested")
-        self.__handle_not_implemented_action("Accessability tree request")
+        await self.__handle_not_implemented_action("Accessability tree request")
 
     def _load_js_file(self, file_path: str) -> str:
         """
@@ -297,7 +348,7 @@ class Replicator:
 			(a) Use browser._scroll_container for container-aware scrolling.
 			(b) If that JavaScript throws, fall back to window.scrollBy().
 		"""
-        dy = await self.page.evaluate("() => window.innerHeight")
+        dy = await self.current_page.evaluate("() => window.innerHeight")
 
         rich_print(f"DY: {dy}")
 
@@ -306,17 +357,17 @@ class Replicator:
 
         try:
 
-            await self.page.wait_for_timeout(500)
-            await self.page.mouse.wheel(0, dy)
-            await self.page.wait_for_timeout(500)
+            await self.current_page.wait_for_timeout(500)
+            await self.current_page.mouse.wheel(0, dy)
+            await self.current_page.wait_for_timeout(500)
 
-            # await self.page.evaluate("window.scrollBy(0, 500)")
+            # await self.current_page.evaluate("window.scrollBy(0, 500)")
             # TODO! reenable
             # SMART_SCROLL_JS = self._load_js_file("./js/smart_scroll.js")
-            # await self.page.evaluate(SMART_SCROLL_JS, dy)
+            # await self.current_page.evaluate(SMART_SCROLL_JS, dy)
         except Exception as e:
             # Hard fallback: always works on root scroller
-            await self.page.evaluate("(y) => window.scrollBy(0, y)", dy)
+            await self.current_page.evaluate("(y) => window.scrollBy(0, y)", dy)
             logger.debug("Smart scroll failed; used window.scrollBy fallback", exc_info=e)
 
         msg = f"🔍 Scrolled {how} the page by one page"
@@ -333,27 +384,27 @@ class Replicator:
     async def _handle_send_keys(self) -> None:
         """Handle sending keys."""
         logger.info("⌨️ Send keys requested")
-        self.__handle_not_implemented_action("Send keys")
+        await self.__handle_not_implemented_action("Send keys")
 
     async def _handle_scroll_to_text(self) -> None:
         """Handle scrolling to text."""
         logger.info("🔍 Scroll to text requested")
-        self.__handle_not_implemented_action("Scroll to text")
+        await self.__handle_not_implemented_action("Scroll to text")
 
     async def _handle_get_dropdown_options(self) -> None:
         """Handle getting dropdown options."""
         logger.info("📝 Dropdown options requested")
-        self.__handle_not_implemented_action("Dropdown options")
+        await self.__handle_not_implemented_action("Dropdown options")
 
     async def _handle_select_dropdown_option(self) -> None:
         """Handle selecting dropdown option."""
         logger.info("✅ Dropdown selection requested")
-        self.__handle_not_implemented_action("Dropdown selection")
+        await self.__handle_not_implemented_action("Dropdown selection")
 
     async def _handle_drag_drop(self) -> None:
         """Handle drag and drop."""
         logger.info("🔄 Drag and drop requested")
-        self.__handle_not_implemented_action("Drag and drop")
+        await self.__handle_not_implemented_action("Drag and drop")
 
     async def _handle_done(self) -> None:
         """Handle done action."""
@@ -381,20 +432,21 @@ class Replicator:
             logger.info(f"📝 Skipping step: {step['model_taken_action']}")
             return
 
-        action = step["model_taken_action"]
-        element_info = action.get("interacted_element", {})
+        action: Dict[str, Any] = step["model_taken_action"]
+        element_info: Dict[str, Any] = action.get("interacted_element", {})
+        switch_tab_id: Optional[int] = action.get("switch_tab", {}).get("page_id", None)
 
         # Map actions to their handlers
         action_handlers = {
-            "go_to_url": lambda: self._handle_go_to_url(action),
-            "click_element_by_index": lambda: self._handle_click(action, element_info),
-            "input_text": lambda: self._handle_input_text(action, element_info),
+            "go_to_url": lambda: self._handle_go_to_url(action=action),
+            "click_element_by_index": lambda: self._handle_click(element_info=element_info),
+            "input_text": lambda: self._handle_input_text(action=action, element_info=element_info),
             "extract_content": self._handle_extract_content,
             "wait": self._handle_wait,
             "go_back": self._handle_go_back,
             "search_google": self._handle_search_google,
             "save_pdf": self._handle_save_pdf,
-            "switch_tab": self._handle_switch_tab,
+            "switch_tab": lambda: self._handle_switch_tab(switch_tab_id=switch_tab_id),
             "open_tab": self._handle_open_tab,
             "close_tab": self._handle_close_tab,
             "get_ax_tree": self._handle_get_ax_tree,
@@ -412,6 +464,8 @@ class Replicator:
         handler = action_handlers.get(next(iter(action.keys())))
         if handler:
             await handler()
+            #! precautionary sleep so that the replay function has time to catch up
+            await asyncio.sleep(self.sleep_after_actions)
         else:
             raise ActionError(f"Unknown action type: {action}")
 
@@ -426,7 +480,7 @@ class Replicator:
             logger.info("🚀 Starting browser session")
             self.playwright = await async_playwright().start()
             self.browser = await self.playwright.chromium.launch(headless=False)
-            self.page = await self.browser.new_page()
+            self.current_page = await self.browser.new_page()
 
             for idx, (step_name, step_data) in enumerate(self.steps.items()):
                 logger.info(f"📝 Executing step: {step_name}")
@@ -443,6 +497,7 @@ class Replicator:
         except Exception as e:
             logger.error(f"❌ Error executing step {self.current_step}: {str(e)}")
             self.failed = True
+            self.failed_reason = e
 
         finally:
             logger.info("🧹 Cleaning up resources")
@@ -450,7 +505,7 @@ class Replicator:
 
             if self.failed:
                 logger.error("❌ Replication failed")
-                raise ReplicatorError("Replication failed")
+                raise self.failed_reason
             else:
                 logger.info("✅ Replication completed successfully")
 
@@ -460,8 +515,8 @@ class Replicator:
 
         This method closes the browser and playwright instance.
         """
-        if self.page:
-            await self.page.close()
+        if self.current_page:
+            await self.current_page.close()
             logger.debug("✅ Page closed")
         if self.browser:
             await self.browser.close()

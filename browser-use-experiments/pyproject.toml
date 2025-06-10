@@ -49,6 +49,10 @@ disallow_untyped_defs = true
 help   = "Start agent"
 shell = "uv run main.py"
 
+[tool.poe.tasks.replay]
+help   = "Replay a specific interaction chain that the agent did"
+shell = "uv run replay.py"
+
 [tool.poe.tasks.lint]
 help   = "Lints the whole project searching for inefficiencies in the code"
 shell = "uv run ruff check --fix . && uv run isort . && uv run black . && uv run mypy main.py src"
