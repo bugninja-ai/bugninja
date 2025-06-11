@@ -5,16 +5,17 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "black>=25.1.0",
-    "browser-use[memory]>=0.2.5",
-    "cuid2>=2.0.1",
-    "isort>=6.0.1",
-    "mypy>=1.16.0",
-    "openai>=1.84.0",
-    "pydantic>=2.10.6",
-    "python-dotenv>=1.1.0",
-    "rich>=14.0.0",
-    "ruff>=0.11.13",
+    "black==25.1.0",
+    "browser-use[memory]==0.2.5",
+    "cuid2==2.0.1",
+    "isort==6.0.1",
+    "lxml==5.4.0",
+    "mypy==1.16.0",
+    "openai==1.84.0",
+    "pydantic==2.10.6",
+    "python-dotenv==1.1.0",
+    "rich==14.0.0",
+    "ruff==0.11.13",
 ]
 
 

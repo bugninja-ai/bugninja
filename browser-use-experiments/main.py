@@ -6,8 +6,35 @@ from langchain_openai import AzureChatOpenAI
 from pydantic import SecretStr
 
 from src.custom_agent import QuinoAgent
+from pathlib import Path
+import base64
 
 load_dotenv()
+
+
+async def capture_screenshot_hook(agent: QuinoAgent):
+    """Hook function that captures screenshots at each step"""
+
+    if agent.browser_session.agent_current_page is None:
+        return
+
+    # Take a screenshot of the current page
+    screenshot_b64 = await agent.browser_session.take_screenshot()
+
+    # Get current step information
+    current_url = (await agent.browser_session.get_current_page()).url
+    step_count = len(agent.state.history.model_actions())
+
+    # Save screenshot to file
+    screenshot_folder = Path("./screenshots")
+    screenshot_folder.mkdir(exist_ok=True)
+
+    # Convert base64 to PNG and save
+    screenshot_path = screenshot_folder / f"step_{step_count}_{current_url.replace('/', '_')}.png"
+    with open(screenshot_path, "wb") as f:
+        f.write(base64.b64decode(screenshot_b64))
+
+    print(f"Screenshot saved: {screenshot_path}")
 
 
 async def main() -> None:
@@ -48,7 +75,9 @@ async def main() -> None:
             "new_username": new_username,
         },
     )
-    await agent.run()
+    await agent.run(
+        # on_step_start=capture_screenshot_hook,  # Capture at start of each step
+    )
 
     agent.save_q_agent_actions()
 
