@@ -2,7 +2,7 @@
 Browser Interaction Replicator
 
 This module implements a class that can read and execute browser interactions
-from a JSON log file. It processes each step sequentially and performs the
+from a JSON log file. It processes each interaction sequentially and performs the
 corresponding browser actions using Patchright (undetected Playwright).
 
 The JSON log file contains steps with:
@@ -53,7 +53,7 @@ class Replicator:
     A class that replicates browser interactions from a JSON log file.
 
     This class reads a JSON file containing browser interaction steps and
-    executes them sequentially using Patchright. Each step is processed
+    executes them sequentially using Patchright. Each interaction is processed
     and the corresponding browser action is performed with fallback mechanisms
     for element selection.
     """
@@ -72,8 +72,8 @@ class Replicator:
             json_path: Path to the JSON file containing interaction steps
         """
         self.json_path = Path(json_path)
-        self.steps = self._load_json()
-        self.current_step = 0
+        self.replay_json = self._load_json()
+        self.current_interaction = 0
         self.playwright = None
         self.browser = None
         self.current_page = None
@@ -83,7 +83,9 @@ class Replicator:
         self.failed = False
         self.failed_reason: Optional[Exception] = None
         self.secrets = secrets
-        logger.info(f"🚀 Initialized Replicator with {len(self.steps)} steps to process")
+        logger.info(
+            f"🚀 Initialized Replicator with {len(self.replay_json.get('interactions', []))} steps to process"
+        )
 
         self.fail_on_unimplemented_action = fail_on_unimplemented_action
 
@@ -97,6 +99,8 @@ class Replicator:
         try:
             with open(self.json_path, "r") as f:
                 data = json.load(f)
+                if "interactions" not in data:
+                    raise ReplicatorError("JSON file must contain an 'interactions' key")
                 logger.info(f"📄 Successfully loaded JSON file: {self.json_path}")
                 return data
         except Exception as e:
@@ -417,22 +421,22 @@ class Replicator:
     #! Right now, we do not have a solution to automatically map which steps of specific flows can be or should be skipped, but in the upcoming features,
     #! I will most likely develop an AI agent solution for this.
 
-    async def _execute_action(self, step: Dict[str, Any], can_be_skipped: bool) -> None:
+    async def _execute_action(self, interaction: Dict[str, Any], can_be_skipped: bool) -> None:
         """
-        Execute a single step's action using Patchright with retry mechanism.
+        Execute a single interaction's action using Patchright with retry mechanism.
 
         Args:
-            step: Dictionary containing the step information
-            can_be_skipped: Whether this step can be skipped
+            interaction: Dictionary containing the interaction information
+            can_be_skipped: Whether this interaction can be skipped
 
         Raises:
             ActionError: If the action fails after all retries
         """
         if can_be_skipped:
-            logger.info(f"📝 Skipping step: {step['model_taken_action']}")
+            logger.info(f"📝 Skipping interaction: {interaction['model_taken_action']}")
             return
 
-        action: Dict[str, Any] = step["model_taken_action"]
+        action: Dict[str, Any] = interaction["model_taken_action"]
         element_info: Dict[str, Any] = action.get("interacted_element", {})
         switch_tab_id: Optional[int] = action.get("switch_tab", {}).get("page_id", None)
 
@@ -473,29 +477,60 @@ class Replicator:
         """
         Run through all steps in the JSON file and execute them.
 
-        This method processes each step sequentially, executing the
-        corresponding browser action for each step.
+        This method processes each interaction sequentially, executing the
+        corresponding browser action for each interaction.
         """
         try:
             logger.info("🚀 Starting browser session")
             self.playwright = await async_playwright().start()
-            self.browser = await self.playwright.chromium.launch(headless=False)
-            self.current_page = await self.browser.new_page()
 
-            for idx, (step_name, step_data) in enumerate(self.steps.items()):
-                logger.info(f"📝 Executing step: {step_name}")
+            # Apply browser configuration if available
+            browser_config: Dict[str, Any] = self.replay_json.get("browser_config", {})
+
+            # Launch browser with basic options
+            self.browser = await self.playwright.chromium.launch(headless=False)
+
+            # Prepare context options with proper defaults
+            # Remove None values to avoid Playwright errors
+            context_options = {
+                k: v
+                for k, v in {
+                    "viewport": browser_config.get("viewport"),
+                    "user_agent": browser_config.get("user_agent"),
+                    "java_script_enabled": browser_config.get("java_script_enabled", True),
+                    "accept_downloads": browser_config.get("accept_downloads", True),
+                    "extra_http_headers": browser_config.get("extra_http_headers", {}),
+                    "http_credentials": browser_config.get("http_credentials"),
+                    "color_scheme": browser_config.get("color_scheme", "light"),
+                    "device_scale_factor": browser_config.get("device_scale_factor"),
+                    "geolocation": browser_config.get("geolocation"),
+                    "proxy": browser_config.get("proxy"),
+                    "client_certificates": browser_config.get("client_certificates", []),
+                }.items()
+                if v is not None
+            }
+
+            # Create context with all configurations
+            context = await self.browser.new_context(**context_options)
+            self.current_page = await context.new_page()
+            self.current_page.set_default_timeout(browser_config.get("timeout", 30000))
+
+            for idx, (interaction_name, interaction_data) in enumerate(
+                self.replay_json["interactions"].items()
+            ):
+                logger.info(f"📝 Executing interaction: {interaction_name}")
                 try:
                     await self._execute_action(
-                        step_data, can_be_skipped=idx in can_be_skipped_steps_list
+                        interaction_data, can_be_skipped=idx in can_be_skipped_steps_list
                     )
-                    self.current_step += 1
+                    self.current_interaction += 1
                 except (SelectorError, ActionError) as e:
-                    logger.error(f"❌ Error in step {step_name}: {str(e)}")
+                    logger.error(f"❌ Error in interaction {interaction_name}: {str(e)}")
                     self.failed = True
                     break
 
         except Exception as e:
-            logger.error(f"❌ Error executing step {self.current_step}: {str(e)}")
+            logger.error(f"❌ Error executing interaction {self.current_interaction}: {str(e)}")
             self.failed = True
             self.failed_reason = e
 

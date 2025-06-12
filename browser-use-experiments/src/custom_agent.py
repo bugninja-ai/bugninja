@@ -21,6 +21,7 @@ from rich import print as rich_print
 from browser_use.dom.history_tree_processor.service import DOMHistoryElement
 
 from browser_use.browser.session import Page
+from browser_use.browser.profile import ViewportSize
 from pydantic import BaseModel, Field
 
 
@@ -204,6 +205,32 @@ class QuinoAgent(Agent):
     def save_q_agent_actions(self, verbose: bool = False) -> None:
         interactions: Dict[str, Any] = {}
 
+        viewport: Optional[ViewportSize] = self.browser_profile.viewport
+        viewport_element: Optional[Dict[str, int]] = None
+
+        if viewport is not None:
+            viewport_element = {
+                "width": viewport.width,
+                "height": viewport.height,
+            }
+
+        browser_config: Dict[str, Any] = {
+            "user_agent": self.browser_profile.user_agent,
+            "viewport": viewport_element,
+            "device_scale_factor": self.browser_profile.device_scale_factor,
+            "color_scheme": self.browser_profile.color_scheme,
+            "accept_downloads": self.browser_profile.accept_downloads,
+            "proxy": self.browser_profile.proxy,
+            "client_certificates": self.browser_profile.client_certificates,
+            "extra_http_headers": self.browser_profile.extra_http_headers,
+            "http_credentials": self.browser_profile.http_credentials,
+            "java_script_enabled": self.browser_profile.java_script_enabled,
+            "geolocation": self.browser_profile.geolocation,
+            "timeout": self.browser_profile.timeout,
+            "headers": self.browser_profile.headers,
+            "allowed_domains": self.browser_profile.allowed_domains,
+        }
+
         traversal_dir = Path("./traversals")
 
         # Create traversals directory if it doesn't exist
@@ -259,10 +286,16 @@ class QuinoAgent(Agent):
                 "action_details": action_details_dict,
             }
 
-        rich_print(interactions)
-
         with open(traversal_file, "w") as f:
-            json.dump(interactions, f, indent=4, ensure_ascii=False)
+            json.dump(
+                {
+                    "browser_config": browser_config,
+                    "interactions": interactions,
+                },
+                f,
+                indent=4,
+                ensure_ascii=False,
+            )
 
         print(f"Traversal saved with ID: {timestamp}_{traversal_id}")
 

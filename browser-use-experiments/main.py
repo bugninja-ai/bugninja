@@ -1,6 +1,7 @@
 import asyncio
 import os
 
+from browser_use import BrowserProfile
 from dotenv import load_dotenv
 from langchain_openai import AzureChatOpenAI
 from pydantic import SecretStr
@@ -47,14 +48,6 @@ async def main() -> None:
             "Missing Azure OpenAI configuration. Please set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_KEY environment variables."
         )
 
-    llm = AzureChatOpenAI(
-        model="gpt-4.1",
-        api_version="2024-02-15-preview",
-        azure_endpoint=AZURE_OPENAI_ENDPOINT,
-        api_key=SecretStr(AZURE_OPENAI_KEY),
-        temperature=0.05,
-    )
-
     # ERROR    [agent] ⚠️⚠️⚠️ Agent(sensitive_data=••••••••) was provided but BrowserSession(allowed_domains=[...]) is not locked down! ⚠️⚠️⚠️
     # ☠️ If the agent visits a malicious website and encounters a prompt-injection attack, your sensitive_data may be exposed!
 
@@ -63,17 +56,25 @@ async def main() -> None:
     new_username: str = "almafa"
 
     task: str = (
-        "Go to bacprep.ro login to the platform with the provided credentials and edit the name of the user based on the provided information. If successful log out and close the browser."
+        "Go to app.bacprep.ro login to the platform with the provided credentials and edit the name of the user based on the provided information. If successful log out and close the browser."
     )
 
     agent = QuinoAgent(
         task=task,
-        llm=llm,
+        llm=AzureChatOpenAI(
+            model="gpt-4.1",
+            api_version="2024-02-15-preview",
+            azure_endpoint=AZURE_OPENAI_ENDPOINT,
+            api_key=SecretStr(AZURE_OPENAI_KEY),
+            temperature=0.001,
+        ),
         sensitive_data={
             "credential_email": email,
             "credential_password": password,
             "new_username": new_username,
         },
+        # TODO! test what strict selectors do
+        browser_profile=BrowserProfile(strict_selectors=True),
     )
     await agent.run(
         # on_step_start=capture_screenshot_hook,  # Capture at start of each step
