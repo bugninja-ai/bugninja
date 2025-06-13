@@ -62,7 +62,7 @@ class Replicator:
         self,
         json_path: str,
         fail_on_unimplemented_action: bool = False,
-        sleep_after_actions: float = 0.5,
+        sleep_after_actions: float = 1.0,
         secrets: Dict[str, str] = {},
     ):
         """
@@ -77,8 +77,8 @@ class Replicator:
         self.playwright = None
         self.browser = None
         self.current_page = None
-        self.max_retries = 5  # Increased to 5 retries
-        self.retry_delay = 1  # seconds
+        self.max_retries = 2
+        self.retry_delay = 0.5
         self.sleep_after_actions = sleep_after_actions
         self.failed = False
         self.failed_reason: Optional[Exception] = None
@@ -125,6 +125,7 @@ class Replicator:
         """
 
         logger.info(f"📝 Using selector: {selector}")
+        logger.info(f"Found '{await page.locator(selector).count()}' elements for selector")
 
         try:
             if action == "click":
@@ -150,49 +151,63 @@ class Replicator:
             logger.warning(f"⚠️ Failed to {action} with selector {selector}: {str(e)}")
             return False
 
-    async def _get_element_selector(self, element_info: Dict[str, Any]) -> Tuple[str, str]:
+    async def _get_element_selector(self, element_info: Dict[str, Any]) -> List[Tuple[str, str]]:
         """
-        Get the best selector for an element based on available information.
-        Prioritizes XPath over CSS selector.
+        Get a list of selectors for an element based on available information.
+        Returns selectors in priority order: XPath, Improved XPath, CSS, Improved CSS.
 
         Args:
             element_info: Dictionary containing element information
 
         Returns:
-            Tuple of (selector_type, selector_value)
+            List of tuples containing (selector_type, selector_value)
 
         Raises:
-            SelectorError: If no valid selector can be generated
+            SelectorError: If no valid selectors can be generated
         """
+        selectors = []
 
-        rich_print(element_info)
-
-        # First try XPath
+        # Add original XPath if available
         if element_info.get("xpath"):
-            logger.debug(f"🎯 Using XPath selector: {element_info['xpath']}")
-            return ("xpath", element_info["xpath"])
+            selectors.append(("xpath", element_info["xpath"]))
+            logger.debug(f"🎯 Added XPath selector: {element_info['xpath']}")
 
-        # Fall back to CSS selector
+        # Add improved XPath if available
+        if element_info.get("improved_xpath_selector"):
+            selectors.append(("xpath", element_info["improved_xpath_selector"]))
+            logger.debug(
+                f"🎯 Added improved XPath selector: {element_info['improved_xpath_selector']}"
+            )
+
+        # Add original CSS selector if available
         if element_info.get("css_selector"):
-            logger.debug(f"🎯 Using CSS selector: {element_info['css_selector']}")
-            return ("css", element_info["css_selector"])
+            selectors.append(("css", element_info["css_selector"]))
+            logger.debug(f"🎯 Added CSS selector: {element_info['css_selector']}")
 
-        # Last resort: try to construct a selector from tag and attributes
-        tag = element_info.get("tag_name", "")
-        attrs = element_info.get("attributes", {})
+        # Add improved CSS selector if available
+        if element_info.get("improved_css_selector"):
+            selectors.append(("css", element_info["improved_css_selector"]))
+            logger.debug(f"🎯 Added improved CSS selector: {element_info['improved_css_selector']}")
 
-        if not tag:
-            raise SelectorError("No valid selector information available")
+        # If no selectors were found, try to construct a basic selector
+        if not selectors:
+            tag = element_info.get("tag_name", "")
+            attrs = element_info.get("attributes", {})
 
-        # Construct a valid CSS selector
-        if attrs:
-            attr_pairs = [f"{k}='{v}'" for k, v in attrs.items()]
-            selector = f"{tag}[{', '.join(attr_pairs)}]"
-        else:
-            selector = tag
+            if not tag:
+                raise SelectorError("No valid selector information available")
 
-        logger.debug(f"🎯 Using fallback selector: {selector}")
-        return ("css", selector)
+            # Construct a valid CSS selector
+            if attrs:
+                attr_pairs = [f"{k}='{v}'" for k, v in attrs.items()]
+                selector = f"{tag}[{', '.join(attr_pairs)}]"
+            else:
+                selector = tag
+
+            selectors.append(("css", selector))
+            logger.debug(f"🎯 Using fallback selector: {selector}")
+
+        return selectors
 
     async def _execute_with_retry(
         self,
@@ -211,32 +226,32 @@ class Replicator:
         Raises:
             ActionError: If the action fails after all retries
         """
-        selector_type, selector = await self._get_element_selector(element_info)
-        logger.info(f"🖱️ Attempting to {action_type} element using {selector_type}")
+        selectors = await self._get_element_selector(element_info)
+        logger.info(f"🖱️ Attempting to {action_type} element with {len(selectors)} selectors")
 
         for attempt in range(self.max_retries):
-            if await self._try_selector(
-                self.current_page, selector, action_type, selector_type, **(action_kwargs or {})
-            ):
-                logger.info(f"✅ Successfully {action_type}ed element using {selector_type}")
-                return
+            for selector_type, selector in selectors:
+                logger.info(f"🔄 Trying {selector_type} selector: {selector}")
+                if await self._try_selector(
+                    self.current_page, selector, action_type, selector_type, **(action_kwargs or {})
+                ):
+                    logger.info(
+                        f"✅ Successfully {action_type}ed element using {selector_type} selector"
+                    )
+                    return
 
             if attempt < self.max_retries - 1:
                 logger.warning(
-                    f"🔄 Retry {attempt + 1}/{self.max_retries} for {action_type} action"
+                    f"🔄 Retry {attempt + 1}/{self.max_retries} for {action_type} action - all selectors failed"
                 )
                 await asyncio.sleep(self.retry_delay)
-                # Try alternative selector if available
-                if selector_type == "xpath" and element_info.get("css_selector"):
-                    selector = element_info["css_selector"]
-                    selector_type = "css"
-                    logger.info(f"🔄 Falling back to CSS selector: {selector}")
-                elif selector_type == "css" and element_info.get("xpath"):
-                    selector = element_info["xpath"]
-                    selector_type = "xpath"
-                    logger.info(f"🔄 Falling back to XPath selector: {selector}")
 
-        raise ActionError(f"Failed to {action_type} element after {self.max_retries} attempts")
+        # If we get here, all selectors failed after all retries
+        failed_selectors = [f"{type}: {sel}" for type, sel in selectors]
+        raise ActionError(
+            f"Failed to {action_type} element after {self.max_retries} attempts. "
+            f"Tried selectors: {', '.join(failed_selectors)}"
+        )
 
     async def _handle_go_to_url(self, action: Dict[str, Any]) -> None:
         """Handle navigation to a URL."""
@@ -323,27 +338,6 @@ class Replicator:
         logger.info("🌳 Accessibility tree requested")
         await self.__handle_not_implemented_action("Accessability tree request")
 
-    def _load_js_file(self, file_path: str) -> str:
-        """
-        Load JavaScript code from a file.
-
-        Args:
-            file_path: Path to the JavaScript file
-
-        Returns:
-            str: The JavaScript code as a string
-
-        Raises:
-            ReplicatorError: If the file cannot be loaded
-        """
-        try:
-            js_path = Path(__file__).parent / file_path
-            with open(js_path, "r") as f:
-                return f.read()
-        except Exception as e:
-            logger.error(f"❌ Failed to load JavaScript file {file_path}: {str(e)}")
-            raise ReplicatorError(f"Failed to load JavaScript file: {str(e)}")
-
     async def _scroll(self, how: str) -> None:
         """Handle scrolling to a specific direction."""
 
@@ -365,10 +359,6 @@ class Replicator:
             await self.current_page.mouse.wheel(0, dy)
             await self.current_page.wait_for_timeout(500)
 
-            # await self.current_page.evaluate("window.scrollBy(0, 500)")
-            # TODO! reenable
-            # SMART_SCROLL_JS = self._load_js_file("./js/smart_scroll.js")
-            # await self.current_page.evaluate(SMART_SCROLL_JS, dy)
         except Exception as e:
             # Hard fallback: always works on root scroller
             await self.current_page.evaluate("(y) => window.scrollBy(0, y)", dy)
@@ -435,6 +425,17 @@ class Replicator:
         if can_be_skipped:
             logger.info(f"📝 Skipping interaction: {interaction['model_taken_action']}")
             return
+
+        # Log brain information before executing the action
+        brain = interaction.get("brain", {})
+        memory = brain.get("memory", "No memory information available")
+        next_goal = brain.get("next_goal", "No goal information available")
+
+        logger.info("\n")
+        logger.info("🧠 Current State:")
+        logger.info(f"📝 Memory: {memory}")
+        logger.info(f"🎯 Next Goal: {next_goal}")
+        logger.info("=" * 20)
 
         action: Dict[str, Any] = interaction["model_taken_action"]
         element_info: Dict[str, Any] = action.get("interacted_element", {})
@@ -513,7 +514,7 @@ class Replicator:
             # Create context with all configurations
             context = await self.browser.new_context(**context_options)
             self.current_page = await context.new_page()
-            self.current_page.set_default_timeout(browser_config.get("timeout", 30000))
+            self.current_page.set_default_timeout(browser_config.get(1000))
 
             for idx, (interaction_name, interaction_data) in enumerate(
                 self.replay_json["interactions"].items()
@@ -540,7 +541,7 @@ class Replicator:
 
             if self.failed:
                 logger.error("❌ Replication failed")
-                raise self.failed_reason
+                raise Exception(self.failed_reason)
             else:
                 logger.info("✅ Replication completed successfully")
 

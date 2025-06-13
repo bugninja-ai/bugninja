@@ -3,8 +3,9 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 from lxml import etree
+from lxml.cssselect import CSSSelector
 
 from browser_use.agent.service import (  # type: ignore
     Agent,
@@ -29,8 +30,11 @@ AgentHookFunc = Callable[["Agent"], Awaitable[None]]
 
 
 class ExtraInteractionInfo(BaseModel):
-    improved_xpath_selector: Optional[str] = Field(
-        default=None, description="Improved XPath selector"
+    alternative_xpath_selectors: List[str] = Field(
+        default_factory=list, description="Alternative XPath selectors"
+    )
+    alternative_css_selectors: List[str] = Field(
+        default_factory=list, description="Alternative CSS selectors"
     )
 
 
@@ -132,13 +136,19 @@ class QuinoAgent(Agent):
 
                     # if there is element interaction in this step we try to improve the selector
                     if interacted_element:
+
+                        rich_print(interacted_element)
+
                         current_page: Page = await self.browser_session.get_current_page()
                         html_content_of_page: str = await current_page.content()
 
                         self.extra_info_for_steps[-1] = ExtraInteractionInfo(
-                            improved_xpath_selector=improve_xpath_selector(
+                            alternative_xpath_selectors=improve_xpath_selector(
                                 html_text=html_content_of_page, dom_element=interacted_element
-                            )
+                            ),
+                            alternative_css_selectors=improve_css_selector(
+                                html_text=html_content_of_page, dom_element=interacted_element
+                            ),
                         ).model_dump()
 
                 self.last_interaction_idx = len(self.state.history.model_actions())
@@ -300,21 +310,23 @@ class QuinoAgent(Agent):
         print(f"Traversal saved with ID: {timestamp}_{traversal_id}")
 
 
-def improve_xpath_selector(html_text: str, dom_element: DOMHistoryElement) -> Optional[str]:
+def improve_xpath_selector(html_text: str, dom_element: DOMHistoryElement) -> List[str]:
     """
     Improves an XPath selector by finding the minimal set of attributes that uniquely identify the element.
-    Uses context-aware selectors and meaningful parent structures when needed.
+    Uses recursive parent analysis to find the most reliable and shortest possible selector.
 
     Args:
         html_text: The raw HTML content of the page
         dom_element: The DOMHistoryElement containing element information
 
     Returns:
-        str: A simplified XPath selector that uniquely identifies the element
+        List[str]: A list of simplified XPath selectors that uniquely identify the element
     """
     # Parse HTML
     parser = etree.HTMLParser()
     tree = etree.fromstring(html_text, parser)
+
+    xpath_alternatives: List[str] = []
 
     # Define structural attributes to keep (in order of preference)
     structural_attributes = {
@@ -328,16 +340,185 @@ def improve_xpath_selector(html_text: str, dom_element: DOMHistoryElement) -> Op
     }
 
     # Define meaningful parent elements
-    meaningful_parents = {"form", "main", "nav", "header", "footer", "aside"}
+    meaningful_parents = {"div", "form", "main", "nav", "header", "footer", "aside"}
+
+    def handle_xpath(xpath: str) -> None:
+        """Adds a valid XPath selector to the alternatives list."""
+        if len(tree.xpath(xpath)) == 1:
+            xpath_alternatives.append(xpath)
+
+    def filter_attributes(attributes: Dict[str, str]) -> Dict[str, Tuple[str, int]]:
+        """Filters and prioritizes attributes based on structural importance."""
+        filtered_attrs = {}
+        for attr, value in attributes.items():
+            # Skip style attributes
+            if attr in ["style"]:
+                continue
+            # Skip data- attributes that are UI-related
+            if attr.startswith("data-"):
+                continue
+            # Keep structural attributes
+            if attr in structural_attributes:
+                filtered_attrs[attr] = (value, structural_attributes[attr])
+        return filtered_attrs
+
+    def analyze_element_uniqueness(
+        element_attrs: Dict[str, str], element_tag: str
+    ) -> Tuple[float, Dict[str, Tuple[str, int]]]:
+        """
+        Analyzes how uniquely identifiable an element is based on its attributes.
+        Returns a score (0-1) and the best attributes to use.
+        """
+        filtered_attrs = filter_attributes(element_attrs)
+        if not filtered_attrs:
+            return 0.0, {}
+
+        # Calculate uniqueness score based on attribute importance
+        total_score = sum(priority for _, (_, priority) in filtered_attrs.items())
+        max_possible_score = len(structural_attributes) * max(structural_attributes.values())
+        uniqueness_score = total_score / max_possible_score
+
+        return uniqueness_score, filtered_attrs
+
+    def find_parent_context(
+        parent_path: List[str], max_depth: int = 3
+    ) -> Optional[Tuple[str, Dict[str, str]]]:
+        """
+        Recursively analyzes parents to find a good context.
+        Returns the XPath for the parent context and its attributes.
+        """
+        if not parent_path or max_depth <= 0:
+            return None
+
+        # Get the immediate parent
+        parent = parent_path[-1]
+
+        # Check if parent is meaningful
+        if parent in meaningful_parents:
+            return f"//{parent}", {}
+
+        # Try to find parent in the tree
+        parent_elements = tree.xpath(f"//{parent}")
+        if not parent_elements:
+            return find_parent_context(parent_path[:-1], max_depth - 1)
+
+        # Get parent attributes
+        parent_attrs = {}
+        for attr_name, attr_value in parent_elements[0].attrib.items():
+            if attr_name in structural_attributes:
+                parent_attrs[attr_name] = attr_value
+
+        # If parent has good attributes, use it
+        if parent_attrs:
+            return f"//{parent}", parent_attrs
+
+        # Otherwise, try the next parent
+        return find_parent_context(parent_path[:-1], max_depth - 1)
+
+    def generate_selector_with_context(
+        element_tag: str,
+        element_attrs: Dict[str, Tuple[str, int]],
+        parent_context: Optional[Tuple[str, Dict[str, str]]] = None,
+    ) -> None:
+        """Generates XPath selectors using parent context when available."""
+        # Try direct element selection first
+        for attr, (value, _) in element_attrs.items():
+            xpath = f"//{element_tag}[@{attr}='{value}']"
+            handle_xpath(xpath)
+
+        # If we have a parent context, use it
+        if parent_context:
+            parent_xpath, parent_attrs = parent_context
+
+            # Try with parent context
+            for attr, (value, _) in element_attrs.items():
+                xpath = f"{parent_xpath}//{element_tag}[@{attr}='{value}']"
+                handle_xpath(xpath)
+
+            # Try with parent attributes
+            if parent_attrs:
+                parent_conditions = " and ".join(
+                    f"@{attr}='{value}'" for attr, value in parent_attrs.items()
+                )
+                for attr, (value, _) in element_attrs.items():
+                    xpath = f"//{element_tag}[{parent_conditions} and @{attr}='{value}']"
+                    handle_xpath(xpath)
+
+    # Get element attributes and analyze uniqueness
+    uniqueness_score, filtered_attrs = analyze_element_uniqueness(
+        dom_element.attributes, dom_element.tag_name
+    )
+
+    # If element has good uniqueness score, try direct selection
+    if uniqueness_score >= 0.5:
+        generate_selector_with_context(dom_element.tag_name, filtered_attrs)
+
+    # Try to find parent context
+    parent_context = find_parent_context(dom_element.entire_parent_branch_path)
+    if parent_context:
+        generate_selector_with_context(dom_element.tag_name, filtered_attrs, parent_context)
+
+    # Special handling for form elements
+    if dom_element.tag_name in ["button", "input", "select", "textarea"]:
+        if "form" in dom_element.entire_parent_branch_path:
+            for attr, (value, _) in filtered_attrs.items():
+                xpath = f"//form//{dom_element.tag_name}[@{attr}='{value}']"
+                handle_xpath(xpath)
+
+    # Special handling for links with paths
+    if dom_element.tag_name == "a" and "href" in dom_element.attributes:
+        href = dom_element.attributes["href"]
+        if "/" in href:
+            path = href.split("//")[-1].split("/", 1)[-1]
+            if path:
+                xpath = f"//a[contains(@href, '{path}')]"
+                handle_xpath(xpath)
+
+    return xpath_alternatives
+
+
+def improve_css_selector(html_text: str, dom_element: DOMHistoryElement) -> List[str]:
+    """
+    Improves a CSS selector by finding the minimal set of attributes that uniquely identify the element.
+    Uses semantic HTML structure and meaningful attributes for better readability.
+
+    Args:
+        html_text: The raw HTML content of the page
+        dom_element: The DOMHistoryElement containing element information
+
+    Returns:
+        List[str]: A simplified CSS selector that uniquely identifies the element, or None if no improvement possible
+    """
+    # Parse HTML
+    parser = etree.HTMLParser()
+    tree = etree.fromstring(html_text, parser)
+
+    css_alternatives: List[str] = []
+
+    # Define structural attributes to keep (in order of preference)
+    structural_attributes = {
+        "id": 1,  # Most reliable
+        "name": 2,
+        "type": 3,
+        "href": 4,
+        "role": 5,
+        "target": 6,
+        "rel": 7,
+    }
+
+    # Define meaningful parent elements
+    meaningful_parents = {"div", "form", "main", "nav", "header", "footer", "aside"}
+
+    def handle_selector(selector: str) -> None:
+        if len(CSSSelector(selector)(tree)) == 1:
+            css_alternatives.append(selector)
 
     # Filter and sort attributes
     filtered_attrs = {}
     for attr, value in dom_element.attributes.items():
-        # Skip style and class attributes
-        if attr in ["style", "class"]:
-            continue
+
         # Skip data- attributes that are UI-related
-        if attr.startswith("data-") and attr not in structural_attributes:
+        if attr.startswith("data-"):
             continue
         # Keep structural attributes
         if attr in structural_attributes:
@@ -346,35 +527,36 @@ def improve_xpath_selector(html_text: str, dom_element: DOMHistoryElement) -> Op
     # Sort attributes by their priority
     sorted_attrs = sorted(filtered_attrs.items(), key=lambda x: x[1][1])
 
-    # Try single attribute first
+    # Try ID selector first
+    if "id" in dom_element.attributes:
+        selector = f"#{dom_element.attributes['id']}"
+        handle_selector(selector)
+
+    # Try single attribute selector
     for attr, (value, _) in sorted_attrs:
-        xpath = f"//{dom_element.tag_name}[@{attr}='{value}']"
-        if len(tree.xpath(xpath)) == 1:
-            return xpath
+        selector = f"{dom_element.tag_name}[{attr}='{value}']"
+        handle_selector(selector)
 
     # Try with meaningful parent context
     for parent in meaningful_parents:
         if parent in dom_element.entire_parent_branch_path:
             for attr, (value, _) in sorted_attrs:
-                xpath = f"//{parent}//{dom_element.tag_name}[@{attr}='{value}']"
-                if len(tree.xpath(xpath)) == 1:
-                    return xpath
+                selector = f"{parent} {dom_element.tag_name}[{attr}='{value}']"
+                handle_selector(selector)
 
     # Try combinations of two attributes
     for i, (attr1, (value1, _)) in enumerate(sorted_attrs):
         for attr2, (value2, _) in sorted_attrs[i + 1 :]:
-            xpath = f"//{dom_element.tag_name}[@{attr1}='{value1}' and @{attr2}='{value2}']"
-            if len(tree.xpath(xpath)) == 1:
-                return xpath
+            selector = f"{dom_element.tag_name}[{attr1}='{value1}'][{attr2}='{value2}']"
+            handle_selector(selector)
 
     # Special handling for form elements
     if dom_element.tag_name in ["button", "input", "select", "textarea"]:
         # Check if element is within a form
         if "form" in dom_element.entire_parent_branch_path:
             for attr, (value, _) in sorted_attrs:
-                xpath = f"//form//{dom_element.tag_name}[@{attr}='{value}']"
-                if len(tree.xpath(xpath)) == 1:
-                    return xpath
+                selector = f"form {dom_element.tag_name}[{attr}='{value}']"
+                handle_selector(selector)
 
     # Special handling for links with paths
     if dom_element.tag_name == "a" and "href" in dom_element.attributes:
@@ -383,17 +565,22 @@ def improve_xpath_selector(html_text: str, dom_element: DOMHistoryElement) -> Op
             # Try using the path part of the href
             path = href.split("//")[-1].split("/", 1)[-1]
             if path:
-                xpath = f"//a[contains(@href, '{path}')]"
-                if len(tree.xpath(xpath)) == 1:
-                    return xpath
+                selector = f"a[href*='{path}']"
+                handle_selector(selector)
 
-    # If still no unique match, try using parent context with a single attribute
+    # Try using parent context with a single attribute
     if "class" in dom_element.attributes:
-        parent_path = "/".join(dom_element.entire_parent_branch_path[:-1])
-        for attr, (value, _) in sorted_attrs:
-            xpath = f"//{parent_path}/{dom_element.tag_name}[@{attr}='{value}']"
-            if len(tree.xpath(xpath)) == 1:
-                return xpath
+        # Get the parent path up to the first meaningful parent
+        parent_path = []
+        for parent in dom_element.entire_parent_branch_path[:-1]:
+            if parent in meaningful_parents:
+                parent_path.append(parent)
+                break
+            parent_path.append(parent)
 
-    # If no better selector found, return None
-    return None
+        if parent_path:
+            for attr, (value, _) in sorted_attrs:
+                selector = f"{' > '.join(parent_path)} > {dom_element.tag_name}[{attr}='{value}']"
+                handle_selector(selector)
+
+    return css_alternatives
