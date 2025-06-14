@@ -123,13 +123,21 @@ class Replicator:
         Returns:
             bool: True if action succeeded, False otherwise
         """
+        # Wait for page to be fully loaded
+        await page.wait_for_load_state("load")
+        await page.wait_for_load_state("domcontentloaded")
 
         logger.info(f"📝 Using selector: {selector}")
-        logger.info(f"Found '{await page.locator(selector).count()}' elements for selector")
+
+        # Get element and verify its state
+        element = page.locator(selector)
+        await element.wait_for(state="attached", timeout=5000000)
+
+        logger.info(f"Found '{await element.count()}' elements for selector")
 
         try:
             if action == "click":
-                await page.click(selector)
+                await element.click()
             elif action == "fill":
                 value: Optional[str] = kwargs.get("text")
 
@@ -142,10 +150,7 @@ class Replicator:
                     if secret_key in value:
                         value = value.replace(f"<secret>{key}</secret>", secret_value)
 
-                if selector_type == "xpath":
-                    await page.locator(selector).fill(value)
-                elif selector_type == "css":
-                    await page.fill(selector, value)
+                await element.fill(value)
             return True
         except Exception as e:
             logger.warning(f"⚠️ Failed to {action} with selector {selector}: {str(e)}")
@@ -257,7 +262,23 @@ class Replicator:
         """Handle navigation to a URL."""
         url = action["go_to_url"]["url"]
         logger.info(f"🌐 Navigating to URL: {url}")
-        await self.current_page.goto(url)
+
+        max_retries = 3
+        retry_delay = 1.0
+
+        for attempt in range(max_retries):
+            try:
+                await self.current_page.goto(url, wait_until="load")
+                return
+            except Exception as e:
+                if "net::ERR_NETWORK_CHANGED" in str(e) and attempt < max_retries - 1:
+                    logger.warning(
+                        f"⚠️ Network error occurred, retrying in {retry_delay} seconds... (Attempt {attempt + 1}/{max_retries})"
+                    )
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    raise
 
     async def _handle_click(self, element_info: Dict[str, Any]) -> None:
         """Handle clicking an element."""
@@ -514,7 +535,7 @@ class Replicator:
             # Create context with all configurations
             context = await self.browser.new_context(**context_options)
             self.current_page = await context.new_page()
-            self.current_page.set_default_timeout(browser_config.get(1000))
+            self.current_page.set_default_timeout(browser_config.get(5000))
 
             for idx, (interaction_name, interaction_data) in enumerate(
                 self.replay_json["interactions"].items()

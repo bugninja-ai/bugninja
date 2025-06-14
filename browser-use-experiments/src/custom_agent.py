@@ -14,7 +14,7 @@ from browser_use.agent.service import (  # type: ignore
     BrowserStateHistory,
     logger,
 )
-from browser_use.agent.views import ActionResult, AgentHistoryList  # type: ignore
+from browser_use.agent.views import ActionResult, AgentHistoryList, StepMetadata, DOMElementNode  # type: ignore
 from browser_use.utils import SignalHandler  # type: ignore
 from browser_use.utils import time_execution_async  # type: ignore
 from cuid2 import Cuid as CUID
@@ -24,12 +24,20 @@ from browser_use.dom.history_tree_processor.service import DOMHistoryElement
 from browser_use.browser.session import Page
 from browser_use.browser.profile import ViewportSize
 from pydantic import BaseModel, Field
-
+import time
+from langchain_core.messages import HumanMessage
+from browser_use.agent.message_manager.utils import save_conversation
+import inspect
+import json
+from src.selector_factory import SelectorFactory, SelectorSpecificity
 
 AgentHookFunc = Callable[["Agent"], Awaitable[None]]
 
 
 class ExtraInteractionInfo(BaseModel):
+    relative_xpath_selector: Optional[str] = Field(
+        default=None, description="Relative XPath selector"
+    )
     alternative_xpath_selectors: List[str] = Field(
         default_factory=list, description="Alternative XPath selectors"
     )
@@ -39,178 +47,408 @@ class ExtraInteractionInfo(BaseModel):
 
 
 class QuinoAgent(Agent):
-    @time_execution_async("--run (agent)")
-    async def run(
-        self,
-        max_steps: int = 100,
-        on_step_start: AgentHookFunc | None = None,
-        on_step_end: AgentHookFunc | None = None,
-    ) -> Optional[AgentHistoryList]:
-        """Execute the task with maximum number of steps"""
 
-        loop = asyncio.get_event_loop()
-        agent_run_error: str | None = None  # Initialize error tracking variable
-        self._force_exit_telemetry_logged = False  # ADDED: Flag for custom telemetry on force exit
+    async def get_raw_html_of_current_page(self) -> str:
+        current_page: Page = await self.browser_session.get_current_page()
+        await current_page.wait_for_load_state("domcontentloaded")
+        await current_page.wait_for_load_state("load")
+        html_content_of_page: str = await current_page.content()
+        return html_content_of_page
 
-        # Initialize the extra_info_for_steps list, that will hold additional information
-        # relating to every interaction of the model
-        #! IMPORTANT: these elements are not representing steps only, but e ery interaction of the model
-        self.extra_info_for_steps: List[Dict[str, Any]] = []
-
-        # this in interaction counter is here in order to measure the number of interactions of the model has taken
-        # it is important so that we can keep track at each step that how many interactions did the model take at each step
-        self.last_interaction_idx: int = 0
-
-        # Define the custom exit callback function for second CTRL+C
-        def on_force_exit_log_telemetry() -> None:
-            self._log_agent_event(max_steps=max_steps, agent_run_error="SIGINT: Cancelled by user")
-            # NEW: Call the flush method on the telemetry instance
-            if hasattr(self, "telemetry") and self.telemetry:
-                self.telemetry.flush()
-            self._force_exit_telemetry_logged = True  # Set the flag
-
-        signal_handler = SignalHandler(
-            loop=loop,
-            pause_callback=self.pause,
-            resume_callback=self.resume,
-            custom_exit_callback=on_force_exit_log_telemetry,  # Pass the new telemetrycallback
-            exit_on_second_int=True,
-        )
-        signal_handler.register()
+    @time_execution_async("--step (agent)")
+    async def step(self, step_info: AgentStepInfo | None = None) -> None:
+        """Execute one step of the task"""
+        browser_state_summary = None
+        model_output = None
+        result: list[ActionResult] = []
+        step_start_time = time.time()
+        tokens = 0
 
         try:
-            self._log_agent_run()
-
-            # Execute initial actions if provided
-            if self.initial_actions:
-                result = await self.multi_act(self.initial_actions, check_for_new_elements=False)
-                self.state.last_result = result
-
-            for step in range(max_steps):
-                # Replace the polling with clean pause-wait
-                if self.state.paused:
-                    await self.wait_until_resumed()
-                    signal_handler.reset()
-
-                # Check if we should stop due to too many failures
-                if self.state.consecutive_failures >= self.settings.max_failures:
-                    logger.error(
-                        f"❌ Stopping due to {self.settings.max_failures} consecutive failures"
-                    )
-                    agent_run_error = (
-                        f"Stopped due to {self.settings.max_failures} consecutive failures"
-                    )
-                    break
-
-                # Check control flags before each step
-                if self.state.stopped:
-                    logger.info("🛑 Agent stopped")
-                    agent_run_error = "Agent stopped programmatically"
-                    break
-
-                while self.state.paused:
-                    await asyncio.sleep(0.2)  # Small delay to prevent CPU spinning
-                    if self.state.stopped:  # Allow stopping while paused
-                        agent_run_error = "Agent stopped programmatically while paused"
-                        break
-
-                if on_step_start is not None:
-                    await on_step_start(self)
-
-                step_info = AgentStepInfo(step_number=step, max_steps=max_steps)
-                await self.step(step_info)
-
-                #! Important detail: a single step can have multiple actions!
-                #! for this reason we have to keep track of the last interaction index
-                taken_action_in_step: Dict[str, Any]
-
-                for taken_action_in_step in self.state.history.model_actions()[
-                    self.last_interaction_idx :
-                ]:
-                    interacted_element: Optional[DOMHistoryElement] = taken_action_in_step.get(
-                        "interacted_element"
-                    )
-
-                    # we add a filler for the extra info, so that it will have the same length
-                    self.extra_info_for_steps.append(ExtraInteractionInfo().model_dump())
-
-                    # if there is element interaction in this step we try to improve the selector
-                    if interacted_element:
-
-                        rich_print(interacted_element)
-
-                        current_page: Page = await self.browser_session.get_current_page()
-                        html_content_of_page: str = await current_page.content()
-
-                        self.extra_info_for_steps[-1] = ExtraInteractionInfo(
-                            alternative_xpath_selectors=improve_xpath_selector(
-                                html_text=html_content_of_page, dom_element=interacted_element
-                            ),
-                            alternative_css_selectors=improve_css_selector(
-                                html_text=html_content_of_page, dom_element=interacted_element
-                            ),
-                        ).model_dump()
-
-                self.last_interaction_idx = len(self.state.history.model_actions())
-
-                if on_step_end is not None:
-                    await on_step_end(self)
-
-                if self.state.history.is_done():
-                    if self.settings.validate_output and step < max_steps - 1:
-                        if not await self._validate_output():
-                            continue
-
-                    await self.log_completion()
-
-                    break
-            else:
-                agent_run_error = "Failed to complete task in maximum steps"
-
-                self.state.history.history.append(
-                    AgentHistory(
-                        model_output=None,
-                        result=[ActionResult(error=agent_run_error, include_in_memory=True)],
-                        state=BrowserStateHistory(
-                            url="",
-                            title="",
-                            tabs=[],
-                            interacted_element=[],
-                            screenshot=None,
-                        ),
-                        metadata=None,
-                    )
+            browser_state_summary = await self.browser_session.get_state_summary(
+                cache_clickable_elements_hashes=True
+            )
+            current_page = await self.browser_session.get_current_page()
+            self._log_step_context(current_page, browser_state_summary)
+            # generate procedural memory if needed
+            if (
+                self.enable_memory
+                and self.memory
+                and self.state.n_steps % self.memory.config.memory_interval == 0
+            ):
+                self.memory.create_procedural_memory(self.state.n_steps)
+            await self._raise_if_stopped_or_paused()
+            # Update action models with page-specific actions
+            await self._update_action_models_for_page(current_page)
+            # Get page-specific filtered actions
+            page_filtered_actions = self.controller.registry.get_prompt_description(current_page)
+            # If there are page-specific actions, add them as a special message for this step only
+            if page_filtered_actions:
+                page_action_message = f"For this page, these additional actions are available:\n{page_filtered_actions}"
+                self._message_manager._add_message_with_tokens(
+                    HumanMessage(content=page_action_message)
                 )
+            # If using raw tool calling method, we need to update the message context with new actions
+            if self.tool_calling_method == "raw":
+                # For raw tool calling, get all non-filtered actions plus the page-filtered ones
+                all_unfiltered_actions = self.controller.registry.get_prompt_description()
+                all_actions = all_unfiltered_actions
+                if page_filtered_actions:
+                    all_actions += "\n" + page_filtered_actions
+                context_lines = (self._message_manager.settings.message_context or "").split("\n")
+                non_action_lines = [
+                    line for line in context_lines if not line.startswith("Available actions:")
+                ]
+                updated_context = "\n".join(non_action_lines)
+                if updated_context:
+                    updated_context += f"\n\nAvailable actions: {all_actions}"
+                else:
+                    updated_context = f"Available actions: {all_actions}"
+                self._message_manager.settings.message_context = updated_context
+            self._message_manager.add_state_message(
+                browser_state_summary=browser_state_summary,
+                result=self.state.last_result,
+                step_info=step_info,
+                use_vision=self.settings.use_vision,
+            )
+            # Run planner at specified intervals if planner is configured
+            if (
+                self.settings.planner_llm
+                and self.state.n_steps % self.settings.planner_interval == 0
+            ):
+                plan = await self._run_planner()
+                # add plan before last state message
+                self._message_manager.add_plan(plan, position=-1)
+            if step_info and step_info.is_last_step():
+                # Add last step warning if needed
+                msg = 'Now comes your last step. Use only the "done" action now. No other actions - so here your action sequence must have length 1.'
+                msg += '\nIf the task is not yet fully finished as requested by the user, set success in "done" to false! E.g. if not all steps are fully completed.'
+                msg += '\nIf the task is fully finished, set success in "done" to true.'
+                msg += "\nInclude everything you found out for the ultimate task in the done text."
+                logger.info("Last step finishing up")
+                self._message_manager._add_message_with_tokens(HumanMessage(content=msg))
+                self.AgentOutput = self.DoneAgentOutput
+            input_messages = self._message_manager.get_messages()
+            tokens = self._message_manager.state.history.current_tokens
+            try:
+                model_output = await self.get_next_action(input_messages)
 
-                logger.info(f"❌ {agent_run_error}")
+                if (
+                    not model_output.action
+                    or not isinstance(model_output.action, list)
+                    or all(action.model_dump() == {} for action in model_output.action)
+                ):
+                    logger.warning("Model returned empty action. Retrying...")
+                    clarification_message = HumanMessage(
+                        content="You forgot to return an action. Please respond only with a valid JSON action according to the expected format."
+                    )
+                    retry_messages = input_messages + [clarification_message]
+                    model_output = await self.get_next_action(retry_messages)
+                    if not model_output.action or all(
+                        action.model_dump() == {} for action in model_output.action
+                    ):
+                        logger.warning(
+                            "Model still returned empty after retry. Inserting safe noop action."
+                        )
+                        action_instance = self.ActionModel(
+                            done={
+                                "success": False,
+                                "text": "No next action returned by LLM!",
+                            }
+                        )
+                        model_output.action = [action_instance]
+                # Check again for paused/stopped state after getting model output
+                await self._raise_if_stopped_or_paused()
+                self.state.n_steps += 1
+                if self.register_new_step_callback:
+                    if inspect.iscoroutinefunction(self.register_new_step_callback):
+                        await self.register_new_step_callback(
+                            browser_state_summary, model_output, self.state.n_steps
+                        )
+                    else:
+                        self.register_new_step_callback(
+                            browser_state_summary, model_output, self.state.n_steps
+                        )
+                if self.settings.save_conversation_path:
+                    target = self.settings.save_conversation_path + f"_{self.state.n_steps}.txt"
+                    save_conversation(
+                        input_messages,
+                        model_output,
+                        target,
+                        self.settings.save_conversation_path_encoding,
+                    )
+                self._message_manager._remove_last_state_message()  # we dont want the whole state in the chat history
+                # check again if Ctrl+C was pressed before we commit the output to history
+                await self._raise_if_stopped_or_paused()
+                self._message_manager.add_model_output(model_output)
+            except asyncio.CancelledError:
+                # Task was cancelled due to Ctrl+C
+                self._message_manager._remove_last_state_message()
+                raise InterruptedError("Model query cancelled by user")
+            except InterruptedError:
+                # Agent was paused during get_next_action
+                self._message_manager._remove_last_state_message()
+                raise  # Re-raise to be caught by the outer try/except
+            except Exception as e:
+                # model call failed, remove last state message from history
+                self._message_manager._remove_last_state_message()
+                raise e
 
-            return self.state.history
+            #! generating the alternative CSS and XPath selectors should happen BEFORE the actions are completed
+            for action in model_output.action:
+                short_action_descriptor: Dict[str, Any] = action.model_dump(exclude_none=True)
+                action_key: str = list(short_action_descriptor.keys())[-1]
 
-        except KeyboardInterrupt:
-            # Already handled by our signal handler, but catch any direct KeyboardInterrupt as well
-            logger.info("Got KeyboardInterrupt during execution, returning current history")
-            agent_run_error = "KeyboardInterrupt"
-            return self.state.history
+                #!! these values here were selected by hand, if necessary they can be extended with other actions as well
+                if action_key in [
+                    "click_element_by_index",
+                    "input_text",
+                    "get_dropdown_options",
+                    "select_dropdown_option",
+                    "drag_drop",
+                ]:
+                    action_index = short_action_descriptor[action_key]["index"]
+                    chosen_selector: DOMElementNode = browser_state_summary.selector_map[
+                        action_index
+                    ]
+                    logger.info(f"📄 {action_key} on {chosen_selector}")
 
+                    selector_data: Dict[str, Any] = chosen_selector.__json__()
+
+                    raw_html: str = await self.get_raw_html_of_current_page()
+
+                    try:
+                        factory = SelectorFactory(raw_html)
+
+                        selector_data["alternative_relative_xpaths"] = (
+                            factory.generate_relative_xpath_from_full_xpath(
+                                full_xpath=selector_data.get("xpath")
+                            )
+                        )
+
+                        rich_print(selector_data)
+                    except Exception as e:
+                        logger.error(f"Error generating alternative selectors: {e}")
+                        selector_data["alternative_relative_xpaths"] = None
+
+            result: list[ActionResult] = await self.multi_act(model_output.action)
+            self.state.last_result = result
+
+            if len(result) > 0 and result[-1].is_done:
+                logger.info(f"📄 Result: {result[-1].extracted_content}")
+            self.state.consecutive_failures = 0
+        except InterruptedError:
+            # logger.debug('Agent paused')
+            self.state.last_result = [
+                ActionResult(
+                    error="The agent was paused mid-step - the last action might need to be repeated",
+                    include_in_memory=False,
+                )
+            ]
+            return
+        except asyncio.CancelledError:
+            # Directly handle the case where the step is cancelled at a higher level
+            # logger.debug('Task cancelled - agent was paused with Ctrl+C')
+            self.state.last_result = [
+                ActionResult(error="The agent was paused with Ctrl+C", include_in_memory=False)
+            ]
+            raise InterruptedError("Step cancelled by user")
         except Exception as e:
-            logger.error(f"Agent run failed with exception: {e}", exc_info=True)
-            agent_run_error = str(e)
-            raise e
-
+            result = await self._handle_step_error(e)
+            self.state.last_result = result
         finally:
-            # Unregister signal handlers before cleanup
-            signal_handler.unregister()
+            step_end_time = time.time()
+            if not result:
+                return
+            if browser_state_summary:
+                metadata = StepMetadata(
+                    step_number=self.state.n_steps,
+                    step_start_time=step_start_time,
+                    step_end_time=step_end_time,
+                    input_tokens=tokens,
+                )
+                self._make_history_item(model_output, browser_state_summary, result, metadata)
+            # Log step completion summary
+            self._log_step_completion_summary(step_start_time, result)
 
-            if not self._force_exit_telemetry_logged:  # MODIFIED: Check the flag
-                try:
-                    self._log_agent_event(max_steps=max_steps, agent_run_error=agent_run_error)
-                except Exception as log_e:  # Catch potential errors during logging itself
-                    logger.error(f"Failed to log telemetry event: {log_e}", exc_info=True)
-            else:
-                # ADDED: Info message when custom telemetry for SIGINT was already logged
-                logger.info("Telemetry for force exit (SIGINT) was logged by custom exit callback.")
+    # @time_execution_async("--run (agent)")
+    # async def run(
+    #     self,
+    #     max_steps: int = 100,
+    #     on_step_start: AgentHookFunc | None = None,
+    #     on_step_end: AgentHookFunc | None = None,
+    # ) -> Optional[AgentHistoryList]:
+    #     """Execute the task with maximum number of steps"""
 
-            await self.close()
+    #     loop = asyncio.get_event_loop()
+    #     agent_run_error: str | None = None  # Initialize error tracking variable
+    #     self._force_exit_telemetry_logged = False  # ADDED: Flag for custom telemetry on force exit
+
+    #     # Initialize the extra_info_for_steps list, that will hold additional information
+    #     # relating to every interaction of the model
+    #     #! IMPORTANT: these elements are not representing steps only, but e ery interaction of the model
+    #     self.extra_info_for_steps: List[Dict[str, Any]] = []
+
+    #     # this in interaction counter is here in order to measure the number of interactions of the model has taken
+    #     # it is important so that we can keep track at each step that how many interactions did the model take at each step
+    #     self.last_interaction_idx: int = 0
+
+    #     # Define the custom exit callback function for second CTRL+C
+    #     def on_force_exit_log_telemetry() -> None:
+    #         self._log_agent_event(max_steps=max_steps, agent_run_error="SIGINT: Cancelled by user")
+    #         # NEW: Call the flush method on the telemetry instance
+    #         if hasattr(self, "telemetry") and self.telemetry:
+    #             self.telemetry.flush()
+    #         self._force_exit_telemetry_logged = True  # Set the flag
+
+    #     signal_handler = SignalHandler(
+    #         loop=loop,
+    #         pause_callback=self.pause,
+    #         resume_callback=self.resume,
+    #         custom_exit_callback=on_force_exit_log_telemetry,  # Pass the new telemetrycallback
+    #         exit_on_second_int=True,
+    #     )
+    #     signal_handler.register()
+
+    #     try:
+    #         self._log_agent_run()
+
+    #         # Execute initial actions if provided
+    #         if self.initial_actions:
+    #             result = await self.multi_act(self.initial_actions, check_for_new_elements=False)
+    #             self.state.last_result = result
+
+    #         for step in range(max_steps):
+    #             # Replace the polling with clean pause-wait
+    #             if self.state.paused:
+    #                 await self.wait_until_resumed()
+    #                 signal_handler.reset()
+
+    #             # Check if we should stop due to too many failures
+    #             if self.state.consecutive_failures >= self.settings.max_failures:
+    #                 logger.error(
+    #                     f"❌ Stopping due to {self.settings.max_failures} consecutive failures"
+    #                 )
+    #                 agent_run_error = (
+    #                     f"Stopped due to {self.settings.max_failures} consecutive failures"
+    #                 )
+    #                 break
+
+    #             # Check control flags before each step
+    #             if self.state.stopped:
+    #                 logger.info("🛑 Agent stopped")
+    #                 agent_run_error = "Agent stopped programmatically"
+    #                 break
+
+    #             while self.state.paused:
+    #                 await asyncio.sleep(0.2)  # Small delay to prevent CPU spinning
+    #                 if self.state.stopped:  # Allow stopping while paused
+    #                     agent_run_error = "Agent stopped programmatically while paused"
+    #                     break
+
+    #             if on_step_start is not None:
+    #                 await on_step_start(self)
+
+    #             step_info = AgentStepInfo(step_number=step, max_steps=max_steps)
+    #             await self.step(step_info)
+
+    #             #! Important detail: a single step can have multiple actions!
+    #             #! for this reason we have to keep track of the last interaction index
+    #             taken_action_in_step: Dict[str, Any]
+
+    #             for taken_action_in_step in self.state.history.model_actions()[
+    #                 self.last_interaction_idx :
+    #             ]:
+    #                 interacted_element: Optional[DOMHistoryElement] = taken_action_in_step.get(
+    #                     "interacted_element"
+    #                 )
+
+    #                 # we add a filler for the extra info, so that it will have the same length
+    #                 self.extra_info_for_steps.append(ExtraInteractionInfo().model_dump())
+
+    #                 # if there is element interaction in this step we try to improve the selector
+    #                 if interacted_element:
+
+    #                     rich_print(interacted_element)
+
+    #                     current_page: Page = await self.browser_session.get_current_page()
+    #                     await current_page.wait_for_load_state("domcontentloaded")
+    #                     await current_page.wait_for_load_state("load")
+    #                     html_content_of_page: str = await current_page.content()
+
+    #                     self.extra_info_for_steps[-1] = ExtraInteractionInfo(
+    #                         # relative_xpath_selector=generate_relative_xpath(
+    #                         #     html_content=html_content_of_page,
+    #                         #     full_xpath=interacted_element.xpath,
+    #                         # ),
+    #                         alternative_xpath_selectors=improve_xpath_selector(
+    #                             html_text=html_content_of_page, dom_element=interacted_element
+    #                         ),
+    #                         alternative_css_selectors=improve_css_selector(
+    #                             html_text=html_content_of_page, dom_element=interacted_element
+    #                         ),
+    #                     ).model_dump()
+
+    #             self.last_interaction_idx = len(self.state.history.model_actions())
+
+    #             if on_step_end is not None:
+    #                 await on_step_end(self)
+
+    #             if self.state.history.is_done():
+    #                 if self.settings.validate_output and step < max_steps - 1:
+    #                     if not await self._validate_output():
+    #                         continue
+
+    #                 await self.log_completion()
+
+    #                 break
+    #         else:
+    #             agent_run_error = "Failed to complete task in maximum steps"
+
+    #             self.state.history.history.append(
+    #                 AgentHistory(
+    #                     model_output=None,
+    #                     result=[ActionResult(error=agent_run_error, include_in_memory=True)],
+    #                     state=BrowserStateHistory(
+    #                         url="",
+    #                         title="",
+    #                         tabs=[],
+    #                         interacted_element=[],
+    #                         screenshot=None,
+    #                     ),
+    #                     metadata=None,
+    #                 )
+    #             )
+
+    #             logger.info(f"❌ {agent_run_error}")
+
+    #         return self.state.history
+
+    #     except KeyboardInterrupt:
+    #         # Already handled by our signal handler, but catch any direct KeyboardInterrupt as well
+    #         logger.info("Got KeyboardInterrupt during execution, returning current history")
+    #         agent_run_error = "KeyboardInterrupt"
+    #         return self.state.history
+
+    #     except Exception as e:
+    #         logger.error(f"Agent run failed with exception: {e}", exc_info=True)
+    #         agent_run_error = str(e)
+    #         raise e
+
+    #     finally:
+    #         # Unregister signal handlers before cleanup
+    #         signal_handler.unregister()
+
+    #         if not self._force_exit_telemetry_logged:  # MODIFIED: Check the flag
+    #             try:
+    #                 self._log_agent_event(max_steps=max_steps, agent_run_error=agent_run_error)
+    #             except Exception as log_e:  # Catch potential errors during logging itself
+    #                 logger.error(f"Failed to log telemetry event: {log_e}", exc_info=True)
+    #         else:
+    #             # ADDED: Info message when custom telemetry for SIGINT was already logged
+    #             logger.info("Telemetry for force exit (SIGINT) was logged by custom exit callback.")
+
+    #         await self.close()
 
     def save_q_agent_actions(self, verbose: bool = False) -> None:
         interactions: Dict[str, Any] = {}
@@ -260,7 +498,6 @@ class QuinoAgent(Agent):
                 self.state.history.model_actions(),
                 self.state.history.model_thoughts(),
                 self.state.history.model_outputs(),
-                self.extra_info_for_steps,
             )
         ):
             brain_dict = brain.model_dump()
@@ -308,279 +545,3 @@ class QuinoAgent(Agent):
             )
 
         print(f"Traversal saved with ID: {timestamp}_{traversal_id}")
-
-
-def improve_xpath_selector(html_text: str, dom_element: DOMHistoryElement) -> List[str]:
-    """
-    Improves an XPath selector by finding the minimal set of attributes that uniquely identify the element.
-    Uses recursive parent analysis to find the most reliable and shortest possible selector.
-
-    Args:
-        html_text: The raw HTML content of the page
-        dom_element: The DOMHistoryElement containing element information
-
-    Returns:
-        List[str]: A list of simplified XPath selectors that uniquely identify the element
-    """
-    # Parse HTML
-    parser = etree.HTMLParser()
-    tree = etree.fromstring(html_text, parser)
-
-    xpath_alternatives: List[str] = []
-
-    # Define structural attributes to keep (in order of preference)
-    structural_attributes = {
-        "id": 1,  # Most reliable
-        "name": 2,
-        "type": 3,
-        "href": 4,
-        "role": 5,
-        "target": 6,
-        "rel": 7,
-    }
-
-    # Define meaningful parent elements
-    meaningful_parents = {"div", "form", "main", "nav", "header", "footer", "aside"}
-
-    def handle_xpath(xpath: str) -> None:
-        """Adds a valid XPath selector to the alternatives list."""
-        if len(tree.xpath(xpath)) == 1:
-            xpath_alternatives.append(xpath)
-
-    def filter_attributes(attributes: Dict[str, str]) -> Dict[str, Tuple[str, int]]:
-        """Filters and prioritizes attributes based on structural importance."""
-        filtered_attrs = {}
-        for attr, value in attributes.items():
-            # Skip style attributes
-            if attr in ["style"]:
-                continue
-            # Skip data- attributes that are UI-related
-            if attr.startswith("data-"):
-                continue
-            # Keep structural attributes
-            if attr in structural_attributes:
-                filtered_attrs[attr] = (value, structural_attributes[attr])
-        return filtered_attrs
-
-    def analyze_element_uniqueness(
-        element_attrs: Dict[str, str], element_tag: str
-    ) -> Tuple[float, Dict[str, Tuple[str, int]]]:
-        """
-        Analyzes how uniquely identifiable an element is based on its attributes.
-        Returns a score (0-1) and the best attributes to use.
-        """
-        filtered_attrs = filter_attributes(element_attrs)
-        if not filtered_attrs:
-            return 0.0, {}
-
-        # Calculate uniqueness score based on attribute importance
-        total_score = sum(priority for _, (_, priority) in filtered_attrs.items())
-        max_possible_score = len(structural_attributes) * max(structural_attributes.values())
-        uniqueness_score = total_score / max_possible_score
-
-        return uniqueness_score, filtered_attrs
-
-    def find_parent_context(
-        parent_path: List[str], max_depth: int = 3
-    ) -> Optional[Tuple[str, Dict[str, str]]]:
-        """
-        Recursively analyzes parents to find a good context.
-        Returns the XPath for the parent context and its attributes.
-        """
-        if not parent_path or max_depth <= 0:
-            return None
-
-        # Get the immediate parent
-        parent = parent_path[-1]
-
-        # Check if parent is meaningful
-        if parent in meaningful_parents:
-            return f"//{parent}", {}
-
-        # Try to find parent in the tree
-        parent_elements = tree.xpath(f"//{parent}")
-        if not parent_elements:
-            return find_parent_context(parent_path[:-1], max_depth - 1)
-
-        # Get parent attributes
-        parent_attrs = {}
-        for attr_name, attr_value in parent_elements[0].attrib.items():
-            if attr_name in structural_attributes:
-                parent_attrs[attr_name] = attr_value
-
-        # If parent has good attributes, use it
-        if parent_attrs:
-            return f"//{parent}", parent_attrs
-
-        # Otherwise, try the next parent
-        return find_parent_context(parent_path[:-1], max_depth - 1)
-
-    def generate_selector_with_context(
-        element_tag: str,
-        element_attrs: Dict[str, Tuple[str, int]],
-        parent_context: Optional[Tuple[str, Dict[str, str]]] = None,
-    ) -> None:
-        """Generates XPath selectors using parent context when available."""
-        # Try direct element selection first
-        for attr, (value, _) in element_attrs.items():
-            xpath = f"//{element_tag}[@{attr}='{value}']"
-            handle_xpath(xpath)
-
-        # If we have a parent context, use it
-        if parent_context:
-            parent_xpath, parent_attrs = parent_context
-
-            # Try with parent context
-            for attr, (value, _) in element_attrs.items():
-                xpath = f"{parent_xpath}//{element_tag}[@{attr}='{value}']"
-                handle_xpath(xpath)
-
-            # Try with parent attributes
-            if parent_attrs:
-                parent_conditions = " and ".join(
-                    f"@{attr}='{value}'" for attr, value in parent_attrs.items()
-                )
-                for attr, (value, _) in element_attrs.items():
-                    xpath = f"//{element_tag}[{parent_conditions} and @{attr}='{value}']"
-                    handle_xpath(xpath)
-
-    # Get element attributes and analyze uniqueness
-    uniqueness_score, filtered_attrs = analyze_element_uniqueness(
-        dom_element.attributes, dom_element.tag_name
-    )
-
-    # If element has good uniqueness score, try direct selection
-    if uniqueness_score >= 0.5:
-        generate_selector_with_context(dom_element.tag_name, filtered_attrs)
-
-    # Try to find parent context
-    parent_context = find_parent_context(dom_element.entire_parent_branch_path)
-    if parent_context:
-        generate_selector_with_context(dom_element.tag_name, filtered_attrs, parent_context)
-
-    # Special handling for form elements
-    if dom_element.tag_name in ["button", "input", "select", "textarea"]:
-        if "form" in dom_element.entire_parent_branch_path:
-            for attr, (value, _) in filtered_attrs.items():
-                xpath = f"//form//{dom_element.tag_name}[@{attr}='{value}']"
-                handle_xpath(xpath)
-
-    # Special handling for links with paths
-    if dom_element.tag_name == "a" and "href" in dom_element.attributes:
-        href = dom_element.attributes["href"]
-        if "/" in href:
-            path = href.split("//")[-1].split("/", 1)[-1]
-            if path:
-                xpath = f"//a[contains(@href, '{path}')]"
-                handle_xpath(xpath)
-
-    return xpath_alternatives
-
-
-def improve_css_selector(html_text: str, dom_element: DOMHistoryElement) -> List[str]:
-    """
-    Improves a CSS selector by finding the minimal set of attributes that uniquely identify the element.
-    Uses semantic HTML structure and meaningful attributes for better readability.
-
-    Args:
-        html_text: The raw HTML content of the page
-        dom_element: The DOMHistoryElement containing element information
-
-    Returns:
-        List[str]: A simplified CSS selector that uniquely identifies the element, or None if no improvement possible
-    """
-    # Parse HTML
-    parser = etree.HTMLParser()
-    tree = etree.fromstring(html_text, parser)
-
-    css_alternatives: List[str] = []
-
-    # Define structural attributes to keep (in order of preference)
-    structural_attributes = {
-        "id": 1,  # Most reliable
-        "name": 2,
-        "type": 3,
-        "href": 4,
-        "role": 5,
-        "target": 6,
-        "rel": 7,
-    }
-
-    # Define meaningful parent elements
-    meaningful_parents = {"div", "form", "main", "nav", "header", "footer", "aside"}
-
-    def handle_selector(selector: str) -> None:
-        if len(CSSSelector(selector)(tree)) == 1:
-            css_alternatives.append(selector)
-
-    # Filter and sort attributes
-    filtered_attrs = {}
-    for attr, value in dom_element.attributes.items():
-
-        # Skip data- attributes that are UI-related
-        if attr.startswith("data-"):
-            continue
-        # Keep structural attributes
-        if attr in structural_attributes:
-            filtered_attrs[attr] = (value, structural_attributes[attr])
-
-    # Sort attributes by their priority
-    sorted_attrs = sorted(filtered_attrs.items(), key=lambda x: x[1][1])
-
-    # Try ID selector first
-    if "id" in dom_element.attributes:
-        selector = f"#{dom_element.attributes['id']}"
-        handle_selector(selector)
-
-    # Try single attribute selector
-    for attr, (value, _) in sorted_attrs:
-        selector = f"{dom_element.tag_name}[{attr}='{value}']"
-        handle_selector(selector)
-
-    # Try with meaningful parent context
-    for parent in meaningful_parents:
-        if parent in dom_element.entire_parent_branch_path:
-            for attr, (value, _) in sorted_attrs:
-                selector = f"{parent} {dom_element.tag_name}[{attr}='{value}']"
-                handle_selector(selector)
-
-    # Try combinations of two attributes
-    for i, (attr1, (value1, _)) in enumerate(sorted_attrs):
-        for attr2, (value2, _) in sorted_attrs[i + 1 :]:
-            selector = f"{dom_element.tag_name}[{attr1}='{value1}'][{attr2}='{value2}']"
-            handle_selector(selector)
-
-    # Special handling for form elements
-    if dom_element.tag_name in ["button", "input", "select", "textarea"]:
-        # Check if element is within a form
-        if "form" in dom_element.entire_parent_branch_path:
-            for attr, (value, _) in sorted_attrs:
-                selector = f"form {dom_element.tag_name}[{attr}='{value}']"
-                handle_selector(selector)
-
-    # Special handling for links with paths
-    if dom_element.tag_name == "a" and "href" in dom_element.attributes:
-        href = dom_element.attributes["href"]
-        if "/" in href:
-            # Try using the path part of the href
-            path = href.split("//")[-1].split("/", 1)[-1]
-            if path:
-                selector = f"a[href*='{path}']"
-                handle_selector(selector)
-
-    # Try using parent context with a single attribute
-    if "class" in dom_element.attributes:
-        # Get the parent path up to the first meaningful parent
-        parent_path = []
-        for parent in dom_element.entire_parent_branch_path[:-1]:
-            if parent in meaningful_parents:
-                parent_path.append(parent)
-                break
-            parent_path.append(parent)
-
-        if parent_path:
-            for attr, (value, _) in sorted_attrs:
-                selector = f"{' > '.join(parent_path)} > {dom_element.tag_name}[{attr}='{value}']"
-                handle_selector(selector)
-
-    return css_alternatives
