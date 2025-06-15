@@ -42,21 +42,21 @@ class SelectorFactory:
         xpath_list: List[str] = []
 
         if e.tag is not None:
-            xpath_list.append(f"//{e.tag!r}")
+            xpath_list.append(f"//{e.tag}")  # type: ignore
 
             if e.text is not None:
-                xpath_list.append(f"//{e.tag!r}[text()='{e.text.strip()!r}']")
+                xpath_list.append(f"//{e.tag}[text()='{e.text.strip()}']")  # type: ignore
 
             attributes_dict: Dict[str, str] = {key: value for key, value in e.attrib.items()}
 
             if "id" in attributes_dict:
-                xpath_list.append(f"//{e.tag!r}[@id='{attributes_dict['id']}']")
+                xpath_list.append(f"//{e.tag}[@id='{attributes_dict['id']}']")  # type: ignore
 
             #! right now we only check for specific class names at once, no combinations/permutations
             if "class" in attributes_dict:
                 class_name_list: List[str] = attributes_dict["class"].split(" ")
                 for class_name in class_name_list:
-                    xpath_list.append(f"//{e.tag!r}[contains(@class, '{class_name}')]")
+                    xpath_list.append(f"//{e.tag}[contains(@class, '{class_name}')]")  # type: ignore
 
         return xpath_list
 

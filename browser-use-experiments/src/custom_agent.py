@@ -182,7 +182,6 @@ class QuinoAgent(Agent):
                 raise e
 
             #! generating the alternative CSS and XPath selectors should happen BEFORE the actions are completed
-
             await self.extract_information_from_step(
                 model_output=model_output, browser_state_summary=browser_state_summary
             )
@@ -276,19 +275,20 @@ class QuinoAgent(Agent):
                 logger.info(f"📄 {action_key} on {chosen_selector}")
 
                 selector_data: Dict[str, Any] = chosen_selector.__json__()
-                selector_data["xpath"] = f'//{selector_data["xpath"].strip("/")}'
+
+                formatted_xpath: str = "//" + selector_data["xpath"].strip("/")
+                rich_print(selector_data["xpath"])
+                rich_print(formatted_xpath)
 
                 #! adding the raw XPath to the short action descriptor (even though it is not part of the model output)
-                short_action_descriptor[action_key]["xpath"] = selector_data["xpath"]
+                short_action_descriptor[action_key]["xpath"] = formatted_xpath
 
                 raw_html: str = await self.get_raw_html_of_current_page()
 
                 try:
                     factory = SelectorFactory(raw_html)
                     selector_data["alternative_relative_xpaths"] = (
-                        factory.generate_relative_xpaths_from_full_xpath(
-                            full_xpath=selector_data["xpath"]
-                        )
+                        factory.generate_relative_xpaths_from_full_xpath(full_xpath=formatted_xpath)
                     )
 
                 except Exception as e:

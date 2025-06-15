@@ -71,6 +71,9 @@ class Replicator:
 
         Args:
             json_path: Path to the JSON file containing interaction steps
+            fail_on_unimplemented_action: Whether to fail on unimplemented actions
+            sleep_after_actions: Time to sleep after each action
+            secrets: Dictionary of secrets to replace in actions
         """
         self.json_path = Path(json_path)
         self.replay_json = self._load_json()
@@ -81,11 +84,11 @@ class Replicator:
         self.failed = False
         self.failed_reason: Optional[Exception] = None
         self.secrets = secrets
-        logger.info(
-            f"🚀 Initialized Replicator with {len(self.replay_json.get('interactions', []))} steps to process"
-        )
-
         self.fail_on_unimplemented_action = fail_on_unimplemented_action
+
+        # Get the number of actions from the actions dictionary
+        self.total_actions = len(self.replay_json.get("actions", {}))
+        logger.info(f"🚀 Initialized Replicator with {self.total_actions} steps to process")
 
     def _load_json(self) -> Dict[str, Any]:
         """
@@ -97,8 +100,8 @@ class Replicator:
         try:
             with open(self.json_path, "r") as f:
                 data: Dict[str, Any] = json.load(f)  # type:ignore
-                if "interactions" not in data:
-                    raise ReplicatorError("JSON file must contain an 'interactions' key")
+                if "actions" not in data:
+                    raise ReplicatorError("JSON file must contain an 'actions' key")
                 logger.info(f"📄 Successfully loaded JSON file: {self.json_path}")
                 return data
         except Exception as e:
@@ -107,7 +110,7 @@ class Replicator:
 
     async def _try_selector(
         self, page: Page, selector: str, action: str, **kwargs: Dict[str, Any]
-    ) -> bool:
+    ) -> Tuple[bool, Optional[str]]:
         """
         Try to execute an action with a specific selector.
 
@@ -115,11 +118,10 @@ class Replicator:
             page: The page to execute the action on
             selector: The selector to use
             action: The action to perform ('click', 'fill', etc.)
-            selector_type: The type of selector ('xpath', 'css', etc.)
             **kwargs: Additional arguments for the action
 
         Returns:
-            bool: True if action succeeded, False otherwise
+            Tuple[bool, Optional[str]]: (success, error_message)
         """
         # Wait for page to be fully loaded
         await page.wait_for_load_state("load")
@@ -127,13 +129,22 @@ class Replicator:
 
         logger.info(f"📝 Using selector: {selector}")
 
-        # Get element and verify its state
-        element = page.locator(selector)
-        await element.wait_for(state="attached", timeout=1000)
-
-        logger.info(f"Found '{await element.count()}' elements for selector")
-
         try:
+            # Get element and verify its state
+            element = page.locator(selector)
+
+            await element.wait_for(state="attached", timeout=1000)
+
+            element_count = await element.count()
+            logger.info(f"Found '{element_count}' elements for selector")
+
+            if element_count == 0:
+                logger.warning(f"⚠️ No elements found for selector: {selector}")
+                return False, f"No elements found for selector: {selector}"
+            if element_count > 1:
+                logger.warning(f"⚠️ Multiple elements found for selector: {selector}")
+                return False, f"Multiple elements found for selector: {selector}"
+
             if action == "click":
                 await element.click()
             elif action == "fill":
@@ -141,7 +152,7 @@ class Replicator:
 
                 if value is None:
                     logger.warning(f"⚠️ No value provided for {action} action")
-                    return False
+                    return False, "No value provided for fill action"
 
                 for key, secret_value in self.secrets.items():
                     secret_key = f"<secret>{key}</secret>"
@@ -149,15 +160,16 @@ class Replicator:
                         value = value.replace(f"<secret>{key}</secret>", secret_value)
 
                 await element.fill(value)
-            return True
+            return True, None
         except Exception as e:
-            logger.warning(f"⚠️ Failed to {action} with selector {selector}: {str(e)}")
-            return False
+            error_msg = f"Failed to {action} with selector {selector}: {str(e)}"
+            logger.warning(f"⚠️ {error_msg}")
+            return False, error_msg
 
     async def _get_element_selector(self, element_info: Dict[str, Any]) -> List[Tuple[str, str]]:
         """
         Get a list of selectors for an element based on available information.
-        Returns selectors in priority order: XPath, Improved XPath, CSS, Improved CSS.
+        Returns selectors in priority order: Primary XPath, then alternative relative XPaths.
 
         Args:
             element_info: Dictionary containing element information
@@ -170,27 +182,16 @@ class Replicator:
         """
         selectors = []
 
-        # Add original XPath if available
+        # Add primary XPath if available
         if element_info.get("xpath"):
             selectors.append(("xpath", element_info["xpath"]))
-            logger.debug(f"🎯 Added XPath selector: {element_info['xpath']}")
+            logger.debug(f"🎯 Added primary XPath selector: {element_info['xpath']}")
 
-        # Add improved XPath if available
-        if element_info.get("improved_xpath_selector"):
-            selectors.append(("xpath", element_info["improved_xpath_selector"]))
-            logger.debug(
-                f"🎯 Added improved XPath selector: {element_info['improved_xpath_selector']}"
-            )
-
-        # Add original CSS selector if available
-        if element_info.get("css_selector"):
-            selectors.append(("css", element_info["css_selector"]))
-            logger.debug(f"🎯 Added CSS selector: {element_info['css_selector']}")
-
-        # Add improved CSS selector if available
-        if element_info.get("improved_css_selector"):
-            selectors.append(("css", element_info["improved_css_selector"]))
-            logger.debug(f"🎯 Added improved CSS selector: {element_info['improved_css_selector']}")
+        # Add alternative relative XPaths if available
+        if element_info.get("alternative_relative_xpaths"):
+            for xpath in element_info["alternative_relative_xpaths"]:
+                selectors.append(("xpath", xpath))
+                logger.debug(f"🎯 Added alternative XPath selector: {xpath}")
 
         # If no selectors were found, try to construct a basic selector
         if not selectors:
@@ -212,14 +213,14 @@ class Replicator:
 
         return selectors
 
-    async def _execute_with_retry(
+    async def _execute_with_fallback(
         self,
         action_type: str,
         element_info: Dict[str, Any],
         action_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
-        Execute an action with retry mechanism and selector fallback.
+        Execute an action with selector fallback mechanism.
 
         Args:
             action_type: Type of action to perform ('click' or 'fill')
@@ -227,34 +228,38 @@ class Replicator:
             action_kwargs: Additional arguments for the action
 
         Raises:
-            ActionError: If the action fails after all retries
+            ActionError: If the action fails after trying all selectors
         """
+        if not element_info:
+            raise ActionError("No element information provided")
+
         selectors = await self._get_element_selector(element_info)
         logger.info(f"🖱️ Attempting to {action_type} element with {len(selectors)} selectors")
 
-        for attempt in range(self.max_retries):
-            for selector_type, selector in selectors:
-                logger.info(f"🔄 Trying {selector_type} selector: {selector}")
-                if await self._try_selector(
-                    self.current_page, selector, action_type, **(action_kwargs or {})
-                ):
-                    logger.info(
-                        f"✅ Successfully {action_type}ed element using {selector_type} selector"
-                    )
-                    return
+        last_error = None
+        for selector_type, selector in selectors:
+            logger.info(f"🔄 Trying {selector_type} selector: {selector}")
+            success, error = await self._try_selector(
+                self.current_page, selector, action_type, **(action_kwargs or {})
+            )
 
-            if attempt < self.max_retries - 1:
-                logger.warning(
-                    f"🔄 Retry {attempt + 1}/{self.max_retries} for {action_type} action - all selectors failed"
+            if success:
+                logger.info(
+                    f"✅ Successfully {action_type}ed element using {selector_type} selector"
                 )
-                await asyncio.sleep(self.retry_delay)
+                return
 
-        # If we get here, all selectors failed after all retries
+            last_error = error
+            logger.warning(f"⚠️ Selector failed: {error}")
+
+        # If we get here, all selectors failed
         failed_selectors = [f"{type}: {sel}" for type, sel in selectors]
-        raise ActionError(
-            f"Failed to {action_type} element after {self.max_retries} attempts. "
-            f"Tried selectors: {', '.join(failed_selectors)}"
+        error_msg = (
+            f"Failed to {action_type} element. "
+            f"Tried selectors: {', '.join(failed_selectors)}. "
+            f"Last error: {last_error}"
         )
+        raise ActionError(error_msg)
 
     async def _handle_go_to_url(self, action: Dict[str, Any]) -> None:
         """Handle navigation to a URL."""
@@ -280,14 +285,15 @@ class Replicator:
 
     async def _handle_click(self, element_info: Dict[str, Any]) -> None:
         """Handle clicking an element."""
-        await self._execute_with_retry("click", element_info)
+        await self._execute_with_fallback("click", element_info)
 
     async def _handle_input_text(
         self, action: Dict[str, Any], element_info: Dict[str, Any]
     ) -> None:
         """Handle text input."""
-        text = action["input_text"]["text"]
-        await self._execute_with_retry("fill", element_info, {"text": text})
+        await self._execute_with_fallback(
+            "fill", element_info, {"text": action["input_text"]["text"]}
+        )
 
     async def __handle_not_implemented_action(self, feature_name: str) -> None:
         if self.fail_on_unimplemented_action:
@@ -359,7 +365,6 @@ class Replicator:
 
     async def _scroll(self, how: str) -> None:
         """Handle scrolling to a specific direction."""
-
         logger.info(f"⬇️ Scroll {how} requested")
         """
 			(a) Use browser._scroll_container for container-aware scrolling.
@@ -373,11 +378,9 @@ class Replicator:
             dy = -dy
 
         try:
-
             await self.current_page.wait_for_timeout(500)
             await self.current_page.mouse.wheel(0, dy)
             await self.current_page.wait_for_timeout(500)
-
         except Exception as e:
             # Hard fallback: always works on root scroller
             await self.current_page.evaluate("(y) => window.scrollBy(0, y)", dy)
@@ -449,22 +452,34 @@ class Replicator:
         brain = interaction.get("brain", {})
         memory = brain.get("memory", "No memory information available")
         next_goal = brain.get("next_goal", "No goal information available")
+        evaluation = brain.get("evaluation_previous_goal", "No evaluation available")
 
         logger.info("\n")
         logger.info("🧠 Current State:")
         logger.info(f"📝 Memory: {memory}")
         logger.info(f"🎯 Next Goal: {next_goal}")
+        logger.info(f"✅ Previous Evaluation: {evaluation}")
         logger.info("=" * 20)
 
-        action: Dict[str, Any] = interaction["model_taken_action"]
-        element_info: Dict[str, Any] = action.get("interacted_element", {})
-        switch_tab_id: Optional[int] = action.get("switch_tab", {}).get("page_id", None)
+        model_taken_action: Dict[str, Any] = interaction["model_taken_action"]
+        specific_action: Dict[str, Any] = model_taken_action["action"]
+        element_info: Dict[str, Any] = model_taken_action.get("dom_element_data", {})
+        switch_tab_action: Optional[Dict[str, Any]] = specific_action.get("switch_tab")
+
+        switch_tab_id: Optional[int]
+
+        if switch_tab_action:
+            switch_tab_id = switch_tab_action["tab_id"]
+        else:
+            switch_tab_id = None
 
         # Map actions to their handlers
         action_handlers = {
-            "go_to_url": lambda: self._handle_go_to_url(action=action),
+            "go_to_url": lambda: self._handle_go_to_url(action=specific_action),
             "click_element_by_index": lambda: self._handle_click(element_info=element_info),
-            "input_text": lambda: self._handle_input_text(action=action, element_info=element_info),
+            "input_text": lambda: self._handle_input_text(
+                action=specific_action, element_info=element_info
+            ),
             "extract_content": self._handle_extract_content,
             "wait": self._handle_wait,
             "go_back": self._handle_go_back,
@@ -485,13 +500,18 @@ class Replicator:
         }
 
         # Get the appropriate handler for the action
-        handler = action_handlers.get(next(iter(action.keys())))
+        non_none_action: Dict[str, Any] = {
+            k: v for k, v in specific_action.items() if v is not None
+        }
+
+        handler = action_handlers.get(list(non_none_action.keys())[0])
+
         if handler:
             await handler()
             #! precautionary sleep so that the replay function has time to catch up
             await asyncio.sleep(self.sleep_after_actions)
         else:
-            raise ActionError(f"Unknown action type: {action}")
+            raise ActionError(f"Unknown action type: {specific_action}")
 
     async def run(self, can_be_skipped_steps_list: List[int] = []) -> None:
         """
@@ -500,69 +520,74 @@ class Replicator:
         This method processes each interaction sequentially, executing the
         corresponding browser action for each interaction.
         """
-        try:
-            logger.info("🚀 Starting browser session")
-            self.playwright = await async_playwright().start()
+        # try:
+        logger.info("🚀 Starting browser session")
+        self.playwright = await async_playwright().start()
 
-            # Apply browser configuration if available
-            browser_config: Dict[str, Any] = self.replay_json.get("browser_config", {})
+        # Apply browser configuration if available
+        browser_config: Dict[str, Any] = self.replay_json.get("browser_config", {})
 
-            # Launch browser with basic options
-            self.browser = await self.playwright.chromium.launch(headless=False)
+        # Launch browser with basic options
+        self.browser = await self.playwright.chromium.launch(headless=False)
 
-            # Prepare context options with proper defaults
-            # Remove None values to avoid Playwright errors
-            context_options = {
-                k: v
-                for k, v in {
-                    "viewport": browser_config.get("viewport"),
-                    "user_agent": browser_config.get("user_agent"),
-                    "java_script_enabled": browser_config.get("java_script_enabled", True),
-                    "accept_downloads": browser_config.get("accept_downloads", True),
-                    "extra_http_headers": browser_config.get("extra_http_headers", {}),
-                    "http_credentials": browser_config.get("http_credentials"),
-                    "color_scheme": browser_config.get("color_scheme", "light"),
-                    "device_scale_factor": browser_config.get("device_scale_factor"),
-                    "geolocation": browser_config.get("geolocation"),
-                    "proxy": browser_config.get("proxy"),
-                    "client_certificates": browser_config.get("client_certificates", []),
-                }.items()
-                if v is not None
-            }
+        # Prepare context options with proper defaults
+        # Remove None values to avoid Playwright errors
+        context_options = {
+            k: v
+            for k, v in {
+                "viewport": browser_config.get("viewport"),
+                "user_agent": browser_config.get("user_agent"),
+                "java_script_enabled": browser_config.get("java_script_enabled", True),
+                "accept_downloads": browser_config.get("accept_downloads", True),
+                "extra_http_headers": browser_config.get("extra_http_headers", {}),
+                "http_credentials": browser_config.get("http_credentials"),
+                "color_scheme": browser_config.get("color_scheme", "light"),
+                "device_scale_factor": browser_config.get("device_scale_factor"),
+                "geolocation": browser_config.get("geolocation"),
+                "proxy": browser_config.get("proxy"),
+                "client_certificates": browser_config.get("client_certificates", []),
+            }.items()
+            if v is not None
+        }
 
-            # Create context with all configurations
-            context = await self.browser.new_context(**context_options)
-            self.current_page = await context.new_page()
-            self.current_page.set_default_timeout(5000)
+        # Create context with all configurations
+        context = await self.browser.new_context(**context_options)
+        self.current_page = await context.new_page()
 
-            for idx, (interaction_name, interaction_data) in enumerate(
-                self.replay_json["interactions"].items()
-            ):
-                logger.info(f"📝 Executing interaction: {interaction_name}")
-                try:
-                    await self._execute_action(
-                        interaction_data, can_be_skipped=idx in can_be_skipped_steps_list
-                    )
-                    self.current_interaction += 1
-                except (SelectorError, ActionError) as e:
-                    logger.error(f"❌ Error in interaction {interaction_name}: {str(e)}")
-                    self.failed = True
-                    break
+        # Process actions in order
+        for idx in range(self.total_actions):
+            action_key = f"action_{idx}"
+            if action_key not in self.replay_json["actions"]:
+                logger.warning(f"⚠️ Action {action_key} not found in JSON")
+                continue
 
-        except Exception as e:
-            logger.error(f"❌ Error executing interaction {self.current_interaction}: {str(e)}")
-            self.failed = True
-            self.failed_reason = e
+            interaction_data = self.replay_json["actions"][action_key]
+            logger.info(f"📝 Executing interaction: {action_key}")
 
-        finally:
-            logger.info("🧹 Cleaning up resources")
-            await self.cleanup()
+            try:
+                await self._execute_action(
+                    interaction_data, can_be_skipped=idx in can_be_skipped_steps_list
+                )
+                self.current_interaction += 1
+            except (SelectorError, ActionError) as e:
+                logger.error(f"❌ Error in interaction {action_key}: {str(e)}")
+                self.failed = True
+                break
 
-            if self.failed:
-                logger.error("❌ Replication failed")
-                raise Exception(self.failed_reason)
-            else:
-                logger.info("✅ Replication completed successfully")
+        # except Exception as e:
+        #     logger.error(f"❌ Error executing interaction {self.current_interaction}: {str(e)}")
+        #     self.failed = True
+        #     self.failed_reason = e
+
+        # finally:
+        #     logger.info("🧹 Cleaning up resources")
+        #     await self.cleanup()
+
+        #     if self.failed:
+        #         logger.error("❌ Replication failed")
+        #         raise Exception(self.failed_reason)
+        #     else:
+        #         logger.info("✅ Replication completed successfully")
 
     async def cleanup(self) -> None:
         """
