@@ -569,25 +569,19 @@ class Replicator:
                     interaction_data, can_be_skipped=idx in can_be_skipped_steps_list
                 )
                 self.current_interaction += 1
-            except (SelectorError, ActionError) as e:
+            except Exception as e:
                 logger.error(f"❌ Error in interaction {action_key}: {str(e)}")
                 self.failed = True
                 break
 
-        # except Exception as e:
-        #     logger.error(f"❌ Error executing interaction {self.current_interaction}: {str(e)}")
-        #     self.failed = True
-        #     self.failed_reason = e
+        logger.info("🧹 Cleaning up resources")
+        await self.cleanup()
 
-        # finally:
-        #     logger.info("🧹 Cleaning up resources")
-        #     await self.cleanup()
-
-        #     if self.failed:
-        #         logger.error("❌ Replication failed")
-        #         raise Exception(self.failed_reason)
-        #     else:
-        #         logger.info("✅ Replication completed successfully")
+        if self.failed:
+            logger.error("❌ Replication failed")
+            raise Exception(self.failed_reason)
+        else:
+            logger.info("✅ Replication completed successfully")
 
     async def cleanup(self) -> None:
         """
