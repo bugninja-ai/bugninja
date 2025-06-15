@@ -1,7 +1,8 @@
 import asyncio
-from src.replicator import Replicator
 import glob
 import os
+
+from src.replicator import Replicator
 
 
 async def main():

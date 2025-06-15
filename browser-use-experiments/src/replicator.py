@@ -12,14 +12,15 @@ The JSON log file contains steps with:
 - action_details: Specific details about the action
 """
 
-from typing import Dict, Any, List, Tuple, Optional
-import json
 import asyncio
+import json
 import logging
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+from patchright.async_api import BrowserContext as PatchrightBrowserContext
 from patchright.async_api import Page, async_playwright
 from rich import print as rich_print
-from patchright.async_api import BrowserContext as PatchrightBrowserContext
 
 # Configure logging with custom format
 logging.basicConfig(
@@ -74,9 +75,6 @@ class Replicator:
         self.json_path = Path(json_path)
         self.replay_json = self._load_json()
         self.current_interaction = 0
-        self.playwright = None
-        self.browser = None
-        self.current_page = None
         self.max_retries = 2
         self.retry_delay = 0.5
         self.sleep_after_actions = sleep_after_actions
@@ -98,7 +96,7 @@ class Replicator:
         """
         try:
             with open(self.json_path, "r") as f:
-                data = json.load(f)
+                data: Dict[str, Any] = json.load(f)  # type:ignore
                 if "interactions" not in data:
                     raise ReplicatorError("JSON file must contain an 'interactions' key")
                 logger.info(f"📄 Successfully loaded JSON file: {self.json_path}")
@@ -108,7 +106,7 @@ class Replicator:
             raise ReplicatorError(f"Failed to load JSON file: {str(e)}")
 
     async def _try_selector(
-        self, page: Page, selector: str, action: str, selector_type: str, **kwargs
+        self, page: Page, selector: str, action: str, **kwargs: Dict[str, Any]
     ) -> bool:
         """
         Try to execute an action with a specific selector.
@@ -131,7 +129,7 @@ class Replicator:
 
         # Get element and verify its state
         element = page.locator(selector)
-        await element.wait_for(state="attached", timeout=5000000)
+        await element.wait_for(state="attached", timeout=1000)
 
         logger.info(f"Found '{await element.count()}' elements for selector")
 
@@ -139,7 +137,7 @@ class Replicator:
             if action == "click":
                 await element.click()
             elif action == "fill":
-                value: Optional[str] = kwargs.get("text")
+                value: Optional[str] = kwargs.get("text")  # type:ignore
 
                 if value is None:
                     logger.warning(f"⚠️ No value provided for {action} action")
@@ -238,7 +236,7 @@ class Replicator:
             for selector_type, selector in selectors:
                 logger.info(f"🔄 Trying {selector_type} selector: {selector}")
                 if await self._try_selector(
-                    self.current_page, selector, action_type, selector_type, **(action_kwargs or {})
+                    self.current_page, selector, action_type, **(action_kwargs or {})
                 ):
                     logger.info(
                         f"✅ Successfully {action_type}ed element using {selector_type} selector"
@@ -340,7 +338,7 @@ class Replicator:
         if not len(current_context.pages):
             raise ActionError("No pages found for tab switching")
 
-        self.current_page = current_context.pages[switch_tab_id]
+        self.current_page: Page = current_context.pages[switch_tab_id]
 
         await self.current_page.bring_to_front()
 
@@ -535,7 +533,7 @@ class Replicator:
             # Create context with all configurations
             context = await self.browser.new_context(**context_options)
             self.current_page = await context.new_page()
-            self.current_page.set_default_timeout(browser_config.get(5000))
+            self.current_page.set_default_timeout(5000)
 
             for idx, (interaction_name, interaction_data) in enumerate(
                 self.replay_json["interactions"].items()

@@ -1,49 +1,36 @@
 import asyncio
-import json
-import os
-from datetime import datetime
-from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
-from lxml import etree
-from lxml.cssselect import CSSSelector
-
-from browser_use.agent.service import (  # type: ignore
-    Agent,
-    AgentHistory,
-    AgentStepInfo,
-    BrowserStateHistory,
-    logger,
-)
-from browser_use.agent.views import ActionResult, AgentHistoryList, StepMetadata, DOMElementNode  # type: ignore
-from browser_use.utils import SignalHandler  # type: ignore
-from browser_use.utils import time_execution_async  # type: ignore
-from cuid2 import Cuid as CUID
-from rich import print as rich_print
-from browser_use.dom.history_tree_processor.service import DOMHistoryElement
-
-from browser_use.browser.session import Page
-from browser_use.browser.profile import ViewportSize
-from pydantic import BaseModel, Field
-import time
-from langchain_core.messages import HumanMessage
-from browser_use.agent.message_manager.utils import save_conversation
 import inspect
 import json
-from src.selector_factory import SelectorFactory, SelectorSpecificity
+import os
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Awaitable, Callable, Dict, List, Optional
+
+from browser_use.agent.message_manager.utils import save_conversation  # type: ignore
+from browser_use.agent.service import (  # type: ignore
+    Agent,
+    AgentStepInfo,
+    logger,
+)
+from browser_use.agent.views import (  # type: ignore
+    ActionResult,
+    AgentHistoryList,
+    AgentOutput,
+    DOMElementNode,
+    StepMetadata,
+)
+from browser_use.browser.profile import ViewportSize  # type: ignore
+from browser_use.browser.session import Page  # type: ignore
+from browser_use.browser.views import BrowserStateSummary  # type: ignore
+from browser_use.utils import time_execution_async  # type: ignore
+from cuid2 import Cuid as CUID
+from langchain_core.messages import HumanMessage
+from rich import print as rich_print
+
+from src.selector_factory import SelectorFactory
 
 AgentHookFunc = Callable[["Agent"], Awaitable[None]]
-
-
-class ExtraInteractionInfo(BaseModel):
-    relative_xpath_selector: Optional[str] = Field(
-        default=None, description="Relative XPath selector"
-    )
-    alternative_xpath_selectors: List[str] = Field(
-        default_factory=list, description="Alternative XPath selectors"
-    )
-    alternative_css_selectors: List[str] = Field(
-        default_factory=list, description="Alternative CSS selectors"
-    )
 
 
 class QuinoAgent(Agent):
@@ -60,7 +47,7 @@ class QuinoAgent(Agent):
         """Execute one step of the task"""
         browser_state_summary = None
         model_output = None
-        result: list[ActionResult] = []
+        result: List[ActionResult] = []
         step_start_time = time.time()
         tokens = 0
 
@@ -195,43 +182,12 @@ class QuinoAgent(Agent):
                 raise e
 
             #! generating the alternative CSS and XPath selectors should happen BEFORE the actions are completed
-            for action in model_output.action:
-                short_action_descriptor: Dict[str, Any] = action.model_dump(exclude_none=True)
-                action_key: str = list(short_action_descriptor.keys())[-1]
 
-                #!! these values here were selected by hand, if necessary they can be extended with other actions as well
-                if action_key in [
-                    "click_element_by_index",
-                    "input_text",
-                    "get_dropdown_options",
-                    "select_dropdown_option",
-                    "drag_drop",
-                ]:
-                    action_index = short_action_descriptor[action_key]["index"]
-                    chosen_selector: DOMElementNode = browser_state_summary.selector_map[
-                        action_index
-                    ]
-                    logger.info(f"📄 {action_key} on {chosen_selector}")
+            await self.extract_information_from_step(
+                model_output=model_output, browser_state_summary=browser_state_summary
+            )
 
-                    selector_data: Dict[str, Any] = chosen_selector.__json__()
-
-                    raw_html: str = await self.get_raw_html_of_current_page()
-
-                    try:
-                        factory = SelectorFactory(raw_html)
-
-                        selector_data["alternative_relative_xpaths"] = (
-                            factory.generate_relative_xpath_from_full_xpath(
-                                full_xpath=selector_data.get("xpath")
-                            )
-                        )
-
-                        rich_print(selector_data)
-                    except Exception as e:
-                        logger.error(f"Error generating alternative selectors: {e}")
-                        selector_data["alternative_relative_xpaths"] = None
-
-            result: list[ActionResult] = await self.multi_act(model_output.action)
+            result = await self.multi_act(model_output.action)
             self.state.last_result = result
 
             if len(result) > 0 and result[-1].is_done:
@@ -271,187 +227,79 @@ class QuinoAgent(Agent):
             # Log step completion summary
             self._log_step_completion_summary(step_start_time, result)
 
-    # @time_execution_async("--run (agent)")
-    # async def run(
-    #     self,
-    #     max_steps: int = 100,
-    #     on_step_start: AgentHookFunc | None = None,
-    #     on_step_end: AgentHookFunc | None = None,
-    # ) -> Optional[AgentHistoryList]:
-    #     """Execute the task with maximum number of steps"""
+    @time_execution_async("--run (agent)")
+    async def run(
+        self,
+        max_steps: int = 100,
+        on_step_start: AgentHookFunc | None = None,
+        on_step_end: AgentHookFunc | None = None,
+    ) -> Optional[AgentHistoryList]:
+        """Execute the task with maximum number of steps"""
 
-    #     loop = asyncio.get_event_loop()
-    #     agent_run_error: str | None = None  # Initialize error tracking variable
-    #     self._force_exit_telemetry_logged = False  # ADDED: Flag for custom telemetry on force exit
+        self.agent_taken_actions: List[Dict[str, Any]] = []
 
-    #     # Initialize the extra_info_for_steps list, that will hold additional information
-    #     # relating to every interaction of the model
-    #     #! IMPORTANT: these elements are not representing steps only, but e ery interaction of the model
-    #     self.extra_info_for_steps: List[Dict[str, Any]] = []
+        results = await super().run(
+            max_steps=max_steps, on_step_start=on_step_start, on_step_end=on_step_end
+        )
 
-    #     # this in interaction counter is here in order to measure the number of interactions of the model has taken
-    #     # it is important so that we can keep track at each step that how many interactions did the model take at each step
-    #     self.last_interaction_idx: int = 0
+        self.save_q_agent_actions()
 
-    #     # Define the custom exit callback function for second CTRL+C
-    #     def on_force_exit_log_telemetry() -> None:
-    #         self._log_agent_event(max_steps=max_steps, agent_run_error="SIGINT: Cancelled by user")
-    #         # NEW: Call the flush method on the telemetry instance
-    #         if hasattr(self, "telemetry") and self.telemetry:
-    #             self.telemetry.flush()
-    #         self._force_exit_telemetry_logged = True  # Set the flag
+        return results
 
-    #     signal_handler = SignalHandler(
-    #         loop=loop,
-    #         pause_callback=self.pause,
-    #         resume_callback=self.resume,
-    #         custom_exit_callback=on_force_exit_log_telemetry,  # Pass the new telemetrycallback
-    #         exit_on_second_int=True,
-    #     )
-    #     signal_handler.register()
+    async def extract_information_from_step(
+        self, model_output: AgentOutput = None, browser_state_summary: BrowserStateSummary = None
+    ) -> None:
+        for action in model_output.action:
+            short_action_descriptor: Dict[str, Any] = action.model_dump(exclude_none=True)
 
-    #     try:
-    #         self._log_agent_run()
+            action_dictionary: Dict[str, Any] = {
+                "action": action.model_dump(),
+                "dom_element_data": None,
+            }
 
-    #         # Execute initial actions if provided
-    #         if self.initial_actions:
-    #             result = await self.multi_act(self.initial_actions, check_for_new_elements=False)
-    #             self.state.last_result = result
+            logger.info(f"📄 Action: {short_action_descriptor}")
 
-    #         for step in range(max_steps):
-    #             # Replace the polling with clean pause-wait
-    #             if self.state.paused:
-    #                 await self.wait_until_resumed()
-    #                 signal_handler.reset()
+            action_key: str = list(short_action_descriptor.keys())[-1]
 
-    #             # Check if we should stop due to too many failures
-    #             if self.state.consecutive_failures >= self.settings.max_failures:
-    #                 logger.error(
-    #                     f"❌ Stopping due to {self.settings.max_failures} consecutive failures"
-    #                 )
-    #                 agent_run_error = (
-    #                     f"Stopped due to {self.settings.max_failures} consecutive failures"
-    #                 )
-    #                 break
+            logger.info(f"📄 Action key: {action_key}")
 
-    #             # Check control flags before each step
-    #             if self.state.stopped:
-    #                 logger.info("🛑 Agent stopped")
-    #                 agent_run_error = "Agent stopped programmatically"
-    #                 break
+            #!! these values here were selected by hand, if necessary they can be extended with other actions as well
+            if action_key in [
+                "click_element_by_index",
+                "input_text",
+                "get_dropdown_options",
+                "select_dropdown_option",
+                "drag_drop",
+            ]:
+                action_index = short_action_descriptor[action_key]["index"]
+                chosen_selector: DOMElementNode = browser_state_summary.selector_map[action_index]
+                logger.info(f"📄 {action_key} on {chosen_selector}")
 
-    #             while self.state.paused:
-    #                 await asyncio.sleep(0.2)  # Small delay to prevent CPU spinning
-    #                 if self.state.stopped:  # Allow stopping while paused
-    #                     agent_run_error = "Agent stopped programmatically while paused"
-    #                     break
+                selector_data: Dict[str, Any] = chosen_selector.__json__()
+                selector_data["xpath"] = f'//{selector_data["xpath"].strip("/")}'
 
-    #             if on_step_start is not None:
-    #                 await on_step_start(self)
+                #! adding the raw XPath to the short action descriptor (even though it is not part of the model output)
+                short_action_descriptor[action_key]["xpath"] = selector_data["xpath"]
 
-    #             step_info = AgentStepInfo(step_number=step, max_steps=max_steps)
-    #             await self.step(step_info)
+                raw_html: str = await self.get_raw_html_of_current_page()
 
-    #             #! Important detail: a single step can have multiple actions!
-    #             #! for this reason we have to keep track of the last interaction index
-    #             taken_action_in_step: Dict[str, Any]
+                try:
+                    factory = SelectorFactory(raw_html)
+                    selector_data["alternative_relative_xpaths"] = (
+                        factory.generate_relative_xpaths_from_full_xpath(
+                            full_xpath=selector_data["xpath"]
+                        )
+                    )
 
-    #             for taken_action_in_step in self.state.history.model_actions()[
-    #                 self.last_interaction_idx :
-    #             ]:
-    #                 interacted_element: Optional[DOMHistoryElement] = taken_action_in_step.get(
-    #                     "interacted_element"
-    #                 )
+                except Exception as e:
+                    logger.error(f"Error generating alternative selectors: {e}")
+                    selector_data["alternative_relative_xpaths"] = None
 
-    #                 # we add a filler for the extra info, so that it will have the same length
-    #                 self.extra_info_for_steps.append(ExtraInteractionInfo().model_dump())
+                action_dictionary["dom_element_data"] = selector_data
 
-    #                 # if there is element interaction in this step we try to improve the selector
-    #                 if interacted_element:
-
-    #                     rich_print(interacted_element)
-
-    #                     current_page: Page = await self.browser_session.get_current_page()
-    #                     await current_page.wait_for_load_state("domcontentloaded")
-    #                     await current_page.wait_for_load_state("load")
-    #                     html_content_of_page: str = await current_page.content()
-
-    #                     self.extra_info_for_steps[-1] = ExtraInteractionInfo(
-    #                         # relative_xpath_selector=generate_relative_xpath(
-    #                         #     html_content=html_content_of_page,
-    #                         #     full_xpath=interacted_element.xpath,
-    #                         # ),
-    #                         alternative_xpath_selectors=improve_xpath_selector(
-    #                             html_text=html_content_of_page, dom_element=interacted_element
-    #                         ),
-    #                         alternative_css_selectors=improve_css_selector(
-    #                             html_text=html_content_of_page, dom_element=interacted_element
-    #                         ),
-    #                     ).model_dump()
-
-    #             self.last_interaction_idx = len(self.state.history.model_actions())
-
-    #             if on_step_end is not None:
-    #                 await on_step_end(self)
-
-    #             if self.state.history.is_done():
-    #                 if self.settings.validate_output and step < max_steps - 1:
-    #                     if not await self._validate_output():
-    #                         continue
-
-    #                 await self.log_completion()
-
-    #                 break
-    #         else:
-    #             agent_run_error = "Failed to complete task in maximum steps"
-
-    #             self.state.history.history.append(
-    #                 AgentHistory(
-    #                     model_output=None,
-    #                     result=[ActionResult(error=agent_run_error, include_in_memory=True)],
-    #                     state=BrowserStateHistory(
-    #                         url="",
-    #                         title="",
-    #                         tabs=[],
-    #                         interacted_element=[],
-    #                         screenshot=None,
-    #                     ),
-    #                     metadata=None,
-    #                 )
-    #             )
-
-    #             logger.info(f"❌ {agent_run_error}")
-
-    #         return self.state.history
-
-    #     except KeyboardInterrupt:
-    #         # Already handled by our signal handler, but catch any direct KeyboardInterrupt as well
-    #         logger.info("Got KeyboardInterrupt during execution, returning current history")
-    #         agent_run_error = "KeyboardInterrupt"
-    #         return self.state.history
-
-    #     except Exception as e:
-    #         logger.error(f"Agent run failed with exception: {e}", exc_info=True)
-    #         agent_run_error = str(e)
-    #         raise e
-
-    #     finally:
-    #         # Unregister signal handlers before cleanup
-    #         signal_handler.unregister()
-
-    #         if not self._force_exit_telemetry_logged:  # MODIFIED: Check the flag
-    #             try:
-    #                 self._log_agent_event(max_steps=max_steps, agent_run_error=agent_run_error)
-    #             except Exception as log_e:  # Catch potential errors during logging itself
-    #                 logger.error(f"Failed to log telemetry event: {log_e}", exc_info=True)
-    #         else:
-    #             # ADDED: Info message when custom telemetry for SIGINT was already logged
-    #             logger.info("Telemetry for force exit (SIGINT) was logged by custom exit callback.")
-
-    #         await self.close()
+            self.agent_taken_actions.append(action_dictionary)
 
     def save_q_agent_actions(self, verbose: bool = False) -> None:
-        interactions: Dict[str, Any] = {}
 
         viewport: Optional[ViewportSize] = self.browser_profile.viewport
         viewport_element: Optional[Dict[str, int]] = None
@@ -493,51 +341,30 @@ class QuinoAgent(Agent):
         # Save the traversal data with timestamp and unique ID
         traversal_file = traversal_dir / f"traverse_{timestamp}_{traversal_id}.json"
 
-        for idx, (model_taken_action, brain, action_details, extra_info) in enumerate(
+        actions: Dict[str, Any] = {}
+
+        for idx, (model_taken_action, brain) in enumerate(
             zip(
-                self.state.history.model_actions(),
+                self.agent_taken_actions,
                 self.state.history.model_thoughts(),
-                self.state.history.model_outputs(),
             )
         ):
-            brain_dict = brain.model_dump()
-            action_details_dict = action_details.model_dump()
-            model_taken_action: Dict[str, Any] = model_taken_action.copy()
-
-            interacted_element: Optional[DOMHistoryElement] = model_taken_action.get(
-                "interacted_element", None
-            )
-
-            if interacted_element is not None:
-
-                #! Ensure the XPath starts with "//"
-                if not interacted_element.xpath.startswith("//"):
-                    interacted_element.xpath = f"//{interacted_element.xpath}"
-
-                model_taken_action["interacted_element"] = (
-                    interacted_element.to_dict() | extra_info.copy()
-                )
 
             if verbose:
                 rich_print(f"Step {idx + 1}:")
-                rich_print("Model Action:")
+                rich_print("Log:")
                 rich_print(model_taken_action)
-                rich_print("Brain:")
-                rich_print(brain)
-                rich_print("Action Details:")
-                rich_print(action_details)
 
-            interactions[f"interaction_{idx}"] = {
+            actions[f"action_{idx}"] = {
                 "model_taken_action": model_taken_action,
-                "brain": brain_dict,
-                "action_details": action_details_dict,
+                "brain": brain.model_dump(),
             }
 
         with open(traversal_file, "w") as f:
             json.dump(
                 {
                     "browser_config": browser_config,
-                    "interactions": interactions,
+                    "actions": actions,
                 },
                 f,
                 indent=4,

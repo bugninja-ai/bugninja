@@ -1,19 +1,19 @@
 import asyncio
+import base64
 import os
+from pathlib import Path
 
-from browser_use import BrowserProfile
+from browser_use import BrowserProfile  # type: ignore
 from dotenv import load_dotenv
 from langchain_openai import AzureChatOpenAI
 from pydantic import SecretStr
 
 from src.custom_agent import QuinoAgent
-from pathlib import Path
-import base64
 
 load_dotenv()
 
 
-async def capture_screenshot_hook(agent: QuinoAgent):
+async def capture_screenshot_hook(agent: QuinoAgent) -> None:
     """Hook function that captures screenshots at each step"""
 
     if agent.browser_session.agent_current_page is None:
@@ -79,8 +79,6 @@ async def main() -> None:
     await agent.run(
         # on_step_start=capture_screenshot_hook,  # Capture at start of each step
     )
-
-    agent.save_q_agent_actions()
 
 
 if __name__ == "__main__":

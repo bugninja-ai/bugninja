@@ -1,9 +1,10 @@
+from enum import Enum
 from typing import Dict, List, Optional
+
 from lxml import html
-from rich import print as rich_print
 from lxml.etree import _Element as Element
 from lxml.html import HtmlElement
-from enum import Enum
+from rich import print as rich_print
 
 
 class SelectorSpecificity(str, Enum):
@@ -17,7 +18,7 @@ class SelectorFactory:
         self.tree: HtmlElement = html.fromstring(html_content)
 
     @staticmethod
-    def log_element(element: Element):
+    def log_element(element: Element) -> None:
         rich_print("-----")
         rich_print("ID:")
         rich_print("Tag:")
@@ -41,21 +42,21 @@ class SelectorFactory:
         xpath_list: List[str] = []
 
         if e.tag is not None:
-            xpath_list.append(f"//{e.tag}")
+            xpath_list.append(f"//{e.tag!r}")
 
             if e.text is not None:
-                xpath_list.append(f"//{e.tag}[text()='{e.text.strip()}']")
+                xpath_list.append(f"//{e.tag!r}[text()='{e.text.strip()!r}']")
 
             attributes_dict: Dict[str, str] = {key: value for key, value in e.attrib.items()}
 
             if "id" in attributes_dict:
-                xpath_list.append(f"//{e.tag}[@id='{attributes_dict['id']}']")
+                xpath_list.append(f"//{e.tag!r}[@id='{attributes_dict['id']}']")
 
             #! right now we only check for specific class names at once, no combinations/permutations
             if "class" in attributes_dict:
                 class_name_list: List[str] = attributes_dict["class"].split(" ")
                 for class_name in class_name_list:
-                    xpath_list.append(f"//{e.tag}[contains(@class, '{class_name}')]")
+                    xpath_list.append(f"//{e.tag!r}[contains(@class, '{class_name}')]")
 
         return xpath_list
 
@@ -67,20 +68,20 @@ class SelectorFactory:
             match type_of_match:
                 case SelectorSpecificity.NOT_FOUND:
                     # rich_print(f"🔴 X-Path not found:")
-                    print(x_path)
+                    # print(x_path)
                     continue
                 case SelectorSpecificity.MULTIPLE_MATCH:
                     # rich_print(f"🟡 X-Path not unique:")
-                    print(x_path)
+                    # print(x_path)
                     continue
                 case SelectorSpecificity.UNIQUE_MATCH:
                     # rich_print(f"🟢 X-Path unique:")
-                    print(x_path)
+                    # print(x_path)
                     unique_xpaths.append(x_path)
 
         return unique_xpaths
 
-    def generate_relative_xpath_from_full_xpath(self, full_xpath: str) -> str:
+    def generate_relative_xpaths_from_full_xpath(self, full_xpath: str) -> List[str]:
 
         nodes: List[Element] = self.tree.xpath(full_xpath)
 
