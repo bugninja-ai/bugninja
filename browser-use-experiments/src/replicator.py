@@ -83,7 +83,7 @@ class Replicator:
         self.sleep_after_actions = sleep_after_actions
         self.failed = False
         self.failed_reason: Optional[Exception] = None
-        self.secrets = secrets
+        self.secrets = self.replay_json["secrets"]
         self.fail_on_unimplemented_action = fail_on_unimplemented_action
 
         # Get the number of actions from the actions dictionary

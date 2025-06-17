@@ -2,6 +2,7 @@ import asyncio
 import base64
 import os
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 from browser_use import BrowserProfile  # type: ignore
 from dotenv import load_dotenv
@@ -9,6 +10,11 @@ from langchain_openai import AzureChatOpenAI
 from pydantic import SecretStr
 
 from src.custom_agent import QuinoAgent
+from faker import Faker
+
+
+fake = Faker()
+
 
 load_dotenv()
 
@@ -38,8 +44,7 @@ async def capture_screenshot_hook(agent: QuinoAgent) -> None:
     print(f"Screenshot saved: {screenshot_path}")
 
 
-async def main() -> None:
-
+async def run_agent(task: str, secrets: Optional[Dict[str, Any]] = None):
     AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
     AZURE_OPENAI_KEY = os.getenv("AZURE_OPENAI_KEY")
 
@@ -51,14 +56,6 @@ async def main() -> None:
     # ERROR    [agent] ⚠️⚠️⚠️ Agent(sensitive_data=••••••••) was provided but BrowserSession(allowed_domains=[...]) is not locked down! ⚠️⚠️⚠️
     # ☠️ If the agent visits a malicious website and encounters a prompt-injection attack, your sensitive_data may be exposed!
 
-    email: str = "feligaf715@lewou.com"
-    password: str = "9945504JA"
-    new_username: str = "almafa"
-
-    task: str = (
-        "Go to app.bacprep.ro login to the platform via email authentication with the provided credentials and edit the name of the user based on the provided information. If successful log out and close the browser."
-    )
-
     agent = QuinoAgent(
         task=task,
         llm=AzureChatOpenAI(
@@ -68,12 +65,7 @@ async def main() -> None:
             api_key=SecretStr(AZURE_OPENAI_KEY),
             temperature=0.001,
         ),
-        sensitive_data={
-            "credential_email": email,
-            "credential_password": password,
-            "new_username": new_username,
-        },
-        # TODO! test what strict selectors do
+        sensitive_data=secrets,
         browser_profile=BrowserProfile(strict_selectors=True),
     )
     await agent.run(
@@ -81,5 +73,23 @@ async def main() -> None:
     )
 
 
+async def bacprep_navigation() -> None:
+
+    await run_agent(
+        task="Go to app.bacprep.ro login to the platform via email authentication with the provided credentials and edit the name of the user based on the provided information. If successful log out and close the browser.",
+        secrets={
+            "credential_email": "feligaf715@lewou.com",
+            "credential_password": "9945504JA",
+            "new_username": fake.name(),
+        },
+    )
+
+
+async def reddit_navigation() -> None:
+    await run_agent(
+        task="Go to Reddit and scroll down to the the very first first post of today on the r/interestingasfuck subreddit",
+    )
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(reddit_navigation())

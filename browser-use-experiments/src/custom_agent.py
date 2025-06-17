@@ -364,6 +364,7 @@ class QuinoAgent(Agent):
             json.dump(
                 {
                     "browser_config": browser_config,
+                    "secrets": self.sensitive_data,
                     "actions": actions,
                 },
                 f,
