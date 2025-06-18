@@ -28,12 +28,13 @@ from cuid2 import Cuid as CUID
 from langchain_core.messages import HumanMessage
 from rich import print as rich_print
 
+from src.custom_controller import BugninjaController
 from src.selector_factory import SelectorFactory
 
 AgentHookFunc = Callable[["Agent"], Awaitable[None]]
 
 
-class QuinoAgent(Agent):
+class BugninjaAgent(Agent):
 
     async def get_raw_html_of_current_page(self) -> str:
         current_page: Page = await self.browser_session.get_current_page()
@@ -236,6 +237,9 @@ class QuinoAgent(Agent):
         """Execute the task with maximum number of steps"""
 
         self.agent_taken_actions: List[Dict[str, Any]] = []
+
+        #! we override the default controller with our own
+        self.controller = BugninjaController()
 
         results = await super().run(
             max_steps=max_steps, on_step_start=on_step_start, on_step_end=on_step_end

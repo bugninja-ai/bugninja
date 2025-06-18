@@ -16,11 +16,10 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from patchright.async_api import BrowserContext as PatchrightBrowserContext
 from patchright.async_api import Page, async_playwright
-from rich import print as rich_print
 
 # Configure logging with custom format
 logging.basicConfig(
@@ -363,39 +362,31 @@ class Replicator:
         logger.info("🌳 Accessibility tree requested")
         await self.__handle_not_implemented_action("Accessability tree request")
 
-    async def _scroll(self, how: str) -> None:
+    async def _scroll(self, scroll_amount: Optional[int], how: Literal["up", "down"]) -> None:
         """Handle scrolling to a specific direction."""
         logger.info(f"⬇️ Scroll {how} requested")
         """
 			(a) Use browser._scroll_container for container-aware scrolling.
 			(b) If that JavaScript throws, fall back to window.scrollBy().
 		"""
-        dy = await self.current_page.evaluate("() => window.innerHeight")
 
-        rich_print(f"DY: {dy}")
+        dy = scroll_amount or await self.current_page.evaluate("() => window.innerHeight")
 
         if how == "up":
             dy = -dy
 
-        try:
-            await self.current_page.wait_for_timeout(500)
-            await self.current_page.mouse.wheel(0, dy)
-            await self.current_page.wait_for_timeout(500)
-        except Exception as e:
-            # Hard fallback: always works on root scroller
-            await self.current_page.evaluate("(y) => window.scrollBy(0, y)", dy)
-            logger.debug("Smart scroll failed; used window.scrollBy fallback", exc_info=e)
+        await self.current_page.wait_for_timeout(500)
 
-        msg = f"🔍 Scrolled {how} the page by one page"
-        logger.info(msg)
+        await self.current_page.evaluate("(y) => window.scrollBy(0, y)", dy)
+        logger.info(f"🔍 Scrolled down the page by {dy} pixels")
 
-    async def _handle_scroll_down(self) -> None:
+    async def _handle_scroll_down(self, scroll_amount: Optional[int]) -> None:
         """Handle scrolling down."""
-        await self._scroll("down")
+        await self._scroll(scroll_amount, "down")
 
-    async def _handle_scroll_up(self) -> None:
+    async def _handle_scroll_up(self, scroll_amount: Optional[int]) -> None:
         """Handle scrolling up."""
-        await self._scroll("up")
+        await self._scroll(scroll_amount, "up")
 
     async def _handle_send_keys(self) -> None:
         """Handle sending keys."""
@@ -461,17 +452,28 @@ class Replicator:
         logger.info(f"✅ Previous Evaluation: {evaluation}")
         logger.info("=" * 20)
 
+        # TODO! Do here a major refactor with a lot of custom schemas,
+        #! otherwise dictionary drilling will be pain and also makes the code hard to debug
+
         model_taken_action: Dict[str, Any] = interaction["model_taken_action"]
         specific_action: Dict[str, Any] = model_taken_action["action"]
         element_info: Dict[str, Any] = model_taken_action.get("dom_element_data", {})
         switch_tab_action: Optional[Dict[str, Any]] = specific_action.get("switch_tab")
 
-        switch_tab_id: Optional[int]
+        scroll_down_action: Optional[Dict[str, Any]] = specific_action.get("scroll_down")
+        scroll_up_action: Optional[Dict[str, Any]] = specific_action.get("scroll_down")
+
+        scroll_amount: Optional[int] = None
+        switch_tab_id: Optional[int] = None
 
         if switch_tab_action:
             switch_tab_id = switch_tab_action["tab_id"]
-        else:
-            switch_tab_id = None
+
+        if scroll_down_action:
+            scroll_amount = scroll_down_action["amount"]
+
+        if scroll_up_action:
+            scroll_amount = scroll_up_action["amount"]
 
         # Map actions to their handlers
         action_handlers = {
@@ -489,8 +491,8 @@ class Replicator:
             "open_tab": self._handle_open_tab,
             "close_tab": self._handle_close_tab,
             "get_ax_tree": self._handle_get_ax_tree,
-            "scroll_down": self._handle_scroll_down,
-            "scroll_up": self._handle_scroll_up,
+            "scroll_down": lambda: self._handle_scroll_down(scroll_amount=scroll_amount),
+            "scroll_up": lambda: self._handle_scroll_up(scroll_amount=scroll_amount),
             "send_keys": self._handle_send_keys,
             "scroll_to_text": self._handle_scroll_to_text,
             "get_dropdown_options": self._handle_get_dropdown_options,
