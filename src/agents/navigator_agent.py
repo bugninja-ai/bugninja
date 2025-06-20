@@ -401,3 +401,10 @@ class BugninjaAgent(Agent):
             )
 
         print(f"Traversal saved with ID: {timestamp}_{traversal_id}")
+        self.save_history(file_path="./agent_actions.json")
+
+    def save_history(self, file_path: str | Path | None = None) -> None:
+        """Save the history to a file"""
+        if not file_path:
+            file_path = "AgentHistory.json"
+        self.state.history.save_to_file(file_path)
