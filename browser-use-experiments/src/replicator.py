@@ -15,11 +15,16 @@ The JSON log file contains steps with:
 import asyncio
 import json
 import logging
+import os
+import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from patchright.async_api import BrowserContext as PatchrightBrowserContext
 from patchright.async_api import Page, async_playwright
+from src.agents.healer_agent import HealerAgent
+from src.ai_models import azure_openai_model
 
 # Configure logging with custom format
 logging.basicConfig(
@@ -28,6 +33,49 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
+
+
+def _get_user_input() -> str:
+    """
+    Robust input method that forces stdin to work.
+    """
+    logger.info("⏸️ Press Enter to continue...")
+
+    # Try to reopen stdin if it's not working
+    try:
+        if not sys.stdin.isatty():
+            # Force reopen stdin
+            sys.stdin = open("/dev/tty", "r")
+    except:
+        pass
+
+    try:
+        return input()
+    except EOFError:
+        # Try alternative approach
+        try:
+            import select
+            import termios
+            import tty
+
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            try:
+                tty.setraw(fd)
+                while True:
+                    if select.select([sys.stdin], [], [], 0.1)[0]:
+                        ch = sys.stdin.read(1)
+                        if ch == "\n" or ch == "\r":
+                            break
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            return ""
+        except:
+            logger.warning("⚠️ No input available - continuing automatically")
+            return ""
+    except Exception as e:
+        logger.warning(f"⚠️ Input error: {e} - continuing automatically")
+        return ""
 
 
 class ReplicatorError(Exception):
@@ -63,7 +111,7 @@ class Replicator:
         json_path: str,
         fail_on_unimplemented_action: bool = False,
         sleep_after_actions: float = 1.0,
-        secrets: Dict[str, str] = {},
+        pause_after_each_step: bool = True,
     ):
         """
         Initialize the Replicator with a JSON file path.
@@ -72,6 +120,7 @@ class Replicator:
             json_path: Path to the JSON file containing interaction steps
             fail_on_unimplemented_action: Whether to fail on unimplemented actions
             sleep_after_actions: Time to sleep after each action
+            pause_after_each_step: Whether to pause and wait for Enter key after each step
             secrets: Dictionary of secrets to replace in actions
         """
         self.json_path = Path(json_path)
@@ -80,14 +129,20 @@ class Replicator:
         self.max_retries = 2
         self.retry_delay = 0.5
         self.sleep_after_actions = sleep_after_actions
+        self.pause_after_each_step = pause_after_each_step
         self.failed = False
         self.failed_reason: Optional[Exception] = None
         self.secrets = self.replay_json["secrets"]
+        self.brain_states = self.replay_json.get("brain_states", {})
         self.fail_on_unimplemented_action = fail_on_unimplemented_action
 
         # Get the number of actions from the actions dictionary
         self.total_actions = len(self.replay_json.get("actions", {}))
         logger.info(f"🚀 Initialized Replicator with {self.total_actions} steps to process")
+        if self.pause_after_each_step:
+            logger.info(
+                "⏸️ Pause after each step is ENABLED - press Enter to continue after each action"
+            )
 
     def _load_json(self) -> Dict[str, Any]:
         """
@@ -106,6 +161,24 @@ class Replicator:
         except Exception as e:
             logger.error(f"❌ Failed to load JSON file: {str(e)}")
             raise ReplicatorError(f"Failed to load JSON file: {str(e)}")
+
+    def _wait_for_enter_key(self) -> None:
+        """
+        Wait for the user to press the Enter key to continue.
+
+        This method provides a pause mechanism that allows users to review
+        each step before proceeding to the next one.
+        """
+        try:
+            _get_user_input()
+            logger.info("▶️ Continuing to next step...")
+        except KeyboardInterrupt:
+            logger.warning("⚠️ Interrupted by user (Ctrl+C)")
+            raise KeyboardInterrupt("User interrupted the replication process")
+        except Exception as e:
+            logger.error(f"❌ Unexpected error waiting for user input: {str(e)}")
+            # Continue anyway to avoid blocking the process
+            logger.info("▶️ Continuing to next step...")
 
     async def _try_selector(
         self, page: Page, selector: str, action: str, **kwargs: Dict[str, Any]
@@ -440,7 +513,8 @@ class Replicator:
             return
 
         # Log brain information before executing the action
-        brain = interaction.get("brain", {})
+        brain_state_id = interaction["model_taken_action"].get("brain_state_id")
+        brain = self.brain_states.get(brain_state_id, {}) if brain_state_id else {}
         memory = brain.get("memory", "No memory information available")
         next_goal = brain.get("next_goal", "No goal information available")
         evaluation = brain.get("evaluation_previous_goal", "No evaluation available")
@@ -515,6 +589,37 @@ class Replicator:
         else:
             raise ActionError(f"Unknown action type: {specific_action}")
 
+    async def self_healing_agent_start(self) -> None:
+        """
+        Start the self-healing agent.
+        """
+
+        # task: str,
+        # llm: BaseChatModel,
+        # # Optional parameters
+        # page: Page | None = None,
+        # browser: Browser | None = None,
+        # browser_context: BrowserContext | None = None,
+        # browser_profile: BrowserProfile | None = None,
+        # browser_session: BrowserSession | None = None,
+        # controller: Controller[Context] = Controller(),
+
+        agent = HealerAgent(
+            # TODO! add saving of the task to be tested to the agent
+            task=self.replay_json["test_case"],
+            llm=azure_openai_model(),
+            page=self.current_page,
+            browser=self.browser,
+            # ------
+            browser_context=self.browser_context,
+            # browser_profile=self.browser_profile,
+            # browser_session=self.browser_session,
+            # ------
+        )
+
+        # TODO! healing agent should have its own complex implementation of running
+        agent.step()
+
     async def run(self, can_be_skipped_steps_list: List[int] = []) -> None:
         """
         Run through all steps in the JSON file and execute them.
@@ -553,8 +658,8 @@ class Replicator:
         }
 
         # Create context with all configurations
-        context = await self.browser.new_context(**context_options)
-        self.current_page = await context.new_page()
+        self.browser_context = await self.browser.new_context(**context_options)
+        self.current_page = await self.browser_context.new_page()
 
         # Process actions in order
         for idx in range(self.total_actions):
@@ -567,9 +672,15 @@ class Replicator:
             logger.info(f"📝 Executing interaction: {action_key}")
 
             try:
+                # TODO! needs much more robust error handling for different kinds of errors
                 await self._execute_action(
                     interaction_data, can_be_skipped=idx in can_be_skipped_steps_list
                 )
+
+                # Add pause after action if enabled and action was not skipped
+                if self.pause_after_each_step and idx not in can_be_skipped_steps_list:
+                    self._wait_for_enter_key()
+
                 self.current_interaction += 1
             except Exception as e:
                 logger.error(f"❌ Error in interaction {action_key}: {str(e)}")

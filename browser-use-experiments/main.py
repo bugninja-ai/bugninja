@@ -10,8 +10,9 @@ from faker import Faker
 from langchain_openai import AzureChatOpenAI
 from pydantic import SecretStr
 
-from src.custom_agent import BugninjaAgent
-from agent_navigation_prompts import BACPREP_NAVIGATION_PROMPT, REDDIT_NAVIGATION_PROMPT
+from src.agents.navigator_agent import BugninjaAgent
+from src.prompts.agent_navigation_prompts import BACPREP_NAVIGATION_PROMPT, REDDIT_NAVIGATION_PROMPT
+from src.ai_models import azure_openai_model
 
 fake = Faker()
 
@@ -45,26 +46,13 @@ async def capture_screenshot_hook(agent: BugninjaAgent) -> None:
 
 
 async def run_agent(task: str, secrets: Optional[Dict[str, Any]] = None) -> None:
-    AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-    AZURE_OPENAI_KEY = os.getenv("AZURE_OPENAI_KEY")
-
-    if AZURE_OPENAI_ENDPOINT is None or AZURE_OPENAI_KEY is None:
-        raise ValueError(
-            "Missing Azure OpenAI configuration. Please set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_KEY environment variables."
-        )
 
     # ERROR    [agent] ⚠️⚠️⚠️ Agent(sensitive_data=••••••••) was provided but BrowserSession(allowed_domains=[...]) is not locked down! ⚠️⚠️⚠️
     # ☠️ If the agent visits a malicious website and encounters a prompt-injection attack, your sensitive_data may be exposed!
 
     agent = BugninjaAgent(
         task=task,
-        llm=AzureChatOpenAI(
-            model="gpt-4.1",
-            api_version="2024-02-15-preview",
-            azure_endpoint=AZURE_OPENAI_ENDPOINT,
-            api_key=SecretStr(AZURE_OPENAI_KEY),
-            temperature=0.001,
-        ),
+        llm=azure_openai_model(),
         sensitive_data=secrets,
         browser_profile=BrowserProfile(strict_selectors=True),
     )
@@ -90,4 +78,4 @@ async def reddit_navigation() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(reddit_navigation())
+    asyncio.run(bacprep_navigation())

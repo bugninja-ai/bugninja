@@ -51,11 +51,11 @@ disallow_untyped_defs = true
 #? Development related commands
 [tool.poe.tasks.run]
 help   = "Start agent"
-shell = "uv run main.py"
+shell = "uv run python main.py"
 
 [tool.poe.tasks.replay]
 help   = "Replay a specific interaction chain that the agent did"
-shell = "uv run replay.py"
+shell = "uv run python replay.py"
 
 [tool.poe.tasks.lint]
 help   = "Lints the whole project searching for inefficiencies in the code"

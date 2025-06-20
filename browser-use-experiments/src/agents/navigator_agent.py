@@ -43,6 +43,29 @@ class BugninjaAgent(Agent):
         html_content_of_page: str = await current_page.content()
         return html_content_of_page
 
+    @time_execution_async("--run (agent)")
+    async def run(
+        self,
+        max_steps: int = 100,
+        on_step_start: AgentHookFunc | None = None,
+        on_step_end: AgentHookFunc | None = None,
+    ) -> Optional[AgentHistoryList]:
+        """Execute the task with maximum number of steps"""
+
+        self.agent_taken_actions: List[Dict[str, Any]] = []
+        self.agent_brain_states: Dict[str, Dict[str, str]] = {}
+
+        #! we override the default controller with our own
+        self.controller = BugninjaController()
+
+        results = await super().run(
+            max_steps=max_steps, on_step_start=on_step_start, on_step_end=on_step_end
+        )
+
+        self.save_agent_actions()
+
+        return results
+
     @time_execution_async("--step (agent)")
     async def step(self, step_info: AgentStepInfo | None = None) -> None:
         """Execute one step of the task"""
@@ -182,9 +205,8 @@ class BugninjaAgent(Agent):
                 self._message_manager._remove_last_state_message()
                 raise e
 
-            #! generating the alternative CSS and XPath selectors should happen BEFORE the actions are completed
-            await self.extract_information_from_step(
-                model_output=model_output, browser_state_summary=browser_state_summary
+            await self.__before_action_hook(
+                browser_state_summary=browser_state_summary, model_output=model_output
             )
 
             result = await self.multi_act(model_output.action)
@@ -227,35 +249,35 @@ class BugninjaAgent(Agent):
             # Log step completion summary
             self._log_step_completion_summary(step_start_time, result)
 
-    @time_execution_async("--run (agent)")
-    async def run(
+    async def __before_action_hook(
         self,
-        max_steps: int = 100,
-        on_step_start: AgentHookFunc | None = None,
-        on_step_end: AgentHookFunc | None = None,
-    ) -> Optional[AgentHistoryList]:
-        """Execute the task with maximum number of steps"""
+        browser_state_summary: BrowserStateSummary,
+        model_output: AgentOutput,
+    ) -> None:
 
-        self.agent_taken_actions: List[Dict[str, Any]] = []
+        logger.info(msg="🪝 BEFORE-Action hook called")
 
-        #! we override the default controller with our own
-        self.controller = BugninjaController()
-
-        results = await super().run(
-            max_steps=max_steps, on_step_start=on_step_start, on_step_end=on_step_end
+        #! generating the alternative CSS and XPath selectors should happen BEFORE the actions are completed
+        await self.extract_information_from_step(
+            model_output=model_output, browser_state_summary=browser_state_summary
         )
-
-        self.save_q_agent_actions()
-
-        return results
 
     async def extract_information_from_step(
         self, model_output: AgentOutput = None, browser_state_summary: BrowserStateSummary = None
-    ) -> None:
+    ) -> Dict[str, Any]:
+
+        currently_taken_actions: List[Dict[str, Any]] = []
+
+        # ? we create the brain state here since a single thought can belong to multiple actions
+
+        brain_state_id: str = CUID().generate()
+        self.agent_brain_states[brain_state_id] = model_output.current_state.model_dump()
+
         for action in model_output.action:
             short_action_descriptor: Dict[str, Any] = action.model_dump(exclude_none=True)
 
             action_dictionary: Dict[str, Any] = {
+                "brain_state_id": brain_state_id,
                 "action": action.model_dump(),
                 "dom_element_data": None,
             }
@@ -281,8 +303,6 @@ class BugninjaAgent(Agent):
                 selector_data: Dict[str, Any] = chosen_selector.__json__()
 
                 formatted_xpath: str = "//" + selector_data["xpath"].strip("/")
-                rich_print(selector_data["xpath"])
-                rich_print(formatted_xpath)
 
                 #! adding the raw XPath to the short action descriptor (even though it is not part of the model output)
                 short_action_descriptor[action_key]["xpath"] = formatted_xpath
@@ -301,9 +321,14 @@ class BugninjaAgent(Agent):
 
                 action_dictionary["dom_element_data"] = selector_data
 
-            self.agent_taken_actions.append(action_dictionary)
+            currently_taken_actions.append(action_dictionary)
 
-    def save_q_agent_actions(self, verbose: bool = False) -> None:
+        #! adding the taken actions to the list of agent actions
+        self.agent_taken_actions.extend(currently_taken_actions)
+
+        return currently_taken_actions
+
+    def save_agent_actions(self, verbose: bool = False) -> None:
 
         viewport: Optional[ViewportSize] = self.browser_profile.viewport
         viewport_element: Optional[Dict[str, int]] = None
@@ -347,12 +372,10 @@ class BugninjaAgent(Agent):
 
         actions: Dict[str, Any] = {}
 
-        for idx, (model_taken_action, brain) in enumerate(
-            zip(
-                self.agent_taken_actions,
-                self.state.history.model_thoughts(),
-            )
-        ):
+        rich_print(f"Number of actions: {len(self.agent_taken_actions)}")
+        rich_print(f"Number of thoughts: {len(self.agent_brain_states)}")
+
+        for idx, model_taken_action in enumerate(self.agent_taken_actions):
 
             if verbose:
                 rich_print(f"Step {idx + 1}:")
@@ -361,14 +384,15 @@ class BugninjaAgent(Agent):
 
             actions[f"action_{idx}"] = {
                 "model_taken_action": model_taken_action,
-                "brain": brain.model_dump(),
             }
 
         with open(traversal_file, "w") as f:
             json.dump(
                 {
+                    "test_case": self.task,
                     "browser_config": browser_config,
                     "secrets": self.sensitive_data,
+                    "brain_states": self.agent_brain_states,
                     "actions": actions,
                 },
                 f,
