@@ -15,16 +15,19 @@ The JSON log file contains steps with:
 import asyncio
 import json
 import logging
-import os
 import sys
-import time
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
+from browser_use import BrowserProfile, BrowserSession  # type: ignore
 from patchright.async_api import BrowserContext as PatchrightBrowserContext
-from patchright.async_api import Page, async_playwright
+from patchright.async_api import Page
+
+from src.agents.custom_controller import BugninjaController
 from src.agents.healer_agent import HealerAgent
-from src.ai_models import azure_openai_model
+from src.models.model_configs import azure_openai_model
+from rich import print as rich_print
+import gc
 
 # Configure logging with custom format
 logging.basicConfig(
@@ -39,15 +42,15 @@ def _get_user_input() -> str:
     """
     Robust input method that forces stdin to work.
     """
-    logger.info("⏸️ Press Enter to continue...")
+    logger.info("⏸️ Press Enter to continue, or enter 'q' to quit...")
 
     # Try to reopen stdin if it's not working
     try:
         if not sys.stdin.isatty():
             # Force reopen stdin
             sys.stdin = open("/dev/tty", "r")
-    except:
-        pass
+    except Exception:
+        logger.warning("⚠️ Failed to reopen stdin - continuing automatically")
 
     try:
         return input()
@@ -70,7 +73,7 @@ def _get_user_input() -> str:
             finally:
                 termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
             return ""
-        except:
+        except Exception:
             logger.warning("⚠️ No input available - continuing automatically")
             return ""
     except Exception as e:
@@ -80,6 +83,12 @@ def _get_user_input() -> str:
 
 class ReplicatorError(Exception):
     """Base exception for Replicator errors."""
+
+    pass
+
+
+class UserInterruptionError(ReplicatorError):
+    """Exception raised when user interrupts the replication process."""
 
     pass
 
@@ -170,11 +179,13 @@ class Replicator:
         each step before proceeding to the next one.
         """
         try:
-            _get_user_input()
+            user_input: str = _get_user_input()
+            if user_input == "q":
+                raise UserInterruptionError("User interrupted the replication process")
             logger.info("▶️ Continuing to next step...")
-        except KeyboardInterrupt:
-            logger.warning("⚠️ Interrupted by user (Ctrl+C)")
-            raise KeyboardInterrupt("User interrupted the replication process")
+        except UserInterruptionError:
+            logger.warning("⚠️ Interrupted by user ('q' pressed)")
+            raise UserInterruptionError("User interrupted the replication process")
         except Exception as e:
             logger.error(f"❌ Unexpected error waiting for user input: {str(e)}")
             # Continue anyway to avoid blocking the process
@@ -406,7 +417,7 @@ class Replicator:
         if switch_tab_id is None:
             raise ActionError("No page ID provided for tab switching")
 
-        contexts: List[PatchrightBrowserContext] = self.browser.contexts
+        contexts: List[PatchrightBrowserContext] = self.browser_session.browser.contexts
 
         if not len(contexts):
             raise ActionError("No browser contexts found for tab switching")
@@ -589,77 +600,67 @@ class Replicator:
         else:
             raise ActionError(f"Unknown action type: {specific_action}")
 
-    async def self_healing_agent_start(self) -> None:
+    def create_self_healing_agent(self) -> HealerAgent:
         """
         Start the self-healing agent.
         """
 
-        # task: str,
-        # llm: BaseChatModel,
-        # # Optional parameters
-        # page: Page | None = None,
-        # browser: Browser | None = None,
-        # browser_context: BrowserContext | None = None,
-        # browser_profile: BrowserProfile | None = None,
-        # browser_session: BrowserSession | None = None,
-        # controller: Controller[Context] = Controller(),
-
         agent = HealerAgent(
-            # TODO! add saving of the task to be tested to the agent
             task=self.replay_json["test_case"],
             llm=azure_openai_model(),
-            page=self.current_page,
-            browser=self.browser,
-            # ------
-            browser_context=self.browser_context,
-            # browser_profile=self.browser_profile,
-            # browser_session=self.browser_session,
-            # ------
+            browser_session=self.browser_session,
+            sensitive_data=self.secrets,
         )
 
-        # TODO! healing agent should have its own complex implementation of running
-        agent.step()
+        # TODO! this is a mirrored functionality of the pre-run initialization of the navigation agent!
+        #! this is only here for functionality testing purposes, not intended for production and has to to be properly cleaned up!
+
+        agent.agent_taken_actions = []
+        agent.agent_brain_states = {}
+
+        #! we override the default controller with our own
+        agent.controller = BugninjaController()
+
+        return agent
 
     async def run(self, can_be_skipped_steps_list: List[int] = []) -> None:
         """
         Run through all steps in the JSON file and execute them.
 
         This method processes each interaction sequentially, executing the
-        corresponding browser action for each interaction.
+        corresponding browser action for each interaction. If an action fails,
+        it attempts self-healing before continuing or failing the replication.
         """
         # try:
         logger.info("🚀 Starting browser session")
-        self.playwright = await async_playwright().start()
 
         # Apply browser configuration if available
         browser_config: Dict[str, Any] = self.replay_json.get("browser_config", {})
 
-        # Launch browser with basic options
-        self.browser = await self.playwright.chromium.launch(headless=False)
+        self.browser_session = BrowserSession(
+            browser_profile=BrowserProfile(
+                **{
+                    k: v
+                    for k, v in {
+                        "viewport": browser_config.get("viewport"),
+                        "user_agent": browser_config.get("user_agent"),
+                        "java_script_enabled": browser_config.get("java_script_enabled", True),
+                        "accept_downloads": browser_config.get("accept_downloads", True),
+                        "extra_http_headers": browser_config.get("extra_http_headers", {}),
+                        "http_credentials": browser_config.get("http_credentials"),
+                        "color_scheme": browser_config.get("color_scheme", "light"),
+                        "device_scale_factor": browser_config.get("device_scale_factor"),
+                        "geolocation": browser_config.get("geolocation"),
+                        "proxy": browser_config.get("proxy"),
+                        "client_certificates": browser_config.get("client_certificates", []),
+                    }.items()
+                    if v is not None
+                }
+            )
+        )
 
-        # Prepare context options with proper defaults
-        # Remove None values to avoid Playwright errors
-        context_options = {
-            k: v
-            for k, v in {
-                "viewport": browser_config.get("viewport"),
-                "user_agent": browser_config.get("user_agent"),
-                "java_script_enabled": browser_config.get("java_script_enabled", True),
-                "accept_downloads": browser_config.get("accept_downloads", True),
-                "extra_http_headers": browser_config.get("extra_http_headers", {}),
-                "http_credentials": browser_config.get("http_credentials"),
-                "color_scheme": browser_config.get("color_scheme", "light"),
-                "device_scale_factor": browser_config.get("device_scale_factor"),
-                "geolocation": browser_config.get("geolocation"),
-                "proxy": browser_config.get("proxy"),
-                "client_certificates": browser_config.get("client_certificates", []),
-            }.items()
-            if v is not None
-        }
-
-        # Create context with all configurations
-        self.browser_context = await self.browser.new_context(**context_options)
-        self.current_page = await self.browser_context.new_page()
+        await self.browser_session.start()
+        self.current_page = await self.browser_session.get_current_page()
 
         # Process actions in order
         for idx in range(self.total_actions):
@@ -682,10 +683,53 @@ class Replicator:
                     self._wait_for_enter_key()
 
                 self.current_interaction += 1
+
+            except UserInterruptionError as e:
+                logger.info("⏹️ User interrupted replication process")
+                self.failed = True
+                self.failed_reason = e
+                break
+
             except Exception as e:
                 logger.error(f"❌ Error in interaction {action_key}: {str(e)}")
-                self.failed = True
-                break
+                logger.info("🔄 Attempting self-healing...")
+
+                try:
+                    # Attempt self-healing
+
+                    #!!!! TODO! First try goes with BARE self healing agent
+                    #!!!! - No previous thought process provided
+                    #!!!! - No previous history provided yet
+
+                    healer_agent = self.create_self_healing_agent()
+
+                    # TODO! healing agent should have its own complex implementation of running
+                    await healer_agent.step()
+
+                    rich_print(healer_agent.agent_taken_actions)
+
+                    # Add pause after healing if enabled
+                    if self.pause_after_each_step and idx not in can_be_skipped_steps_list:
+                        self._wait_for_enter_key()
+
+                    self.current_interaction += 1
+
+                except UserInterruptionError as e:
+                    logger.info("⏹️ User interrupted the healing process")
+                    self.failed = True
+                    self.failed_reason = e
+                    break
+
+                except Exception as healing_error:
+                    logger.error(f"❌ Self-healing failed: {str(healing_error)}")
+                    logger.error(
+                        "❌ Both original action and self-healing failed - stopping replication"
+                    )
+                    self.failed = True
+                    self.failed_reason = Exception(
+                        f"Action failed: {str(e)}. Self-healing failed: {str(healing_error)}"
+                    )
+                    break
 
         logger.info("🧹 Cleaning up resources")
         await self.cleanup()
@@ -702,13 +746,19 @@ class Replicator:
 
         This method closes the browser and playwright instance.
         """
+
         if self.current_page:
             await self.current_page.close()
             logger.debug("✅ Page closed")
-        if self.browser:
-            await self.browser.close()
+        if self.browser_session.browser:
+            await self.browser_session.browser.close()
             logger.debug("✅ Browser closed")
-        if self.playwright:
-            await self.playwright.stop()
+        if self.browser_session.playwright:
+            await self.browser_session.playwright.stop()
             logger.debug("✅ Playwright stopped")
+
+        await self.browser_session.close()
+
+        gc.collect()
+
         logger.info("✨ Cleanup completed")

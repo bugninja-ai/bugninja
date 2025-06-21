@@ -5,7 +5,7 @@ import os
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from browser_use.agent.message_manager.utils import save_conversation  # type: ignore
 from browser_use.agent.service import (  # type: ignore
@@ -26,12 +26,10 @@ from browser_use.browser.views import BrowserStateSummary  # type: ignore
 from browser_use.utils import time_execution_async  # type: ignore
 from cuid2 import Cuid as CUID
 from langchain_core.messages import HumanMessage
-from rich import print as rich_print
 
-from src.custom_controller import BugninjaController
-from src.selector_factory import SelectorFactory
-
-AgentHookFunc = Callable[["Agent"], Awaitable[None]]
+from src.agents.common import AgentHookFunc
+from src.agents.custom_controller import BugninjaController
+from src.utils.selector_factory import SelectorFactory
 
 
 class BugninjaAgent(Agent):
@@ -264,12 +262,13 @@ class BugninjaAgent(Agent):
 
     async def extract_information_from_step(
         self, model_output: AgentOutput = None, browser_state_summary: BrowserStateSummary = None
-    ) -> Dict[str, Any]:
+    ) -> List[Dict[str, Any]]:
+
+        # TODO: documentation here
 
         currently_taken_actions: List[Dict[str, Any]] = []
 
         # ? we create the brain state here since a single thought can belong to multiple actions
-
         brain_state_id: str = CUID().generate()
         self.agent_brain_states[brain_state_id] = model_output.current_state.model_dump()
 
@@ -330,6 +329,8 @@ class BugninjaAgent(Agent):
 
     def save_agent_actions(self, verbose: bool = False) -> None:
 
+        # TODO: documentation here
+
         viewport: Optional[ViewportSize] = self.browser_profile.viewport
         viewport_element: Optional[Dict[str, int]] = None
 
@@ -372,15 +373,15 @@ class BugninjaAgent(Agent):
 
         actions: Dict[str, Any] = {}
 
-        rich_print(f"Number of actions: {len(self.agent_taken_actions)}")
-        rich_print(f"Number of thoughts: {len(self.agent_brain_states)}")
+        logger.info(f"👉 Number of actions: {len(self.agent_taken_actions)}")
+        logger.info(f"🗨️ Number of thoughts: {len(self.agent_brain_states)}")
 
         for idx, model_taken_action in enumerate(self.agent_taken_actions):
 
             if verbose:
-                rich_print(f"Step {idx + 1}:")
-                rich_print("Log:")
-                rich_print(model_taken_action)
+                logger.info(f"Step {idx + 1}:")
+                logger.info("Log:")
+                logger.info(model_taken_action)
 
             actions[f"action_{idx}"] = {
                 "model_taken_action": model_taken_action,
@@ -400,11 +401,4 @@ class BugninjaAgent(Agent):
                 ensure_ascii=False,
             )
 
-        print(f"Traversal saved with ID: {timestamp}_{traversal_id}")
-        self.save_history(file_path="./agent_actions.json")
-
-    def save_history(self, file_path: str | Path | None = None) -> None:
-        """Save the history to a file"""
-        if not file_path:
-            file_path = "AgentHistory.json"
-        self.state.history.save_to_file(file_path)
+        logger.info(f"Traversal saved with ID: {timestamp}_{traversal_id}")

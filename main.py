@@ -1,18 +1,18 @@
 import asyncio
 import base64
-import os
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 from browser_use import BrowserProfile  # type: ignore
 from dotenv import load_dotenv
 from faker import Faker
-from langchain_openai import AzureChatOpenAI
-from pydantic import SecretStr
 
+from agent_navigation_prompts import (
+    BACPREP_NAVIGATION_PROMPT,
+    REDDIT_NAVIGATION_PROMPT,
+)
 from src.agents.navigator_agent import BugninjaAgent
-from src.prompts.agent_navigation_prompts import BACPREP_NAVIGATION_PROMPT, REDDIT_NAVIGATION_PROMPT
-from src.ai_models import azure_openai_model
+from src.models.model_configs import azure_openai_model
 
 fake = Faker()
 
