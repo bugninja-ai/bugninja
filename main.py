@@ -54,7 +54,12 @@ async def run_agent(task: str, secrets: Optional[Dict[str, Any]] = None) -> None
         task=task,
         llm=azure_openai_model(),
         sensitive_data=secrets,
-        browser_profile=BrowserProfile(strict_selectors=True),
+        browser_profile=BrowserProfile(
+            strict_selectors=True,
+            # ? these None settings are necessary in order for every new run to be perfectly independent and clean
+            user_data_dir=None,
+            storage_state=None,
+        ),
     )
     await agent.run(
         # on_step_start=capture_screenshot_hook,  # Capture at start of each step

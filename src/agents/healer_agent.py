@@ -4,6 +4,7 @@ from browser_use.agent.service import (  # type: ignore
     logger,
 )
 from browser_use.agent.views import (  # type: ignore
+    AgentBrain,
     AgentHistoryList,
     AgentOutput,
     DOMElementNode,
@@ -16,7 +17,6 @@ from src.agents.common import AgentHookFunc
 from src.agents.custom_controller import BugninjaController
 from src.agents.navigator_agent import BugninjaAgent
 from src.utils.selector_factory import SelectorFactory
-
 
 SELECTOR_ORIENTED_ACTIONS: List[str] = [
     "click_element_by_index",
@@ -51,7 +51,7 @@ class HealerAgent(BugninjaAgent):
         """Execute the task with maximum number of steps"""
 
         self.agent_taken_actions: List[Dict[str, Any]] = []
-        self.agent_brain_states: Dict[str, Dict[str, str]] = {}
+        self.agent_brain_states: Dict[str, AgentBrain] = {}
 
         #! we override the default controller with our own
         self.controller = BugninjaController()
@@ -74,7 +74,7 @@ class HealerAgent(BugninjaAgent):
 
         # ? we create the brain state here since a single thought can belong to multiple actions
         brain_state_id: str = CUID().generate()
-        self.agent_brain_states[brain_state_id] = model_output.current_state.model_dump()
+        self.agent_brain_states[brain_state_id] = model_output.current_state
 
         for action in model_output.action:
             short_action_descriptor: Dict[str, Any] = action.model_dump(exclude_none=True)

@@ -15,12 +15,12 @@ from browser_use.agent.service import (  # type: ignore
 )
 from browser_use.agent.views import (  # type: ignore
     ActionResult,
+    AgentBrain,
     AgentHistoryList,
     AgentOutput,
     DOMElementNode,
     StepMetadata,
 )
-from browser_use.browser.profile import ViewportSize  # type: ignore
 from browser_use.browser.session import Page  # type: ignore
 from browser_use.browser.views import BrowserStateSummary  # type: ignore
 from browser_use.utils import time_execution_async  # type: ignore
@@ -29,6 +29,7 @@ from langchain_core.messages import HumanMessage
 
 from src.agents.common import AgentHookFunc
 from src.agents.custom_controller import BugninjaController
+from src.schemas import BugninjaBrowserConfig, Traversal
 from src.utils.selector_factory import SelectorFactory
 
 
@@ -51,7 +52,7 @@ class BugninjaAgent(Agent):
         """Execute the task with maximum number of steps"""
 
         self.agent_taken_actions: List[Dict[str, Any]] = []
-        self.agent_brain_states: Dict[str, Dict[str, str]] = {}
+        self.agent_brain_states: Dict[str, AgentBrain] = {}
 
         #! we override the default controller with our own
         self.controller = BugninjaController()
@@ -270,7 +271,7 @@ class BugninjaAgent(Agent):
 
         # ? we create the brain state here since a single thought can belong to multiple actions
         brain_state_id: str = CUID().generate()
-        self.agent_brain_states[brain_state_id] = model_output.current_state.model_dump()
+        self.agent_brain_states[brain_state_id] = model_output.current_state
 
         for action in model_output.action:
             short_action_descriptor: Dict[str, Any] = action.model_dump(exclude_none=True)
@@ -331,32 +332,6 @@ class BugninjaAgent(Agent):
 
         # TODO: documentation here
 
-        viewport: Optional[ViewportSize] = self.browser_profile.viewport
-        viewport_element: Optional[Dict[str, int]] = None
-
-        if viewport is not None:
-            viewport_element = {
-                "width": viewport.width,
-                "height": viewport.height,
-            }
-
-        browser_config: Dict[str, Any] = {
-            "user_agent": self.browser_profile.user_agent,
-            "viewport": viewport_element,
-            "device_scale_factor": self.browser_profile.device_scale_factor,
-            "color_scheme": self.browser_profile.color_scheme,
-            "accept_downloads": self.browser_profile.accept_downloads,
-            "proxy": self.browser_profile.proxy,
-            "client_certificates": self.browser_profile.client_certificates,
-            "extra_http_headers": self.browser_profile.extra_http_headers,
-            "http_credentials": self.browser_profile.http_credentials,
-            "java_script_enabled": self.browser_profile.java_script_enabled,
-            "geolocation": self.browser_profile.geolocation,
-            "timeout": self.browser_profile.timeout,
-            "headers": self.browser_profile.headers,
-            "allowed_domains": self.browser_profile.allowed_domains,
-        }
-
         traversal_dir = Path("./traversals")
 
         # Create traversals directory if it doesn't exist
@@ -387,15 +362,17 @@ class BugninjaAgent(Agent):
                 "model_taken_action": model_taken_action,
             }
 
+        traversal = Traversal(
+            test_case=self.task,
+            browser_config=BugninjaBrowserConfig.from_browser_profile(self.browser_profile),
+            secrets=self.sensitive_data,
+            brain_states=self.agent_brain_states,
+            actions=actions,
+        )
+
         with open(traversal_file, "w") as f:
             json.dump(
-                {
-                    "test_case": self.task,
-                    "browser_config": browser_config,
-                    "secrets": self.sensitive_data,
-                    "brain_states": self.agent_brain_states,
-                    "actions": actions,
-                },
+                traversal.model_dump(),
                 f,
                 indent=4,
                 ensure_ascii=False,

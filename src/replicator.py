@@ -13,6 +13,7 @@ The JSON log file contains steps with:
 """
 
 import asyncio
+import gc
 import json
 import logging
 import sys
@@ -22,12 +23,12 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 from browser_use import BrowserProfile, BrowserSession  # type: ignore
 from patchright.async_api import BrowserContext as PatchrightBrowserContext
 from patchright.async_api import Page
+from rich import print as rich_print
 
 from src.agents.custom_controller import BugninjaController
 from src.agents.healer_agent import HealerAgent
 from src.models.model_configs import azure_openai_model
-from rich import print as rich_print
-import gc
+from src.schemas import StateComparison
 
 # Configure logging with custom format
 logging.basicConfig(
@@ -142,7 +143,7 @@ class Replicator:
         self.failed = False
         self.failed_reason: Optional[Exception] = None
         self.secrets = self.replay_json["secrets"]
-        self.brain_states = self.replay_json.get("brain_states", {})
+        self.brain_states: Dict[str, Dict[str, Any]] = self.replay_json.get("brain_states", {})
         self.fail_on_unimplemented_action = fail_on_unimplemented_action
 
         # Get the number of actions from the actions dictionary
@@ -526,6 +527,7 @@ class Replicator:
         # Log brain information before executing the action
         brain_state_id = interaction["model_taken_action"].get("brain_state_id")
         brain = self.brain_states.get(brain_state_id, {}) if brain_state_id else {}
+
         memory = brain.get("memory", "No memory information available")
         next_goal = brain.get("next_goal", "No goal information available")
         evaluation = brain.get("evaluation_previous_goal", "No evaluation available")
@@ -600,7 +602,107 @@ class Replicator:
         else:
             raise ActionError(f"Unknown action type: {specific_action}")
 
-    def create_self_healing_agent(self) -> HealerAgent:
+    async def evaluate_current_state(
+        # TODO! later add here proper typing in oder to get rid of type matching problems
+        self,
+        current_state: Dict[str, Any],
+        upcoming_states: List[Dict[str, Any]],
+    ) -> StateComparison:
+        # Read the system prompt
+        system_prompt_path = Path(__file__).parent / "prompts" / "state_comp_system_prompt.md"
+        with open(system_prompt_path, "r") as f:
+            system_prompt = f.read()
+
+        # Read the user prompt template
+        user_prompt_path = Path(__file__).parent / "prompts" / "state_comp_user_prompt.md"
+        with open(user_prompt_path, "r") as f:
+            user_prompt_template = f.read()
+
+        # Replace placeholders with actual data
+        user_prompt = user_prompt_template.replace(
+            "[[CURRENT_STATE_JSON]]", json.dumps(current_state, indent=4, ensure_ascii=False)
+        ).replace(
+            "[[UPCOMING_STATES]]",
+            json.dumps(
+                {"upcoming_states": [{"idx": idx} | s for idx, s in enumerate(upcoming_states)]},
+                indent=4,
+                ensure_ascii=False,
+            ),
+        )
+
+        json_llm = azure_openai_model().bind(response_format={"type": "json_object"})
+        ai_msg = json_llm.invoke(
+            [
+                ("system", system_prompt),
+                ("human", user_prompt),
+            ]
+        )
+
+        response_json: Dict[str, Any] = ai_msg.content  # type: ignore
+
+        return StateComparison.model_validate(response_json)
+
+    # def create_agent_state_from_traversal_json(self, cut_after: Optional[int] = None) -> AgentState:
+    #     """
+    #     Convert brain states from the loaded traversal JSON to AgentState structure.
+
+    #     This method takes the brain_states from the replay JSON and converts them
+    #     into the proper AgentState structure that can be used by the healer agent.
+
+    #     Returns:
+    #         AgentState: Complete agent state with history from the traversal JSON
+    #     """
+    #     agent_history_list = []
+
+    #     # Process each brain state in chronological order
+    #     for action_key in sorted(self.replay_json["actions"].keys()):
+    #         action_data = self.replay_json["actions"][action_key]
+    #         brain_state_id = action_data["model_taken_action"].get("brain_state_id")
+
+    #         if brain_state_id and brain_state_id in self.brain_states:
+    #             brain_state = self.brain_states[brain_state_id]
+
+    #             # Create AgentBrain from the brain state
+    #             agent_brain = AgentBrain(
+    #                 evaluation_previous_goal=brain_state.get("evaluation_previous_goal", ""),
+    #                 memory=brain_state.get("memory", ""),
+    #                 next_goal=brain_state.get("next_goal", ""),
+    #             )
+
+    #             # Create AgentOutput with the brain state and empty action
+    #             agent_output = AgentOutput(
+    #                 current_state=agent_brain,
+    #                 action=[],  # Empty action list since this is historical data
+    #             )
+
+    #             # Create minimal BrowserStateHistory
+    #             # Note: We don't have detailed browser state info in the JSON
+    #             browser_state = BrowserStateHistory(
+    #                 url="",  # Could be extracted from action if needed
+    #                 title="",
+    #                 interacted_element=[],
+    #                 tabs=[],
+    #             )
+
+    #             # Create AgentHistory entry
+    #             agent_history = AgentHistory(
+    #                 model_output=agent_output,
+    #                 result=[],  # Empty result since this is historical data
+    #                 state=browser_state,
+    #             )
+
+    #             agent_history_list.append(agent_history)
+
+    #     # Create AgentHistoryList
+    #     history_list = AgentHistoryList(history=agent_history_list)
+
+    #     if cut_after:
+    #         history_list.history = history_list.history[:cut_after]
+
+    #     # Create and return AgentState
+    #     return AgentState(history=history_list)
+
+    def create_self_healing_agent(self, at_idx: int) -> HealerAgent:
         """
         Start the self-healing agent.
         """
@@ -610,6 +712,8 @@ class Replicator:
             llm=azure_openai_model(),
             browser_session=self.browser_session,
             sensitive_data=self.secrets,
+            # TODO! experiment with adding the proper state from previous runs for the brain to be aware what is happening
+            # injected_agent_state=self.create_agent_state_from_traversal_json(cut_after=at_idx),
         )
 
         # TODO! this is a mirrored functionality of the pre-run initialization of the navigation agent!
@@ -622,6 +726,53 @@ class Replicator:
         agent.controller = BugninjaController()
 
         return agent
+
+    async def self_healing_action(self, at_idx: int) -> None:
+
+        #!!!! TODO! First try goes with BARE self healing agent
+        #!!!! - No previous thought process provided
+        #!!!! - No previous history provided yet
+
+        upcoming_state_ids: List[str] = [
+            brain_state_id
+            for brain_state_id in self.brain_states.keys()
+            if brain_state_id not in self.brain_states_passed
+        ]
+
+        upcoming_states: List[Dict[str, Any]] = [
+            self.brain_states.get(brain_state_id) for brain_state_id in upcoming_state_ids
+        ]
+
+        healer_agent: HealerAgent = self.create_self_healing_agent(at_idx=at_idx)
+
+        # TODO! healing agent should have its own complex implementation of running
+        await healer_agent.step()
+
+        if not len(healer_agent.agent_taken_actions):
+            raise ActionError(
+                "Self healing agent failed to find a solution for this specific state"
+            )
+
+        brain_state_id: Optional[str] = healer_agent.agent_taken_actions[-1].get("brain_state_id")
+
+        if not brain_state_id:
+            raise ActionError(
+                "There is an error relating to pairing 'brain_state_id' to specific actions!"
+            )
+
+        healer_agent_state: Dict[str, Any] = healer_agent.agent_brain_states[brain_state_id]
+
+        rich_print(
+            [self.brain_states.get(brain_state_id) for brain_state_id in self.brain_states_passed]
+        )
+        rich_print(healer_agent_state)
+        rich_print(upcoming_states)
+
+        model_response: StateComparison = await self.evaluate_current_state(
+            current_state=healer_agent_state, upcoming_states=upcoming_states
+        )
+
+        rich_print(model_response)
 
     async def run(self, can_be_skipped_steps_list: List[int] = []) -> None:
         """
@@ -639,6 +790,9 @@ class Replicator:
 
         self.browser_session = BrowserSession(
             browser_profile=BrowserProfile(
+                # ? these None settings are necessary in order for every new run to be perfectly independent and clean
+                user_data_dir=None,
+                storage_state=None,
                 **{
                     k: v
                     for k, v in {
@@ -655,12 +809,14 @@ class Replicator:
                         "client_certificates": browser_config.get("client_certificates", []),
                     }.items()
                     if v is not None
-                }
+                },
             )
         )
 
         await self.browser_session.start()
         self.current_page = await self.browser_session.get_current_page()
+
+        self.brain_states_passed: List[str] = []
 
         # Process actions in order
         for idx in range(self.total_actions):
@@ -678,6 +834,12 @@ class Replicator:
                     interaction_data, can_be_skipped=idx in can_be_skipped_steps_list
                 )
 
+                brain_state_id = interaction_data["model_taken_action"].get("brain_state_id")
+
+                # ? mark current state as passed
+                if brain_state_id not in self.brain_states_passed:
+                    self.brain_states_passed.append(brain_state_id)
+
                 # Add pause after action if enabled and action was not skipped
                 if self.pause_after_each_step and idx not in can_be_skipped_steps_list:
                     self._wait_for_enter_key()
@@ -693,20 +855,18 @@ class Replicator:
             except Exception as e:
                 logger.error(f"❌ Error in interaction {action_key}: {str(e)}")
                 logger.info("🔄 Attempting self-healing...")
+                logger.info("Marking current state as failed...")
+
+                # ? this functionality here is crucial for handling the "failing states"
+                # ? since a single state can have multiple action, an action can fail in the middle of a state
+                # ? to prevent from excluding the state from comparison we need to keep track of the last passed state
+                # ? here we flag the last state as not passed
+                self.brain_states_passed.pop(-1)
 
                 try:
                     # Attempt self-healing
 
-                    #!!!! TODO! First try goes with BARE self healing agent
-                    #!!!! - No previous thought process provided
-                    #!!!! - No previous history provided yet
-
-                    healer_agent = self.create_self_healing_agent()
-
-                    # TODO! healing agent should have its own complex implementation of running
-                    await healer_agent.step()
-
-                    rich_print(healer_agent.agent_taken_actions)
+                    await self.self_healing_action(at_idx=idx)
 
                     # Add pause after healing if enabled
                     if self.pause_after_each_step and idx not in can_be_skipped_steps_list:
