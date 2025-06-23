@@ -73,12 +73,18 @@ class BugninjaBrowserConfig(BaseModel):
         )
 
 
+class BugninjaExtendedAction(BaseModel):
+    brain_state_id: str
+    action: Dict[str, Any]
+    dom_element_data: Optional[Dict[str, Any]]
+
+
 class Traversal(BaseModel):
     test_case: str
     browser_config: BugninjaBrowserConfig
     secrets: Dict[str, str]
     brain_states: Dict[str, AgentBrain]
-    actions: Dict[str, Any]
+    actions: Dict[str, BugninjaExtendedAction]
 
     class Config:
         arbitrary_types_allowed = True

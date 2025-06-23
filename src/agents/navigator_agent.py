@@ -155,9 +155,7 @@ class NavigatorAgent(BugninjaAgentBase):
                 logger.info("Log:")
                 logger.info(model_taken_action)
 
-            actions[f"action_{idx}"] = {
-                "model_taken_action": model_taken_action,
-            }
+            actions[f"action_{idx}"] = model_taken_action
 
         traversal = Traversal(
             test_case=self.task,

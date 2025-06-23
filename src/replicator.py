@@ -21,13 +21,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from browser_use import BrowserProfile, BrowserSession  # type: ignore
+from browser_use.agent.views import AgentBrain  # type: ignore
 from patchright.async_api import BrowserContext as PatchrightBrowserContext
 from patchright.async_api import Page
 from rich import print as rich_print
 
 from src.agents.healer_agent import HealerAgent
 from src.models.model_configs import azure_openai_model
-from src.schemas import StateComparison
+from src.schemas import BugninjaExtendedAction, StateComparison, Traversal
 
 # Configure logging with custom format
 logging.basicConfig(
@@ -133,7 +134,7 @@ class Replicator:
             secrets: Dictionary of secrets to replace in actions
         """
         self.json_path = Path(json_path)
-        self.replay_json = self._load_json()
+        self.replay_traversal = self._load_traversal_from_json()
         self.current_interaction = 0
         self.max_retries = 2
         self.retry_delay = 0.5
@@ -141,19 +142,19 @@ class Replicator:
         self.pause_after_each_step = pause_after_each_step
         self.failed = False
         self.failed_reason: Optional[Exception] = None
-        self.secrets = self.replay_json["secrets"]
-        self.brain_states: Dict[str, Dict[str, Any]] = self.replay_json.get("brain_states", {})
+        self.secrets = self.replay_traversal.secrets
+        self.brain_states: Dict[str, AgentBrain] = self.replay_traversal.brain_states
         self.fail_on_unimplemented_action = fail_on_unimplemented_action
 
         # Get the number of actions from the actions dictionary
-        self.total_actions = len(self.replay_json.get("actions", {}))
+        self.total_actions = len(self.replay_traversal.actions)
         logger.info(f"🚀 Initialized Replicator with {self.total_actions} steps to process")
         if self.pause_after_each_step:
             logger.info(
                 "⏸️ Pause after each step is ENABLED - press Enter to continue after each action"
             )
 
-    def _load_json(self) -> Dict[str, Any]:
+    def _load_traversal_from_json(self) -> Traversal:
         """
         Load and parse the JSON file containing interaction steps.
 
@@ -166,7 +167,7 @@ class Replicator:
                 if "actions" not in data:
                     raise ReplicatorError("JSON file must contain an 'actions' key")
                 logger.info(f"📄 Successfully loaded JSON file: {self.json_path}")
-                return data
+                return Traversal.model_validate(data)
         except Exception as e:
             logger.error(f"❌ Failed to load JSON file: {str(e)}")
             raise ReplicatorError(f"Failed to load JSON file: {str(e)}")
@@ -366,14 +367,22 @@ class Replicator:
                 else:
                     raise
 
-    async def _handle_click(self, element_info: Dict[str, Any]) -> None:
+    async def _handle_click(self, element_info: Optional[Dict[str, Any]]) -> None:
         """Handle clicking an element."""
+
+        if not element_info:
+            raise ActionError("No element information provided for event 'click'!")
+
         await self._execute_with_fallback("click", element_info)
 
     async def _handle_input_text(
-        self, action: Dict[str, Any], element_info: Dict[str, Any]
+        self, action: Dict[str, Any], element_info: Optional[Dict[str, Any]]
     ) -> None:
         """Handle text input."""
+
+        if not element_info:
+            raise ActionError("No element information provided for event 'fill'!")
+
         await self._execute_with_fallback(
             "fill", element_info, {"text": action["input_text"]["text"]}
         )
@@ -508,7 +517,9 @@ class Replicator:
     #! Right now, we do not have a solution to automatically map which steps of specific flows can be or should be skipped, but in the upcoming features,
     #! I will most likely develop an AI agent solution for this.
 
-    async def _execute_action(self, interaction: Dict[str, Any], can_be_skipped: bool) -> None:
+    async def _execute_action(
+        self, interaction: BugninjaExtendedAction, can_be_skipped: bool = False
+    ) -> None:
         """
         Execute a single interaction's action using Patchright with retry mechanism.
 
@@ -520,34 +531,32 @@ class Replicator:
             ActionError: If the action fails after all retries
         """
         if can_be_skipped:
-            logger.info(f"📝 Skipping interaction: {interaction['model_taken_action']}")
+            logger.info(f"📝 Skipping interaction: {interaction}")
             return
 
         # Log brain information before executing the action
-        brain_state_id = interaction["model_taken_action"].get("brain_state_id")
-        brain = self.brain_states.get(brain_state_id, {}) if brain_state_id else {}
+        brain: Optional[AgentBrain] = self.brain_states.get(interaction.brain_state_id)
 
-        memory = brain.get("memory", "No memory information available")
-        next_goal = brain.get("next_goal", "No goal information available")
-        evaluation = brain.get("evaluation_previous_goal", "No evaluation available")
+        if not brain:
+            error_msg = f"🚫 No brain information found for interaction: {interaction}"
+            logger.error(error_msg)
+            raise ActionError(error_msg)
 
         logger.info("\n")
         logger.info("🧠 Current State:")
-        logger.info(f"📝 Memory: {memory}")
-        logger.info(f"🎯 Next Goal: {next_goal}")
-        logger.info(f"✅ Previous Evaluation: {evaluation}")
+        logger.info(f"📝 Memory: {brain.memory}")
+        logger.info(f"🎯 Next Goal: {brain.next_goal}")
+        logger.info(f"✅ Previous Evaluation: {brain.evaluation}")
         logger.info("=" * 20)
 
         # TODO! Do here a major refactor with a lot of custom schemas,
         #! otherwise dictionary drilling will be pain and also makes the code hard to debug
 
-        model_taken_action: Dict[str, Any] = interaction["model_taken_action"]
-        specific_action: Dict[str, Any] = model_taken_action["action"]
-        element_info: Dict[str, Any] = model_taken_action.get("dom_element_data", {})
-        switch_tab_action: Optional[Dict[str, Any]] = specific_action.get("switch_tab")
+        element_info: Optional[Dict[str, Any]] = interaction.dom_element_data
 
-        scroll_down_action: Optional[Dict[str, Any]] = specific_action.get("scroll_down")
-        scroll_up_action: Optional[Dict[str, Any]] = specific_action.get("scroll_down")
+        switch_tab_action: Optional[Dict[str, Any]] = interaction.action.get("switch_tab")
+        scroll_down_action: Optional[Dict[str, Any]] = interaction.action.get("scroll_down")
+        scroll_up_action: Optional[Dict[str, Any]] = interaction.action.get("scroll_down")
 
         scroll_amount: Optional[int] = None
         switch_tab_id: Optional[int] = None
@@ -563,10 +572,10 @@ class Replicator:
 
         # Map actions to their handlers
         action_handlers = {
-            "go_to_url": lambda: self._handle_go_to_url(action=specific_action),
+            "go_to_url": lambda: self._handle_go_to_url(action=interaction.action),
             "click_element_by_index": lambda: self._handle_click(element_info=element_info),
             "input_text": lambda: self._handle_input_text(
-                action=specific_action, element_info=element_info
+                action=interaction.action, element_info=element_info
             ),
             "extract_content": self._handle_extract_content,
             "wait": self._handle_wait,
@@ -589,7 +598,7 @@ class Replicator:
 
         # Get the appropriate handler for the action
         non_none_action: Dict[str, Any] = {
-            k: v for k, v in specific_action.items() if v is not None
+            k: v for k, v in interaction.action.items() if v is not None
         }
 
         handler = action_handlers.get(list(non_none_action.keys())[0])
@@ -599,7 +608,7 @@ class Replicator:
             #! precautionary sleep so that the replay function has time to catch up
             await asyncio.sleep(self.sleep_after_actions)
         else:
-            raise ActionError(f"Unknown action type: {specific_action}")
+            raise ActionError(f"Unknown action type: {interaction.action}")
 
     async def evaluate_current_state(
         # TODO! later add here proper typing in oder to get rid of type matching problems
@@ -654,8 +663,8 @@ class Replicator:
     #     agent_history_list = []
 
     #     # Process each brain state in chronological order
-    #     for action_key in sorted(self.replay_json["actions"].keys()):
-    #         action_data = self.replay_json["actions"][action_key]
+    #     for action_key in sorted(self.replay_traversal["actions"].keys()):
+    #         action_data = self.replay_traversal["actions"][action_key]
     #         brain_state_id = action_data["model_taken_action"].get("brain_state_id")
 
     #         if brain_state_id and brain_state_id in self.brain_states:
@@ -707,7 +716,7 @@ class Replicator:
         """
 
         agent = HealerAgent(
-            task=self.replay_json["test_case"],
+            task=self.replay_traversal.test_case,
             llm=azure_openai_model(),
             browser_session=self.browser_session,
             sensitive_data=self.secrets,
@@ -775,31 +784,13 @@ class Replicator:
         # try:
         logger.info("🚀 Starting browser session")
 
-        # Apply browser configuration if available
-        browser_config: Dict[str, Any] = self.replay_json.get("browser_config", {})
-
         self.browser_session = BrowserSession(
             browser_profile=BrowserProfile(
                 # ? these None settings are necessary in order for every new run to be perfectly independent and clean
                 user_data_dir=None,
                 storage_state=None,
-                **{
-                    k: v
-                    for k, v in {
-                        "viewport": browser_config.get("viewport"),
-                        "user_agent": browser_config.get("user_agent"),
-                        "java_script_enabled": browser_config.get("java_script_enabled", True),
-                        "accept_downloads": browser_config.get("accept_downloads", True),
-                        "extra_http_headers": browser_config.get("extra_http_headers", {}),
-                        "http_credentials": browser_config.get("http_credentials"),
-                        "color_scheme": browser_config.get("color_scheme", "light"),
-                        "device_scale_factor": browser_config.get("device_scale_factor"),
-                        "geolocation": browser_config.get("geolocation"),
-                        "proxy": browser_config.get("proxy"),
-                        "client_certificates": browser_config.get("client_certificates", []),
-                    }.items()
-                    if v is not None
-                },
+                # Apply browser configuration if available
+                **self.replay_traversal.browser_config.model_dump(exclude_none=True),
             )
         )
 
@@ -809,22 +800,24 @@ class Replicator:
         self.brain_states_passed: List[str] = []
 
         # Process actions in order
-        for idx in range(self.total_actions):
+        for idx, (element_key, interaction) in enumerate(self.replay_traversal.actions.items()):
             action_key = f"action_{idx}"
-            if action_key not in self.replay_json["actions"]:
-                logger.warning(f"⚠️ Action {action_key} not found in JSON")
-                continue
+            if element_key != action_key:
+                error_msg: str = (
+                    f"⚠️ There is a mismatch between element key and action key! '{element_key}' != '{action_key}'"
+                )
+                logger.error(error_msg)
+                raise ActionError(error_msg)
 
-            interaction_data = self.replay_json["actions"][action_key]
             logger.info(f"📝 Executing interaction: {action_key}")
 
             try:
                 # TODO! needs much more robust error handling for different kinds of errors
-                await self._execute_action(
-                    interaction_data, can_be_skipped=idx in can_be_skipped_steps_list
-                )
+                interaction_can_be_skipped: bool = idx in can_be_skipped_steps_list
 
-                brain_state_id = interaction_data["model_taken_action"].get("brain_state_id")
+                await self._execute_action(interaction, can_be_skipped=interaction_can_be_skipped)
+
+                brain_state_id = interaction.brain_state_id
 
                 # ? mark current state as passed
                 if brain_state_id not in self.brain_states_passed:

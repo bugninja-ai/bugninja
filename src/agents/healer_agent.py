@@ -1,8 +1,10 @@
-from src.agents.navigator_agent import NavigatorAgent
 from typing import Any, Dict, List
-from browser_use.agent.views import AgentBrain
-from src.agents.custom_controller import BugninjaController
+
 from browser_use.agent.service import logger  # type: ignore
+from browser_use.agent.views import AgentBrain  # type: ignore
+
+from src.agents.custom_controller import BugninjaController
+from src.agents.navigator_agent import NavigatorAgent
 
 
 #! keep in mind that the HealerAgent is not inherited from BugninjaAgentBase but from the NavigatorAgent directly
