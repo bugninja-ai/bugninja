@@ -25,7 +25,6 @@ from patchright.async_api import BrowserContext as PatchrightBrowserContext
 from patchright.async_api import Page
 from rich import print as rich_print
 
-from src.agents.custom_controller import BugninjaController
 from src.agents.healer_agent import HealerAgent
 from src.models.model_configs import azure_openai_model
 from src.schemas import StateComparison
@@ -715,15 +714,6 @@ class Replicator:
             # TODO! experiment with adding the proper state from previous runs for the brain to be aware what is happening
             # injected_agent_state=self.create_agent_state_from_traversal_json(cut_after=at_idx),
         )
-
-        # TODO! this is a mirrored functionality of the pre-run initialization of the navigation agent!
-        #! this is only here for functionality testing purposes, not intended for production and has to to be properly cleaned up!
-
-        agent.agent_taken_actions = []
-        agent.agent_brain_states = {}
-
-        #! we override the default controller with our own
-        agent.controller = BugninjaController()
 
         return agent
 

@@ -11,7 +11,7 @@ from agent_navigation_prompts import (
     BACPREP_NAVIGATION_PROMPT,
     REDDIT_NAVIGATION_PROMPT,
 )
-from src.agents.navigator_agent import BugninjaAgent
+from src.agents.navigator_agent import NavigatorAgent
 from src.models.model_configs import azure_openai_model
 
 fake = Faker()
@@ -20,7 +20,7 @@ fake = Faker()
 load_dotenv()
 
 
-async def capture_screenshot_hook(agent: BugninjaAgent) -> None:
+async def capture_screenshot_hook(agent: NavigatorAgent) -> None:
     """Hook function that captures screenshots at each step"""
 
     if agent.browser_session.agent_current_page is None:
@@ -50,7 +50,7 @@ async def run_agent(task: str, secrets: Optional[Dict[str, Any]] = None) -> None
     # ERROR    [agent] ⚠️⚠️⚠️ Agent(sensitive_data=••••••••) was provided but BrowserSession(allowed_domains=[...]) is not locked down! ⚠️⚠️⚠️
     # ☠️ If the agent visits a malicious website and encounters a prompt-injection attack, your sensitive_data may be exposed!
 
-    agent = BugninjaAgent(
+    agent = NavigatorAgent(
         task=task,
         llm=azure_openai_model(),
         sensitive_data=secrets,
