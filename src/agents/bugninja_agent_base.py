@@ -29,11 +29,12 @@ def hook_missing_error(hook_name: str, class_val: type) -> NotImplementedError:
 
 class BugninjaAgentBase(Agent, ABC):
 
-    async def get_raw_html_of_current_page(self) -> str:
-        current_page: Page = await self.browser_session.get_current_page()
-        await current_page.wait_for_load_state("domcontentloaded")
-        await current_page.wait_for_load_state("load")
-        html_content_of_page: str = await current_page.content()
+    @staticmethod
+    async def get_raw_html_of_playwright_page(page: Page) -> str:
+        # current_page: Page = await self.browser_session.get_current_page()
+        await page.wait_for_load_state("domcontentloaded")
+        await page.wait_for_load_state("load")
+        html_content_of_page: str = await page.content()
         return html_content_of_page
 
     @abstractmethod
@@ -325,7 +326,7 @@ class BugninjaAgentBase(Agent, ABC):
         check_for_new_elements: bool = True,
     ) -> list[ActionResult]:
         """Execute multiple actions"""
-        results = []
+        results: list[ActionResult] = []
 
         cached_selector_map = await self.browser_session.get_selector_map()
         cached_path_hashes = {e.hash.branch_path_hash for e in cached_selector_map.values()}

@@ -416,7 +416,7 @@ class ReplicatorNavigator(ABC):
         logger.info("🧠 Current State:")
         logger.info(f"📝 Memory: {brain.memory}")
         logger.info(f"🎯 Next Goal: {brain.next_goal}")
-        logger.info(f"✅ Previous Evaluation: {brain.evaluation}")
+        logger.info(f"✅ Previous Evaluation: {brain.evaluation_previous_goal}")
         logger.info("=" * 20)
 
         # TODO! Do here a major refactor with a lot of custom schemas,

@@ -7,7 +7,7 @@ from pydantic import SecretStr
 load_dotenv()
 
 
-# TODO: create a proper config oriented and well documented factory method here
+# TODO!: create a proper config oriented and well documented factory method here
 
 
 def azure_openai_model(temperature: float = 0.001) -> AzureChatOpenAI:

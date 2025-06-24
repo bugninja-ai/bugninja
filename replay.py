@@ -10,7 +10,7 @@ async def main():
     latest_replay_file = max(list_of_files, key=os.path.getctime)
 
     replicator = ReplicatorRun(json_path=latest_replay_file)
-    await replicator.run()
+    await replicator.start()
 
 
 if __name__ == "__main__":

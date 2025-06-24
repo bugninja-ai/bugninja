@@ -21,8 +21,12 @@ from rich import print as rich_print
 
 from src.agents.healer_agent import HealerAgent
 from src.models.model_configs import azure_openai_model
-from src.replicator_navigation import ActionError, ReplicatorError, ReplicatorNavigator
-from src.schemas import StateComparison
+from src.replicator_navigation import ReplicatorError, ReplicatorNavigator
+from src.schemas import (
+    BrainStateProgressTracker,
+    BugninjaExtendedAction,
+    StateComparison,
+)
 
 # Configure logging with custom format
 logging.basicConfig(
@@ -73,15 +77,24 @@ class ReplicatorRun(ReplicatorNavigator):
             sleep_after_actions=sleep_after_actions,
         )
 
+        self.traversal_path = json_path
         self.max_retries = 2
         self.retry_delay = 0.5
+
+        self.healing_happened = False
 
         self.pause_after_each_step = pause_after_each_step
         self.secrets = self.replay_traversal.secrets
 
         # Get the number of actions from the actions dictionary
         self.total_actions = len(self.replay_traversal.actions)
+
+        # Initialize brain state progress tracker
+        self.progress_tracker = BrainStateProgressTracker()
+        self.progress_tracker.initialize_from_traversal(self.replay_traversal.actions)
+
         logger.info(f"🚀 Initialized ReplicatorRun with {self.total_actions} steps to process")
+        logger.info(f"📊 Initialized {len(self.progress_tracker.brain_states)} brain states")
         if self.pause_after_each_step:
             logger.info(
                 "⏸️ Pause after each step is ENABLED - press Enter to continue after each action"
@@ -143,206 +156,376 @@ class ReplicatorRun(ReplicatorNavigator):
             ]
         )
 
-        response_json: Dict[str, Any] = ai_msg.content  # type: ignore
+        response_json = json.loads(ai_msg.content)  # type:ignore
+        rich_print(type(response_json))
+        rich_print(response_json)
 
         return StateComparison.model_validate(response_json)
 
-    # def create_agent_state_from_traversal_json(self, cut_after: Optional[int] = None) -> AgentState:
-    #     """
-    #     Convert brain states from the loaded traversal JSON to AgentState structure.
-
-    #     This method takes the brain_states from the replay JSON and converts them
-    #     into the proper AgentState structure that can be used by the healer agent.
-
-    #     Returns:
-    #         AgentState: Complete agent state with history from the traversal JSON
-    #     """
-    #     agent_history_list = []
-
-    #     # Process each brain state in chronological order
-    #     for action_key in sorted(self.replay_traversal["actions"].keys()):
-    #         action_data = self.replay_traversal["actions"][action_key]
-    #         brain_state_id = action_data["model_taken_action"].get("brain_state_id")
-
-    #         if brain_state_id and brain_state_id in self.brain_states:
-    #             brain_state = self.brain_states[brain_state_id]
-
-    #             # Create AgentBrain from the brain state
-    #             agent_brain = AgentBrain(
-    #                 evaluation_previous_goal=brain_state.get("evaluation_previous_goal", ""),
-    #                 memory=brain_state.get("memory", ""),
-    #                 next_goal=brain_state.get("next_goal", ""),
-    #             )
-
-    #             # Create AgentOutput with the brain state and empty action
-    #             agent_output = AgentOutput(
-    #                 current_state=agent_brain,
-    #                 action=[],  # Empty action list since this is historical data
-    #             )
-
-    #             # Create minimal BrowserStateHistory
-    #             # Note: We don't have detailed browser state info in the JSON
-    #             browser_state = BrowserStateHistory(
-    #                 url="",  # Could be extracted from action if needed
-    #                 title="",
-    #                 interacted_element=[],
-    #                 tabs=[],
-    #             )
-
-    #             # Create AgentHistory entry
-    #             agent_history = AgentHistory(
-    #                 model_output=agent_output,
-    #                 result=[],  # Empty result since this is historical data
-    #                 state=browser_state,
-    #             )
-
-    #             agent_history_list.append(agent_history)
-
-    #     # Create AgentHistoryList
-    #     history_list = AgentHistoryList(history=agent_history_list)
-
-    #     if cut_after:
-    #         history_list.history = history_list.history[:cut_after]
-
-    #     # Create and return AgentState
-    #     return AgentState(history=history_list)
-
-    def create_self_healing_agent(self, at_idx: int) -> HealerAgent:
+    async def create_self_healing_agent(self, at_idx: int) -> HealerAgent:
         """
         Start the self-healing agent.
         """
+        current_brain_state = self.progress_tracker.get_current_brain_state()
+        target_brain_state_id = current_brain_state.brain_state_id if current_brain_state else None
 
         agent = HealerAgent(
             task=self.replay_traversal.test_case,
             llm=azure_openai_model(),
             browser_session=self.browser_session,
             sensitive_data=self.secrets,
+            target_brain_state_id=target_brain_state_id,
             # TODO! experiment with adding the proper state from previous runs for the brain to be aware what is happening
             # injected_agent_state=self.create_agent_state_from_traversal_json(cut_after=at_idx),
         )
 
+        await agent._before_run_hook()
+
         return agent
 
-    async def self_healing_action(self, at_idx: int) -> None:
+    def _save_corrected_traversal(self, output_path: str) -> None:
+        """
+        Save the corrected traversal containing successful actions and healer replacements.
+        """
+        logger.info("💾 Building corrected traversal with healer actions...")
 
-        #!!!! TODO! First try goes with BARE self healing agent
-        #!!!! - No previous thought process provided
-        #!!!! - No previous history provided yet
+        # Use the progress tracker to build corrected actions
+        corrected_actions = self.progress_tracker.build_corrected_actions()
 
-        upcoming_state_ids: List[str] = [
-            brain_state_id
-            for brain_state_id in self.brain_states.keys()
-            if brain_state_id not in self.brain_states_passed
-        ]
+        # overwrite the actions
+        self.replay_traversal.actions = corrected_actions
 
-        upcoming_states: List[Dict[str, Any]] = [
-            self.brain_states.get(brain_state_id) for brain_state_id in upcoming_state_ids
-        ]
-
-        healer_agent: HealerAgent = self.create_self_healing_agent(at_idx=at_idx)
-
-        # TODO! healing agent should have its own complex implementation of running
-        await healer_agent.step()
-
-        if not len(healer_agent.agent_taken_actions):
-            raise ActionError(
-                "Self healing agent failed to find a solution for this specific state"
+        with open(output_path, "w") as f:
+            json.dump(
+                self.replay_traversal.model_dump(),
+                f,
+                indent=4,
+                ensure_ascii=False,
             )
 
-        brain_state_id: Optional[str] = healer_agent.agent_taken_actions[-1].get("brain_state_id")
+        logger.info(f"💾 Corrected traversal saved to: {output_path}")
+        logger.info(f"📊 Total actions in corrected traversal: {len(corrected_actions)}")
 
-        if not brain_state_id:
-            raise ActionError(
-                "There is an error relating to pairing 'brain_state_id' to specific actions!"
+    def _validate_state_consistency(self) -> bool:
+        """
+        Validate that the current state is consistent after healing.
+
+        Returns:
+            True if state is consistent, False otherwise
+        """
+        current_brain_state = self.progress_tracker.get_current_brain_state()
+        if not current_brain_state:
+            logger.warning("⚠️ No current brain state to validate")
+            return False
+
+        # Check if brain state is exactly complete
+        if not current_brain_state.is_exactly_complete():
+            logger.warning(
+                f"⚠️ Brain state '{current_brain_state.brain_state_id}' is not exactly complete after healing"
             )
+            logger.warning(f"   - Expected: {len(current_brain_state.original_actions)} actions")
+            logger.warning(
+                f"   - Actual: {len(current_brain_state.completed_actions)} completed + {len(current_brain_state.healer_actions)} healer"
+            )
+            return False
 
-        healer_agent_state: Dict[str, Any] = healer_agent.agent_brain_states[brain_state_id]
+        # Check if status is properly set
+        if current_brain_state.status != "completed":
+            logger.warning(
+                f"⚠️ Brain state '{current_brain_state.brain_state_id}' status is '{current_brain_state.status}', expected 'completed'"
+            )
+            return False
 
-        rich_print(
-            [self.brain_states.get(brain_state_id) for brain_state_id in self.brain_states_passed]
+        logger.info(
+            f"✅ State consistency validated for brain state '{current_brain_state.brain_state_id}'"
         )
-        rich_print(healer_agent_state)
-        rich_print(upcoming_states)
-
-        model_response: StateComparison = await self.evaluate_current_state(
-            current_state=healer_agent_state, upcoming_states=upcoming_states
-        )
-
-        rich_print(model_response)
+        return True
 
     async def _run(self) -> Tuple[bool, Optional[str]]:
-
         failed = False
         failed_reason: Optional[str] = None
 
-        # Process actions in order
-        for idx, (element_key, interaction) in enumerate(self.replay_traversal.actions.items()):
-            action_key = f"action_{idx}"
-            if element_key != action_key:
-                error_msg: str = (
-                    f"⚠️ There is a mismatch between element key and action key! '{element_key}' != '{action_key}'"
-                )
-                logger.error(error_msg)
-                raise ActionError(error_msg)
+        # Track successful actions for corrected traversal
+        successful_actions = {}
 
-            logger.info(f"📝 Executing interaction: {action_key}")
+        logger.info("🚀 Starting replication with brain state-based processing")
+        logger.info(f"📊 Total brain states to process: {len(self.progress_tracker.brain_states)}")
 
-            try:
-                # TODO! needs much more robust error handling for different kinds of errors
-                await self._execute_action(interaction)
+        # Process brain states sequentially
+        while True:
+            # Get the next brain state to process
+            next_brain_state_id = self.progress_tracker.get_next_brain_state()
 
-                brain_state_id = interaction.brain_state_id
-
-                # ? mark current state as passed
-                if brain_state_id not in self.brain_states_passed:
-                    self.brain_states_passed.append(brain_state_id)
-
-                # Add pause after action if enabled and action was not skipped
-                if self.pause_after_each_step:
-                    self._wait_for_enter_key()
-
-            except UserInterruptionError as e:
-                logger.info("⏹️ User interrupted replication process")
-                failed = True
-                failed_reason = str(e)
+            if not next_brain_state_id:
+                logger.info("✅ All brain states completed successfully")
                 break
 
-            except Exception as e:
-                logger.error(f"❌ Error in interaction {action_key}: {str(e)}")
-                logger.info("🔄 Attempting self-healing...")
-                logger.info("Marking current state as failed...")
+            # Set current brain state
+            self.progress_tracker.set_current_brain_state(next_brain_state_id)
 
-                # ? this functionality here is crucial for handling the "failing states"
-                # ? since a single state can have multiple action, an action can fail in the middle of a state
-                # ? to prevent from excluding the state from comparison we need to keep track of the last passed state
-                # ? here we flag the last state as not passed
-                self.brain_states_passed.pop(-1)
+            logger.info("")
+            logger.info(f"🧠 === PROCESSING BRAIN STATE '{next_brain_state_id}' ===")
+
+            # Get actions for this brain state
+            brain_state_actions = self.progress_tracker.get_current_actions()
+            total_actions_in_state = len(brain_state_actions)
+
+            logger.info(f"📊 Brain state has {total_actions_in_state} actions to process")
+
+            # Process actions within this brain state
+            action_idx = 0
+            while action_idx < total_actions_in_state:
+                brain_state_action = brain_state_actions[action_idx]
+                action_key = brain_state_action.action_key
+                action = brain_state_action.action
+
+                logger.info("")
+                logger.info(f"🔄 === PROCESSING ACTION {action_key} ===")
+                logger.info(f"📍 Action index: {action_idx}/{total_actions_in_state}")
+                logger.info(f"🧠 Brain state: {next_brain_state_id}")
+                logger.info(
+                    f"📋 Action type: {list(action.action.keys())[0] if action.action else 'Unknown'}"
+                )
+
+                # Log action details
+                if action.action:
+                    action_type = list(action.action.keys())[0]
+                    if action_type == "click":
+                        element_info = action.dom_element_data
+                        if element_info:
+                            logger.info(
+                                f"🎯 Clicking element: {element_info.get('tag_name', 'Unknown')} with text: '{element_info.get('text', 'N/A')[:50]}...'"
+                            )
+                    elif action_type == "input_text":
+                        text = action.action.get("input_text", {}).get("text", "")
+                        logger.info(
+                            f"⌨️ Inputting text: '{text[:50]}{'...' if len(text) > 50 else ''}'"
+                        )
+                    elif action_type == "go_to_url":
+                        url = action.action.get("go_to_url", {}).get("url", "")
+                        logger.info(f"🌐 Navigating to URL: {url}")
+                    else:
+                        logger.info(f"⚙️ Performing action: {action_type}")
 
                 try:
-                    # Attempt self-healing
+                    logger.info("▶️ Executing action...")
+                    await self._execute_action(action)
+                    logger.info("✅ Action executed successfully")
 
-                    await self.self_healing_action(at_idx=idx)
+                    # Mark action as completed
+                    self.progress_tracker.mark_action_completed(action_key)
 
-                    # Add pause after healing if enabled
+                    # Track successful action for corrected traversal
+                    successful_actions[action_key] = action
+
+                    # Add pause after action if enabled
                     if self.pause_after_each_step:
                         self._wait_for_enter_key()
 
+                    # Move to next action
+                    action_idx += 1
+
                 except UserInterruptionError as e:
-                    logger.info("⏹️ User interrupted the healing process")
+                    logger.info("⏹️ User interrupted replication process")
                     failed = True
                     failed_reason = str(e)
                     break
 
-                except Exception as healing_error:
-                    logger.error(f"❌ Self-healing failed: {str(healing_error)}")
-                    logger.error(
-                        "❌ Both original action and self-healing failed - stopping replication"
-                    )
-                    failed = True
-                    failed_reason = (
-                        f"Action failed: {str(e)}. Self-healing failed: {str(healing_error)}"
-                    )
+                except Exception as e:
+                    logger.error("")
+                    logger.error(f"❌ === ACTION {action_key} FAILED ===")
+                    logger.error(f"🚨 Error type: {type(e).__name__}")
+                    logger.error(f"🚨 Error message: {str(e)}")
+                    logger.error(f"📍 Failed at action index: {action_idx}")
+                    logger.error(f"🧠 Failed in brain state: {next_brain_state_id}")
 
-                    break
+                    # Mark action as failed
+                    self.progress_tracker.mark_action_failed(action_idx)
+
+                    logger.info("🩹 Starting healer agent to complete this brain state...")
+
+                    try:
+                        # Use healer agent to complete the current brain state
+                        healing_success = await self._heal_current_brain_state(action_idx)
+
+                        if healing_success:
+                            self.healing_happened = True
+                            logger.info(
+                                f"✅ Brain state '{next_brain_state_id}' completed successfully with healer assistance"
+                            )
+
+                            # Validate state consistency after healing
+                            if not self._validate_state_consistency():
+                                logger.warning(
+                                    "⚠️ State inconsistency detected after healing - continuing anyway"
+                                )
+
+                            # Add pause after healing if enabled
+                            if self.pause_after_each_step:
+                                self._wait_for_enter_key()
+
+                            # Move to next brain state
+                            break
+                        else:
+                            logger.error(
+                                f"❌ Healer failed to complete brain state '{next_brain_state_id}'"
+                            )
+                            failed = True
+                            failed_reason = (
+                                f"Healer failed to complete brain state {next_brain_state_id}"
+                            )
+                            break
+
+                    except UserInterruptionError as e:
+                        logger.info("⏹️ User interrupted the healing process")
+                        failed = True
+                        failed_reason = str(e)
+                        break
+
+                    except Exception as healing_error:
+                        logger.error("❌ === HEALING FAILED ===")
+                        logger.error(f"🚨 Healing error type: {type(healing_error).__name__}")
+                        logger.error(f"🚨 Healing error message: {str(healing_error)}")
+                        logger.error(
+                            "❌ Both original action and healing failed - stopping replication"
+                        )
+                        failed = True
+                        failed_reason = (
+                            f"Action failed: {str(e)}. Healing failed: {str(healing_error)}"
+                        )
+                        break
+
+            # Check if we need to break out of the outer loop
+            if failed:
+                break
+
+        logger.info("")
+        logger.info("🏁 === REPLICATION COMPLETED ===")
+        logger.info(f"📊 Final status: {'❌ FAILED' if failed else '✅ SUCCESS'}")
+        if failed:
+            logger.info(f"🚨 Failure reason: {failed_reason}")
+
+        # Log brain state completion statistics
+        stats = self.progress_tracker.get_completion_stats()
+        logger.info(
+            f"🧠 Brain states completed: {stats['completed_states']}/{stats['total_states']}"
+        )
+        logger.info(
+            f"📝 Actions completed: {stats['total_completed_actions']}/{stats['total_original_actions']} (original) + {stats['total_healer_actions']} (healer)"
+        )
+
+        # Save corrected traversal if we have successful actions
+        if not failed and self.healing_happened:
+            output_path = self.traversal_path.replace(".json", "_corrected.json")
+            logger.info(f"💾 Saving corrected traversal to: {output_path}")
+            self._save_corrected_traversal(output_path)
+        else:
+            logger.warning("⚠️ No successful actions to save in corrected traversal")
 
         return failed, failed_reason
+
+    async def _heal_current_brain_state(self, failed_action_idx: int) -> bool:
+        """
+        Use healer agent to replace failed actions and complete the current brain state.
+
+        Args:
+            failed_action_idx: The index of the failed action within the current brain state
+
+        Returns:
+            True if brain state was completed successfully, False otherwise
+        """
+        current_brain_state = self.progress_tracker.get_current_brain_state()
+        if not current_brain_state:
+            logger.error("❌ No current brain state to heal")
+            return False
+
+        logger.info("")
+        logger.info(f"🩹 === HEALING BRAIN STATE '{current_brain_state.brain_state_id}' ===")
+        logger.info(f"📍 Failed action index: {failed_action_idx}")
+        logger.info(
+            f"📊 Original actions in brain state: {len(current_brain_state.original_actions)}"
+        )
+        logger.info(f"📊 Completed actions: {len(current_brain_state.completed_actions)}")
+        logger.info(f"📊 Healer actions: {len(current_brain_state.healer_actions)}")
+
+        remaining_actions = current_brain_state.get_remaining_actions()
+        logger.info(f"📊 Remaining actions to complete: {remaining_actions}")
+
+        # Create healer agent
+        healer_agent = await self.create_self_healing_agent(at_idx=failed_action_idx)
+
+        # Check completion BEFORE taking step to prevent overstepping
+        if current_brain_state.is_exactly_complete():
+            logger.info("✅ Brain state exactly complete - stopping healer immediately")
+            current_brain_state.status = "completed"
+            return True
+
+        logger.info("")
+        logger.info("🩹 === HEALER STEP ===")
+
+        # Execute healer step
+        try:
+            await healer_agent.step()
+        except Exception as e:
+            if "Target brain state completed - stopping healer" in str(e):
+                logger.info("✅ Healer agent stopped because target brain state was completed")
+                # Check if brain state is actually complete
+                if current_brain_state.is_exactly_complete():
+                    logger.info("✅ Brain state exactly complete - stopping healer immediately")
+                    current_brain_state.status = "completed"
+                    return True
+                else:
+                    logger.warning("⚠️ Healer stopped but brain state is not complete - continuing")
+            else:
+                # Re-raise other exceptions
+                raise e
+
+        if not healer_agent.agent_taken_actions:
+            logger.error("❌ Healer agent failed to take any actions")
+            return False
+
+        # Get the latest healer action
+
+        for taken_healer_action in healer_agent.agent_taken_actions:
+            brain_state_id = taken_healer_action.brain_state_id
+            if not brain_state_id:
+                logger.error("❌ Healer action missing brain_state_id")
+                return False
+
+            # Convert healer action to BugninjaExtendedAction format
+            healer_extended_action = BugninjaExtendedAction(
+                brain_state_id=current_brain_state.brain_state_id,
+                action=taken_healer_action.action,
+                dom_element_data=taken_healer_action.dom_element_data,
+            )
+
+            # Add healer action to current brain state
+            self.progress_tracker.add_healer_action(healer_extended_action)
+
+        # Log progress after adding healer action
+        logger.info(
+            f"📊 Progress: {len(current_brain_state.completed_actions)} completed + {len(current_brain_state.healer_actions)} healer = {len(current_brain_state.completed_actions) + len(current_brain_state.healer_actions)}/{len(current_brain_state.original_actions)} total"
+        )
+
+        # Check if we've completed enough actions to finish this brain state
+        if current_brain_state.is_exactly_complete():
+            logger.info("")
+            logger.info(
+                f"✅ === BRAIN STATE '{current_brain_state.brain_state_id}' EXACTLY COMPLETED ==="
+            )
+            logger.info("📊 Final stats:")
+            logger.info(f"   - Original actions: {len(current_brain_state.original_actions)}")
+            logger.info(f"   - Completed actions: {len(current_brain_state.completed_actions)}")
+            logger.info(f"   - Healer actions: {len(current_brain_state.healer_actions)}")
+            logger.info(f"   - Failed action index: {current_brain_state.failed_action_index}")
+
+            # Mark brain state as completed and return immediately
+            current_brain_state.status = "completed"
+            logger.info("🛑 Brain state exactly completed - stopping healer immediately")
+            return True
+
+        # Add pause if enabled
+        if self.pause_after_each_step:
+            self._wait_for_enter_key()
+
+        return False
