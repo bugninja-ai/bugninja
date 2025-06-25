@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from browser_use.agent.views import AgentBrain  # type: ignore
 from browser_use.browser import BrowserProfile  # type: ignore
@@ -10,6 +10,7 @@ from browser_use.browser.profile import (  # type: ignore
     ViewportSize,
 )
 from pydantic import BaseModel, Field, NonNegativeFloat
+from rich import print as rich_print
 
 #! State comparisons
 
@@ -17,217 +18,24 @@ from pydantic import BaseModel, Field, NonNegativeFloat
 class ElementComparison(BaseModel):
     index: int
     reason: str
-    equals: bool
+    is_match: bool
 
 
 class StateComparison(BaseModel):
     evaluation: List[ElementComparison]
+
+    def get_equal_state_idx(self) -> Optional[int]:
+        for idx, element in enumerate(self.evaluation):
+            if element.is_match:
+                return idx
+
+        return None
 
 
 class BugninjaExtendedAction(BaseModel):
     brain_state_id: str
     action: Dict[str, Any]
     dom_element_data: Optional[Dict[str, Any]]
-
-
-#! Brain State Progress Tracking
-
-
-class BrainStateAction(BaseModel):
-    """Represents an action within a brain state with proper typing."""
-
-    action_key: str
-    action: BugninjaExtendedAction
-    completed: bool = False
-    failed: bool = False
-    healer_replacement: Optional[BugninjaExtendedAction] = None
-
-
-class BrainStateProgress(BaseModel):
-    """Tracks the progress of a single brain state."""
-
-    brain_state_id: str
-    original_actions: List[BrainStateAction]
-    completed_actions: List[BrainStateAction] = Field(default_factory=list)
-    failed_action_index: Optional[int] = None
-    healer_actions: List[BugninjaExtendedAction] = Field(default_factory=list)
-    status: str = Field(default="in_progress")  # "in_progress" | "completed" | "failed"
-
-    def is_complete(self) -> bool:
-        """Check if brain state is complete (all actions done including healer replacements)."""
-        total_actions = len(self.original_actions)
-        completed_count = len(self.completed_actions) + len(self.healer_actions)
-        return completed_count >= total_actions
-
-    def is_exactly_complete(self) -> bool:
-        """Check if brain state is exactly complete (no extra actions)."""
-        total_actions = len(self.original_actions)
-        completed_count = len(self.completed_actions) + len(self.healer_actions)
-        return completed_count == total_actions
-
-    def get_remaining_actions(self) -> int:
-        """Get the number of remaining actions to complete this brain state."""
-        total_actions = len(self.original_actions)
-        completed_count = len(self.completed_actions) + len(self.healer_actions)
-        return max(0, total_actions - completed_count)
-
-    def mark_action_completed(self, action_key: str) -> None:
-        """Mark an action as completed."""
-        for action in self.original_actions:
-            if action.action_key == action_key and not action.completed:
-                action.completed = True
-                self.completed_actions.append(action)
-                break
-
-    def mark_action_failed(self, action_index: int) -> None:
-        """Mark an action as failed."""
-        self.failed_action_index = action_index
-        if 0 <= action_index < len(self.original_actions):
-            self.original_actions[action_index].failed = True
-
-    def add_healer_action(self, healer_action: BugninjaExtendedAction) -> None:
-        """Add a healer action as replacement."""
-        self.healer_actions.append(healer_action)
-
-    def get_current_action(self, action_index: int) -> Optional[BrainStateAction]:
-        """Get the current action at the specified index."""
-        if 0 <= action_index < len(self.original_actions):
-            return self.original_actions[action_index]
-        return None
-
-    def get_actions_for_execution(self) -> List[BugninjaExtendedAction]:
-        """Get the list of actions in execution order (original + healer replacements)."""
-        execution_actions = []
-
-        for i, action in enumerate(self.original_actions):
-            if action.completed:
-                execution_actions.append(action.action)
-            elif action.failed:
-                # Find healer replacement for this action
-                healer_index = i - len([a for a in self.original_actions[:i] if a.completed])
-                if healer_index < len(self.healer_actions):
-                    execution_actions.append(self.healer_actions[healer_index])
-
-        return execution_actions
-
-
-class BrainStateProgressTracker(BaseModel):
-    """Manages progress tracking for all brain states."""
-
-    brain_states: Dict[str, BrainStateProgress] = Field(default_factory=dict)
-    current_brain_state_id: Optional[str] = None
-    current_action_within_state: int = 0
-
-    def initialize_from_traversal(
-        self, traversal_actions: Dict[str, BugninjaExtendedAction]
-    ) -> None:
-        """Initialize brain state progress from traversal actions."""
-        # Group actions by brain state
-        brain_state_actions: Dict[str, List[Tuple[str, BugninjaExtendedAction]]] = {}
-        for action_key, action in traversal_actions.items():
-            brain_state_id = action.brain_state_id
-            if brain_state_id not in brain_state_actions:
-                brain_state_actions[brain_state_id] = []
-            brain_state_actions[brain_state_id].append((action_key, action))
-
-        # Create BrainStateProgress for each brain state
-        for brain_state_id, actions in brain_state_actions.items():
-            brain_state_actions_list = [
-                BrainStateAction(action_key=action_key, action=action)
-                for action_key, action in actions
-            ]
-
-            self.brain_states[brain_state_id] = BrainStateProgress(
-                brain_state_id=brain_state_id, original_actions=brain_state_actions_list
-            )
-
-    def get_next_brain_state(self) -> Optional[str]:
-        """Get the next brain state that needs processing."""
-        for brain_state_id, progress in self.brain_states.items():
-            if not progress.is_complete():
-                return brain_state_id
-        return None
-
-    def set_current_brain_state(self, brain_state_id: str) -> None:
-        """Set the current brain state being processed."""
-        self.current_brain_state_id = brain_state_id
-        self.current_action_within_state = 0
-
-    def get_current_brain_state(self) -> Optional[BrainStateProgress]:
-        """Get the current brain state progress."""
-        if self.current_brain_state_id:
-            return self.brain_states.get(self.current_brain_state_id)
-        return None
-
-    def get_current_actions(self) -> List[BrainStateAction]:
-        """Get the actions for the current brain state."""
-        current_state = self.get_current_brain_state()
-        if current_state:
-            return current_state.original_actions
-        return []
-
-    def mark_action_completed(self, action_key: str) -> None:
-        """Mark an action as completed in the current brain state."""
-        current_state = self.get_current_brain_state()
-        if current_state:
-            current_state.mark_action_completed(action_key)
-            self.current_action_within_state += 1
-
-    def mark_action_failed(self, action_index: int) -> None:
-        """Mark an action as failed in the current brain state."""
-        current_state = self.get_current_brain_state()
-        if current_state:
-            current_state.mark_action_failed(action_index)
-
-    def add_healer_action(self, healer_action: BugninjaExtendedAction) -> None:
-        """Add a healer action to the current brain state."""
-        current_state = self.get_current_brain_state()
-        if current_state:
-            current_state.add_healer_action(healer_action)
-
-    def get_completion_stats(self) -> Dict[str, int]:
-        """Get completion statistics."""
-        total_states = len(self.brain_states)
-        completed_states = sum(
-            1 for progress in self.brain_states.values() if progress.is_complete()
-        )
-
-        total_original_actions = sum(
-            len(progress.original_actions) for progress in self.brain_states.values()
-        )
-        total_completed_actions = sum(
-            len(progress.completed_actions) for progress in self.brain_states.values()
-        )
-        total_healer_actions = sum(
-            len(progress.healer_actions) for progress in self.brain_states.values()
-        )
-
-        return {
-            "total_states": total_states,
-            "completed_states": completed_states,
-            "total_original_actions": total_original_actions,
-            "total_completed_actions": total_completed_actions,
-            "total_healer_actions": total_healer_actions,
-        }
-
-    def build_corrected_actions(self) -> Dict[str, BugninjaExtendedAction]:
-        """Build corrected actions including healer replacements."""
-        corrected_actions = {}
-        action_counter = 0
-
-        for brain_state_id, progress in self.brain_states.items():
-            if progress.is_complete():
-                # Add original completed actions
-                for action in progress.completed_actions:
-                    corrected_actions[f"action_{action_counter}"] = action.action
-                    action_counter += 1
-
-                # Add healer actions as replacements
-                for healer_action in progress.healer_actions:
-                    corrected_actions[f"action_{action_counter}"] = healer_action
-                    action_counter += 1
-
-        return corrected_actions
 
 
 #! Traversal
@@ -281,6 +89,7 @@ class BugninjaBrowserConfig(BaseModel):
 
 class Traversal(BaseModel):
     test_case: str
+    allowed_domains: List[str]
     browser_config: BugninjaBrowserConfig
     secrets: Dict[str, str]
     brain_states: Dict[str, AgentBrain]
@@ -288,3 +97,99 @@ class Traversal(BaseModel):
 
     class Config:
         arbitrary_types_allowed = True
+
+
+#! Healing Functionality State Machine
+
+
+class BugninjaBrainState(AgentBrain):
+    id: str
+
+    def to_agent_brain(self) -> "AgentBrain":
+        return AgentBrain(
+            evaluation_previous_goal=self.evaluation_previous_goal,
+            memory=self.memory,
+            next_goal=self.next_goal,
+        )
+
+
+class ReplayWithHealingStateMachine(BaseModel):
+    current_action: BugninjaExtendedAction
+    current_brain_state: BugninjaBrainState
+
+    replay_states: List[BugninjaBrainState]
+    replay_actions: List[BugninjaExtendedAction]
+
+    passed_brain_states: List[BugninjaBrainState] = Field(default_factory=list)
+    passed_actions: List[BugninjaExtendedAction] = Field(default_factory=list)
+
+    def complete_current_brain_state(self) -> None:
+        # ? add the current brain state to the passed list
+        self.passed_brain_states.append(self.current_brain_state)
+        self.current_brain_state = self.replay_states.pop(0)
+
+    def replay_action_done(self) -> None:
+
+        rich_print("Current action BEFORE update")
+        rich_print(self.current_action)
+
+        # ? add the current action to the passed list
+        self.passed_actions.append(self.current_action)
+
+        # ? update to the next action
+        self.current_action = self.replay_actions.pop(0)
+
+        rich_print("Current action AFTER update")
+        rich_print(self.current_action)
+
+        if self.current_action.brain_state_id != self.current_brain_state.id:
+            self.complete_current_brain_state()
+
+    def complete_step_by_healing(self, healing_agent_actions: List[BugninjaExtendedAction]) -> None:
+        # ? add the actions to the passed actions
+        self.passed_actions.extend(healing_agent_actions)
+        self.complete_current_brain_state()
+
+        #! what will be the next action?
+        # ? probably the first action of the next state
+        #! we have to skip to the next action
+        # ? find the index of the action where it fits the brain_state_id
+        index = [action.brain_state_id for action in self.replay_actions].index(
+            self.current_brain_state.id
+        )
+        self.current_action = self.replay_actions[index]
+        # ? we skip the actions previously healed
+        self.replay_actions = self.replay_actions[index + 1 :]
+
+    def set_new_current_state(self, brain_state_id: str) -> None:
+
+        #! we have to skip to the next brain state
+        # ? find the index of the brain state where it fits the brain_state_id
+        index = [state.id for state in self.replay_states].index(brain_state_id)
+        self.current_brain_state = self.replay_states[index]
+        # ? we skip the states previously healed
+        self.replay_states = self.replay_states[index:]
+
+        #! we have to skip to the next action
+        # ? find the index of the action where it fits the brain_state_id
+        index = [action.brain_state_id for action in self.replay_actions].index(brain_state_id)
+        self.current_action = self.replay_actions[index]
+        # ? we skip the actions previously healed
+        self.replay_actions = self.replay_actions[index:]
+
+    def add_healing_agent_brain_state_and_actions(
+        self,
+        healing_agent_brain_state: BugninjaBrainState,
+        healing_actions: List[BugninjaExtendedAction],
+    ) -> None:
+        self.passed_brain_states.append(healing_agent_brain_state)
+        self.passed_actions.extend(healing_actions)
+
+    def is_healing_process_done(self, healing_agent_reached_goal: bool) -> bool:
+
+        remaining_state_num: int = len(self.replay_states)
+
+        rich_print(f"Number of remaining states: {remaining_state_num}")
+        rich_print(f"Did healing agent reach the goal? '{remaining_state_num}'")
+
+        return healing_agent_reached_goal or not remaining_state_num

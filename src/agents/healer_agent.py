@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from browser_use.agent.service import logger  # type: ignore
 from browser_use.agent.views import AgentBrain  # type: ignore
@@ -21,43 +21,15 @@ from src.schemas import BugninjaExtendedAction
 class HealerAgent(BugninjaAgentBase):
 
     def __init__(  # type:ignore
-        self, *args, target_brain_state_id: Optional[str] = None, **kwargs  # type:ignore
+        self, *args, **kwargs  # type:ignore
     ) -> None:
 
         super().__init__(*args, **kwargs)
-        self.target_brain_state_id = target_brain_state_id
         self.agent_taken_actions: List[BugninjaExtendedAction] = []
         self.agent_brain_states: Dict[str, AgentBrain] = {}
 
-    def _has_completed_target_brain_state(self) -> bool:
-        """
-        Check if the healer has completed the target brain state.
-
-        Returns:
-            True if target brain state is complete, False otherwise
-        """
-        if not self.target_brain_state_id:
-            return False
-
-        # Count actions for the target brain state
-        target_actions = [
-            action
-            for action in self.agent_taken_actions
-            if action.brain_state_id == self.target_brain_state_id
-        ]
-
-        logger.info(
-            f"🩹 Healer has taken {len(target_actions)} actions for target brain state '{self.target_brain_state_id}'"
-        )
-
-        # For now, we consider the brain state complete if we've taken at least one action
-        # This is a conservative approach to prevent overstepping
-        # In the future, this could be enhanced to check against the expected number of actions
-        return len(target_actions) > 0
-
     async def _before_run_hook(self) -> None:
         logger.info(msg="🏁 BEFORE-Run hook called")
-        logger.info(f"🎯 Target brain state: {self.target_brain_state_id}")
 
         #! we override the default controller with our own
         self.controller = BugninjaController()
@@ -72,14 +44,6 @@ class HealerAgent(BugninjaAgentBase):
     ) -> None:
 
         logger.info(msg="🪝 BEFORE-Step hook called")
-
-        # Check if we've already completed the target brain state
-        if self._has_completed_target_brain_state():
-            logger.info(
-                f"🛑 Target brain state '{self.target_brain_state_id}' already completed - stopping healer"
-            )
-            # Raise an exception to stop the step execution
-            raise Exception("Target brain state completed - stopping healer")
 
         # ? we create the brain state here since a single thought can belong to multiple actions
         brain_state_id: str = CUID().generate()

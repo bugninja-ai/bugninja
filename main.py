@@ -1,7 +1,7 @@
 import asyncio
 import base64
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from browser_use import BrowserProfile  # type: ignore
 from dotenv import load_dotenv
@@ -45,10 +45,9 @@ async def capture_screenshot_hook(agent: NavigatorAgent) -> None:
     print(f"Screenshot saved: {screenshot_path}")
 
 
-async def run_agent(task: str, secrets: Optional[Dict[str, Any]] = None) -> None:
-
-    # ERROR    [agent] ⚠️⚠️⚠️ Agent(sensitive_data=••••••••) was provided but BrowserSession(allowed_domains=[...]) is not locked down! ⚠️⚠️⚠️
-    # ☠️ If the agent visits a malicious website and encounters a prompt-injection attack, your sensitive_data may be exposed!
+async def run_agent(
+    task: str, allowed_domains: List[str], secrets: Optional[Dict[str, Any]] = None
+) -> None:
 
     agent = NavigatorAgent(
         task=task,
@@ -59,6 +58,7 @@ async def run_agent(task: str, secrets: Optional[Dict[str, Any]] = None) -> None
             # ? these None settings are necessary in order for every new run to be perfectly independent and clean
             user_data_dir=None,
             storage_state=None,
+            allowed_domains=allowed_domains,
         ),
     )
     await agent.run(
@@ -75,11 +75,12 @@ async def bacprep_navigation() -> None:
             "credential_password": "9945504JA",
             "new_username": fake.name(),
         },
+        allowed_domains=["app.bacprep.ro"],
     )
 
 
 async def reddit_navigation() -> None:
-    await run_agent(task=REDDIT_NAVIGATION_PROMPT)
+    await run_agent(task=REDDIT_NAVIGATION_PROMPT, allowed_domains=["reddit.com"])
 
 
 if __name__ == "__main__":

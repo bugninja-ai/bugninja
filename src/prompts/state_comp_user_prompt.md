@@ -1,12 +1,12 @@
-Based on your system prompt evaluate whether the current state of the traversal agent is equal to any of the upcoming traversal states!
+Based on your system prompt, find the closest possible match between the current state of the traversal agent and any of the traversal states!
 
 ### Current State
 
 [[CURRENT_STATE_JSON]]
 
 
-### Upcoming States
+### Travel States
 
-[[UPCOMING_STATES]]
+[[TRAVEL_STATES]]
 
 Your evaluation following the JSON output:
