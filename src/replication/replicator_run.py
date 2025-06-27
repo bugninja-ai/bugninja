@@ -22,7 +22,7 @@ from rich import print as rich_print
 
 from src.agents.healer_agent import HealerAgent
 from src.models.model_configs import azure_openai_model
-from src.replicator_navigation import ReplicatorError, ReplicatorNavigator
+from src.replication.replicator_navigation import ReplicatorError, ReplicatorNavigator
 from src.schemas import (
     BugninjaBrainState,
     BugninjaExtendedAction,
@@ -196,9 +196,6 @@ class ReplicatorRun(ReplicatorNavigator):
             # injected_agent_state=self.create_agent_state_from_traversal_json(cut_after=at_idx),
         )
 
-        # ? overwrite the allowed domains
-        agent.browser_profile.allowed_domains = self.replay_traversal.allowed_domains
-
         await agent._before_run_hook()
 
         return agent
@@ -241,7 +238,7 @@ class ReplicatorRun(ReplicatorNavigator):
         agent_reached_goal: bool = False
 
         # Process brain states sequentially
-        while not self.replay_state_machine.is_healing_process_done(
+        while not self.replay_state_machine.replay_should_stop(
             healing_agent_reached_goal=agent_reached_goal
         ):
 
@@ -273,22 +270,9 @@ class ReplicatorRun(ReplicatorNavigator):
                 await self._execute_action(action)
                 logger.info("✅ Action executed successfully")
 
-                # rich_print(
-                #     f"🧠 Current brain state: {self.replay_state_machine.current_brain_state}"
-                # )
-                # rich_print(
-                #     f"Remaining brain state num: {len(self.replay_state_machine.replay_states)}"
-                # )
-
                 # ? we update the state machine here that a replay action has been taken
                 self.replay_state_machine.replay_action_done()
 
-                # rich_print(
-                #     f"🧠 Brain state after action done: {self.replay_state_machine.current_brain_state}"
-                # )
-                # rich_print(
-                #     f"Remaining brain state num: {len(self.replay_state_machine.replay_states)}"
-                # )
                 # Add pause after action if enabled
                 if self.pause_after_each_step:
                     self._wait_for_enter_key()

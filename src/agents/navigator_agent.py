@@ -128,7 +128,6 @@ class NavigatorAgent(BugninjaAgentBase):
 
         traversal = Traversal(
             test_case=self.task,
-            allowed_domains=self.browser_profile.allowed_domains,
             browser_config=BugninjaBrowserConfig.from_browser_profile(self.browser_profile),
             secrets=self.sensitive_data,
             brain_states=self.agent_brain_states,

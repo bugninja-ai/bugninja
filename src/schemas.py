@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Dict, List, Optional
 
 from browser_use.agent.views import AgentBrain  # type: ignore
@@ -11,6 +12,14 @@ from browser_use.browser.profile import (  # type: ignore
 )
 from pydantic import BaseModel, Field, NonNegativeFloat
 from rich import print as rich_print
+
+# Configure logging with custom format
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
 #! State comparisons
 
@@ -89,7 +98,6 @@ class BugninjaBrowserConfig(BaseModel):
 
 class Traversal(BaseModel):
     test_case: str
-    allowed_domains: List[str]
     browser_config: BugninjaBrowserConfig
     secrets: Dict[str, str]
     brain_states: Dict[str, AgentBrain]
@@ -185,11 +193,13 @@ class ReplayWithHealingStateMachine(BaseModel):
         self.passed_brain_states.append(healing_agent_brain_state)
         self.passed_actions.extend(healing_actions)
 
-    def is_healing_process_done(self, healing_agent_reached_goal: bool) -> bool:
+    def replay_should_stop(self, healing_agent_reached_goal: bool, verbose: bool = False) -> bool:
 
         remaining_state_num: int = len(self.replay_states)
 
-        rich_print(f"Number of remaining states: {remaining_state_num}")
-        rich_print(f"Did healing agent reach the goal? '{remaining_state_num}'")
+        if verbose:
+            logger.info(f"Number of remaining states: {remaining_state_num}")
+            logger.info(f"Did healing agent reach the goal? '{remaining_state_num}'")
 
+        # ? either the healing agent reached the full goal of the test or there are no remaining steps to be done!
         return healing_agent_reached_goal or not remaining_state_num

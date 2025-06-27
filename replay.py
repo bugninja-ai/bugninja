@@ -2,7 +2,7 @@ import asyncio
 import glob
 import os
 
-from src.replicator_run import ReplicatorRun
+from src.replication.replicator_run import ReplicatorRun
 
 
 async def main():
