@@ -282,10 +282,5 @@ Bugninja is designed with extensibility in mind. Key areas for contribution:
 - **Healing Strategies**: New approaches for error recovery
 - **Performance Optimizations**: Faster execution and reduced resource usage
 
-## 📄 License
-
-[Add your license information here]
-
----
 
 **Bugninja** - Where AI meets browser automation with intelligence and resilience! 🐛✨

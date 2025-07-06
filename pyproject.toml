@@ -12,6 +12,7 @@ dependencies = [
     "cuid2==2.0.1",
     "faker==37.4.0",
     "fastapi==0.115.13",
+    "hypercorn>=0.17.3",
     "isort==6.0.1",
     "lxml==5.4.0",
     "mypy==1.16.0",
