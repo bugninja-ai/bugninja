@@ -29,13 +29,10 @@ from src.schemas import (
     ReplayWithHealingStateMachine,
     StateComparison,
 )
+from src.utils.logger_config import set_logger_config
 
 # Configure logging with custom format
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
+set_logger_config()
 logger = logging.getLogger(__name__)
 
 

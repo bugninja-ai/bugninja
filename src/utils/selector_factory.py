@@ -65,19 +65,8 @@ class SelectorFactory:
         for x_path in self.generate_xpaths_for_element(e=e):
             type_of_match: SelectorSpecificity = self.evaluate_selector_on_page(xpath=x_path)
 
-            match type_of_match:
-                case SelectorSpecificity.NOT_FOUND:
-                    # rich_print(f"🔴 X-Path not found:")
-                    # print(x_path)
-                    continue
-                case SelectorSpecificity.MULTIPLE_MATCH:
-                    # rich_print(f"🟡 X-Path not unique:")
-                    # print(x_path)
-                    continue
-                case SelectorSpecificity.UNIQUE_MATCH:
-                    # rich_print(f"🟢 X-Path unique:")
-                    # print(x_path)
-                    unique_xpaths.append(x_path)
+            if type_of_match == SelectorSpecificity.UNIQUE_MATCH:
+                unique_xpaths.append(x_path)
 
         return unique_xpaths
 

@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -72,7 +73,7 @@ async def bacprep_navigation() -> None:
         task=BACPREP_NAVIGATION_PROMPT,
         secrets={
             "credential_email": "feligaf715@lewou.com",
-            "credential_password": "9945504JA",
+            "credential_password": os.getenv("BACPREP_LOGIN_PASSWORD"),
             "new_username": fake.name(),
         },
         allowed_domains=["app.bacprep.ro"],

@@ -306,18 +306,17 @@ class BugninjaAgentBase(Agent, ABC):
             self.state.last_result = result
         finally:
             step_end_time = time.time()
-            if not result:
-                return
-            if browser_state_summary:
-                metadata = StepMetadata(
-                    step_number=self.state.n_steps,
-                    step_start_time=step_start_time,
-                    step_end_time=step_end_time,
-                    input_tokens=tokens,
-                )
-                self._make_history_item(model_output, browser_state_summary, result, metadata)
-            # Log step completion summary
-            self._log_step_completion_summary(step_start_time, result)
+            if result:
+                if browser_state_summary:
+                    metadata = StepMetadata(
+                        step_number=self.state.n_steps,
+                        step_start_time=step_start_time,
+                        step_end_time=step_end_time,
+                        input_tokens=tokens,
+                    )
+                    self._make_history_item(model_output, browser_state_summary, result, metadata)
+                # Log step completion summary
+                self._log_step_completion_summary(step_start_time, result)
 
     @time_execution_async("--multi_act")
     async def multi_act(

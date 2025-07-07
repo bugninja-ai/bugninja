@@ -12,13 +12,10 @@ from patchright.async_api import BrowserContext as PatchrightBrowserContext
 from patchright.async_api import Page
 
 from src.schemas import BugninjaExtendedAction, Traversal
+from src.utils.logger_config import set_logger_config
 
 # Configure logging with custom format
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
+set_logger_config()
 logger = logging.getLogger(__name__)
 
 
@@ -286,8 +283,6 @@ class ReplicatorNavigator(ABC):
     async def _handle_done(self) -> None:
         """Handle done action."""
         logger.info("✅ Done action received")
-        # This is a status indicator, not an error
-        return
 
     async def _execute_with_fallback(
         self,
@@ -572,7 +567,7 @@ class ReplicatorNavigator(ABC):
 
         if did_run_fail:
             logger.error("❌ Replication failed")
-            raise Exception(failed_reason)
+            raise ReplicatorError(failed_reason)
         else:
             logger.info("✅ Replication completed successfully")
 

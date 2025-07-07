@@ -10,19 +10,22 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, Optional, Set
+from typing import Any, AsyncGenerator, Dict, Optional, Set
 
 import redis.asyncio as redis
+import uvloop
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from hypercorn.asyncio import serve
 from hypercorn.config import Config
 from pydantic import BaseModel, Field
 
+from src.utils.logger_config import set_logger_config
+
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+set_logger_config()
 logger = logging.getLogger(__name__)
 
 
@@ -44,7 +47,7 @@ class JobEvent(BaseModel):
     stage: str
     message: str
     progress: Optional[float] = Field(None, ge=0.0, le=100.0)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime
     data: Optional[Dict[str, Any]] = None
 
 
@@ -148,7 +151,9 @@ class JobManager:
             logger.error(f"🔍❌ Failed to get job {job_id}: {e}")
             return None
 
-    async def update_job_status(self, job_id: str, status: JobStatus, **kwargs) -> bool:
+    async def update_job_status(
+        self, job_id: str, status: JobStatus, **kwargs: Dict[str, Any]
+    ) -> bool:
         """Update job status and optional fields."""
         try:
             job = await self.get_job(job_id)
@@ -259,6 +264,7 @@ class BackgroundWorker:
         """Start the background worker."""
         self.running = True
         logger.info("🚀 Background worker started")
+        uvloop.install()
 
         while self.running:
             try:
@@ -307,7 +313,7 @@ class BackgroundWorker:
 
         except Exception as e:
             error_msg = f"Job failed: {str(e)}"
-            await self.job_manager.update_job_status(job_id, JobStatus.FAILED, error=error_msg)
+            await self.job_manager.update_job_status(job_id, JobStatus.FAILED, error=error_msg)  # type: ignore
             await self._publish_progress(job_id, error_msg, 0.0, status=JobStatus.FAILED)
             logger.error(f"💥 Job {job_id} failed: {e}")
 
@@ -319,7 +325,12 @@ class BackgroundWorker:
     ) -> None:
         """Publish job progress event."""
         event = JobEvent(
-            job_id=job_id, status=status, stage=message, message=message, progress=progress
+            job_id=job_id,
+            status=status,
+            stage=message,
+            message=message,
+            progress=progress,
+            timestamp=datetime.now(timezone.utc),
         )
         await self.event_publisher.publish_event(event)
 
@@ -327,13 +338,13 @@ class BackgroundWorker:
 class SSEManager:
     """Manages SSE connections and event streaming."""
 
-    def __init__(self, redis_client: redis.Redis):
+    def __init__(self, redis_client: redis.Redis) -> None:
         self.redis = redis_client
-        self.active_connections: Set[asyncio.Queue] = set()
+        self.active_connections: Set[asyncio.Queue[JobEvent]] = set()
 
-    async def subscribe_to_job(self, job_id: str) -> asyncio.Queue:
+    async def subscribe_to_job(self, job_id: str) -> asyncio.Queue[JobEvent]:
         """Subscribe to events for a specific job."""
-        queue = asyncio.Queue()
+        queue: asyncio.Queue[JobEvent] = asyncio.Queue()
         self.active_connections.add(queue)
 
         # Start listening for events
@@ -341,9 +352,9 @@ class SSEManager:
 
         return queue
 
-    async def subscribe_to_broadcast(self) -> asyncio.Queue:
+    async def subscribe_to_broadcast(self) -> asyncio.Queue[JobEvent]:
         """Subscribe to broadcast events."""
-        queue = asyncio.Queue()
+        queue: asyncio.Queue[JobEvent] = asyncio.Queue()
         self.active_connections.add(queue)
 
         # Start listening for broadcast events
@@ -351,7 +362,7 @@ class SSEManager:
 
         return queue
 
-    async def _listen_for_events(self, job_id: str, queue: asyncio.Queue) -> None:
+    async def _listen_for_events(self, job_id: str, queue: asyncio.Queue[JobEvent]) -> None:
         """Listen for events on a specific job channel."""
         pubsub = self.redis.pubsub()
         channel = f"job_events:{job_id}"
@@ -375,7 +386,7 @@ class SSEManager:
             await pubsub.close()
             self.active_connections.discard(queue)
 
-    async def _listen_for_broadcast(self, queue: asyncio.Queue) -> None:
+    async def _listen_for_broadcast(self, queue: asyncio.Queue[JobEvent]) -> None:
         """Listen for broadcast events."""
         pubsub = self.redis.pubsub()
         channel = "job_events:broadcast"
@@ -436,7 +447,7 @@ async def get_sse_manager() -> SSEManager:
     return sse_manager
 
 
-async def startup_event():
+async def startup_event() -> None:
     """Initialize the system on startup."""
     global redis_client, job_manager, event_publisher, background_worker, sse_manager
 
@@ -462,7 +473,7 @@ async def startup_event():
     logger.info("🎯 Background queue management system initialized")
 
 
-async def shutdown_event():
+async def shutdown_event() -> None:
     """Cleanup on shutdown."""
     global background_worker
 
@@ -487,7 +498,7 @@ app.add_event_handler("shutdown", shutdown_event)
 
 
 @app.post("/jobs", response_model=JobResponse)
-async def submit_job(request: JobRequest):
+async def submit_job(request: JobRequest) -> JobResponse:
     """Submit a new job for processing."""
     try:
         job_manager = await get_job_manager()
@@ -500,7 +511,7 @@ async def submit_job(request: JobRequest):
 
 
 @app.get("/jobs/{job_id}")
-async def get_job_status(job_id: str):
+async def get_job_status(job_id: str) -> Dict[str, Any]:
     """Get the status of a specific job."""
     try:
         job_manager = await get_job_manager()
@@ -527,13 +538,13 @@ async def get_job_status(job_id: str):
 
 
 @app.get("/jobs/{job_id}/events")
-async def stream_job_events(job_id: str):
+async def stream_job_events(job_id: str) -> StreamingResponse:
     """Stream SSE events for a specific job."""
     try:
         sse_manager = await get_sse_manager()
-        queue = await sse_manager.subscribe_to_job(job_id)
+        queue: asyncio.Queue[JobEvent] = await sse_manager.subscribe_to_job(job_id)
 
-        async def event_generator():
+        async def event_generator() -> AsyncGenerator[str, None]:
             try:
                 while True:
                     event = await queue.get()
@@ -559,13 +570,13 @@ async def stream_job_events(job_id: str):
 
 
 @app.get("/events/broadcast")
-async def stream_broadcast_events():
+async def stream_broadcast_events() -> StreamingResponse:
     """Stream broadcast events to all clients."""
     try:
         sse_manager = await get_sse_manager()
-        queue = await sse_manager.subscribe_to_broadcast()
+        queue: asyncio.Queue[JobEvent] = await sse_manager.subscribe_to_broadcast()
 
-        async def event_generator():
+        async def event_generator() -> AsyncGenerator[str, None]:
             try:
                 while True:
                     event = await queue.get()
@@ -591,7 +602,7 @@ async def stream_broadcast_events():
 
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> Dict[str, str]:
     """Health check endpoint."""
     try:
         redis_client = await get_redis_client()
@@ -604,4 +615,4 @@ async def health_check():
 
 if __name__ == "__main__":
 
-    asyncio.run(serve(app, Config()))
+    asyncio.run(serve(app, Config()))  # type: ignore
