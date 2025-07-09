@@ -17,7 +17,9 @@ dependencies = [
     "lxml==5.4.0",
     "mypy==1.16.0",
     "openai==1.84.0",
+    "polyfactory>=2.22.0",
     "pydantic==2.10.6",
+    "pytest>=8.4.1",
     "python-dotenv==1.1.0",
     "rich==14.0.0",
     "ruff==0.11.13",
@@ -57,13 +59,18 @@ disallow_untyped_defs = true
 help   = "Start test traversal agent interaction"
 shell = "uv run python main.py"
 
+[tool.poe.tasks.test]
+help   = "Run tests on the project"
+shell = "uv run pytest tests"
+
+
 [tool.poe.tasks.replay]
 help   = "Replay (and potentially heal if necessary) the last saved traversal"
 shell = "uv run python replay.py"
 
 [tool.poe.tasks.lint]
 help   = "Lints the whole project searching for inefficiencies in the code"
-shell = "uv run ruff check --fix . && uv run isort . && uv run black . && uv run mypy main.py src"
+shell = "uv run ruff check --fix . && uv run isort . && uv run black . && uv run mypy main.py src tests"
 
 
 [tool.poe.tasks.run-celery]

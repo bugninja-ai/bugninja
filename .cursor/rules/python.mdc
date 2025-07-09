@@ -25,51 +25,37 @@ globs: **/*.py, src/**/*.py, tests/**/*.py
 
 ## Type Hints
 - Use type hints for all function parameters and returns
+- Use type hints for variables at their first declaration
 - Import types from `typing` module
 - Use `Optional[Type]` instead of `Type | None`
 - Use `TypeVar` for generic types
-- Define custom types in `types.py`
 - Use `Protocol` for duck typing
-
-## Flask Structure
-- Use Flask factory pattern
-- Organize routes using Blueprints
-- Use Flask-SQLAlchemy for database
-- Implement proper error handlers
-- Use Flask-Login for authentication
-- Structure views with proper separation of concerns
-
-## Database
-- Use SQLAlchemy ORM
-- Implement database migrations with Alembic
-- Use proper connection pooling
-- Define models in separate modules
-- Implement proper relationships
-- Use proper indexing strategies
-
-## Authentication
-- Use Flask-Login for session management
-- Implement Google OAuth using Flask-OAuth
-- Hash passwords with bcrypt
-- Use proper session security
-- Implement CSRF protection
-- Use proper role-based access control
-
-## API Design
-- Use Flask-RESTful for REST APIs
-- Implement proper request validation
-- Use proper HTTP status codes
-- Handle errors consistently
-- Use proper response formats
-- Implement proper rate limiting
+- Use `-> None` type hinting for functions with no return value
 
 ## Testing
-- Use pytest for testing
-- Write tests for all routes
-- Use pytest-cov for coverage
-- Implement proper fixtures
-- Use proper mocking with pytest-mock
-- Test all error scenarios
+- Use pytest for testing framework
+- Use pytest-cov for coverage reporting
+- Use Polyfactory for generating test data and fixtures where necessary
+- Implement consistent fixtures with proper separation of concerns
+- Organize fixtures under `tests/fixtures/` directory with logical separation:
+  - `tests/fixtures/models/` for model-related fixtures
+  - `tests/fixtures/api/` for API-related fixtures
+  - `tests/fixtures/data/` for data generation fixtures
+  - `tests/fixtures/mocks/` for mock-related fixtures
+- Use proper mocking with pytest-mock for external dependencies
+- Test all error scenarios and edge cases
+- Write detailed test descriptions that explain:
+  - What aspect of the functionality is being tested
+  - Why this test case is important for reliability
+  - What specific behavior or edge case is being validated
+  - How the test contributes to overall code quality
+- Include comprehensive docstrings in test functions explaining the test's purpose and significance
+- Use descriptive test names that clearly indicate what is being tested
+- Ensure tests are isolated and don't depend on external state
+- Implement proper setup and teardown for test data
+- Use parameterized tests for testing multiple scenarios efficiently
+- Avoid creating meaningless, redundant or unnecessary testcases or testcases that are already proven correct by a previous testcase
+
 
 ## Security
 - Use HTTPS in production
@@ -78,14 +64,6 @@ globs: **/*.py, src/**/*.py, tests/**/*.py
 - Use proper session configuration
 - Implement proper logging
 - Follow OWASP guidelines
-
-## Performance
-- Use proper caching with Flask-Caching
-- Implement database query optimization
-- Use proper connection pooling
-- Implement proper pagination
-- Use background tasks for heavy operations
-- Monitor application performance
 
 ## Error Handling
 - Create custom exception classes
@@ -98,23 +76,7 @@ globs: **/*.py, src/**/*.py, tests/**/*.py
 ## Documentation
 - Use Google-style docstrings
 - Document all public APIs
-- Keep README.md updated
-- Use proper inline comments
-- Generate API documentation
-- Document environment setup
-
-## Development Workflow
-- Use virtual environments (venv)
-- Implement pre-commit hooks
-- Use proper Git workflow
-- Follow semantic versioning
-- Use proper CI/CD practices
-- Implement proper logging
-
-## Dependencies
-- Pin dependency versions
-- Use requirements.txt for production
-- Separate dev dependencies
-- Use proper package versions
-- Regularly update dependencies
-- Check for security vulnerabilities
+- Use proper inline comments that are reflective to the context and hold meaningful information about the 
+- If a variable name, a function name or a class name is mentioned in the documentation it should be wrapped in `...` quotations following Markdown standards
+- Instead of writing boring flowing text descriptions for function documentation, write it an easy to understand, straight to the point manner
+- You are also allowed to use Markdown compatible enumerations in the function or class documentations for easier understanding

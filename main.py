@@ -8,10 +8,6 @@ from browser_use import BrowserProfile  # type: ignore
 from dotenv import load_dotenv
 from faker import Faker
 
-from agent_navigation_prompts import (
-    BACPREP_NAVIGATION_PROMPT,
-    REDDIT_NAVIGATION_PROMPT,
-)
 from src.agents.navigator_agent import NavigatorAgent
 from src.models.model_configs import azure_openai_model
 
@@ -62,9 +58,17 @@ async def run_agent(
             allowed_domains=allowed_domains,
         ),
     )
-    await agent.run(
-        # on_step_start=capture_screenshot_hook,  # Capture at start of each step
-    )
+
+    # on_step_start=capture_screenshot_hook,  # Capture at start of each step
+
+    await agent.run()
+
+
+BACPREP_NAVIGATION_PROMPT = """
+Go to app.bacprep.ro login to the platform via email authentication with the 
+provided credentials and edit the name of the user based on the provided information. 
+If successful log out and close the browser.
+""".strip()
 
 
 async def bacprep_navigation() -> None:
@@ -78,10 +82,6 @@ async def bacprep_navigation() -> None:
         },
         allowed_domains=["app.bacprep.ro"],
     )
-
-
-async def reddit_navigation() -> None:
-    await run_agent(task=REDDIT_NAVIGATION_PROMPT, allowed_domains=["reddit.com"])
 
 
 if __name__ == "__main__":

@@ -1,8 +1,0 @@
----
-description: 
-globs: *.tsx,*.ts,frontend/*,frontend/app/*
-alwaysApply: false
----
-This project is dark and light mode. Whenever creating a new confidence are making a new feature, you must take into account that it has to work in both light and dark mode.
-
-I already have a component set up for dark mode change, this is the ThemeSwithcer.
