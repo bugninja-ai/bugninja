@@ -15,7 +15,7 @@ from src.agents.extensions import (
     BugninjaController,
     extend_agent_action_with_info,
 )
-from src.schemas import BugninjaExtendedAction
+from src.schemas.pipeline import BugninjaExtendedAction
 from src.utils.selector_factory import SelectorFactory
 
 

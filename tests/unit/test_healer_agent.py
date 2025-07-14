@@ -11,7 +11,7 @@ from cuid2 import Cuid as CUID
 from src.agents.bugninja_agent_base import BugninjaAgentBase
 from src.agents.extensions import BugninjaController
 from src.agents.healer_agent import HealerAgent
-from src.schemas import BugninjaExtendedAction
+from src.schemas.pipeline import BugninjaExtendedAction
 
 
 class TestHealerAgent:

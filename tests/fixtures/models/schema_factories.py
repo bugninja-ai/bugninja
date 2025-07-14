@@ -12,7 +12,7 @@ from browser_use.agent.views import AgentBrain
 from browser_use.browser.profile import ColorScheme
 from polyfactory.factories.pydantic_factory import ModelFactory
 
-from src.schemas import (
+from src.schemas.pipeline import (
     BugninjaBrainState,
     BugninjaBrowserConfig,
     BugninjaExtendedAction,

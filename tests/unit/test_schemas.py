@@ -13,7 +13,7 @@ from browser_use.browser.profile import (
 )
 from rich import print as rich_print
 
-from src.schemas import (
+from src.schemas.pipeline import (
     BugninjaBrainState,
     BugninjaBrowserConfig,
     BugninjaExtendedAction,

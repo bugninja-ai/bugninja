@@ -16,7 +16,7 @@ from cuid2 import Cuid as CUID
 
 from src.agents.bugninja_agent_base import BugninjaAgentBase
 from src.agents.extensions import BugninjaController, extend_agent_action_with_info
-from src.schemas import BugninjaBrowserConfig, BugninjaExtendedAction, Traversal
+from src.schemas.pipeline import BugninjaBrowserConfig, BugninjaExtendedAction, Traversal
 
 
 class NavigatorAgent(BugninjaAgentBase):

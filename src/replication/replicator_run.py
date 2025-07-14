@@ -23,7 +23,7 @@ from rich import print as rich_print
 from src.agents.healer_agent import HealerAgent
 from src.models.model_configs import azure_openai_model
 from src.replication.replicator_navigation import ReplicatorError, ReplicatorNavigator
-from src.schemas import (
+from src.schemas.pipeline import (
     BugninjaBrainState,
     BugninjaExtendedAction,
     ReplayWithHealingStateMachine,
