@@ -21,8 +21,6 @@ from src.agents.extensions import (
     BugninjaController,
     extend_agent_action_with_info,
 )
-from src.schemas.pipeline import BugninjaExtendedAction
-from src.utils.selector_factory import SelectorFactory
 
 
 class TestExtensions:

@@ -14,7 +14,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 
 from src.agents.extensions import BugninjaController
 from src.agents.navigator_agent import NavigatorAgent
-from src.schemas.pipeline import BugninjaBrowserConfig, BugninjaExtendedAction, Traversal
+from src.schemas.pipeline import BugninjaExtendedAction, Traversal
 
 # Import Polyfactory factories for test data generation
 from tests.fixtures.models.schema_factories import (

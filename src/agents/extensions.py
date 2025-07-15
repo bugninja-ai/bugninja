@@ -1,4 +1,6 @@
-from typing import Any, Dict, List, Literal
+import asyncio
+from enum import Enum
+from typing import Any, Dict, List, Literal, Optional
 
 from browser_use import BrowserSession  # type: ignore
 from browser_use.agent.views import ActionResult  # type: ignore
@@ -26,6 +28,26 @@ SELECTOR_ORIENTED_ACTIONS: List[str] = [
 
 ALTERNATIVE_XPATH_SELECTORS_KEY: str = "alternative_relative_xpaths"
 DOM_ELEMENT_DATA_KEY: str = "dom_element_data"
+
+
+class UserInputTypeEnum(str, Enum):
+    TEXT = "TEXT"
+    EMPTY = "EMPTY"
+
+
+class UserInputResponse(BaseModel):
+    user_input: Optional[str]
+    user_input_type: UserInputTypeEnum
+
+
+async def get_user_input_async() -> UserInputResponse:
+
+    user_input = input("▶️ Waiting for user to signal completion of the task:\n")
+
+    if user_input == "":
+        return UserInputResponse(user_input=None, user_input_type=UserInputTypeEnum.EMPTY)
+    else:
+        return UserInputResponse(user_input=user_input, user_input_type=UserInputTypeEnum.TEXT)
 
 
 async def extend_agent_action_with_info(
@@ -178,3 +200,27 @@ class BugninjaController(Controller):
         )
         async def scroll_up(params: ScrollAction, browser_session: BrowserSession) -> ActionResult:
             return await handle_scroll(params, browser_session, "up")
+
+        @self.registry.action("Wait for x seconds default 3")
+        async def wait(seconds: int = 3) -> ActionResult:
+            msg = f"🕒  Waiting for {seconds} seconds"
+            logger.info(msg)
+            await asyncio.sleep(seconds)
+            return ActionResult(extracted_content=msg, include_in_memory=True)
+
+        @self.registry.action(
+            "Wait until a third party service/app/user finishes the authentication task for the flow to proceed",
+        )
+        async def third_party_authentication_wait() -> ActionResult:
+            user_input: UserInputResponse = await get_user_input_async()
+
+            if user_input.user_input_type == UserInputTypeEnum.EMPTY:
+                return ActionResult(
+                    extracted_content="The human signaled to the model that the third party authentication happened successfully",
+                    include_in_memory=True,
+                )
+            else:
+                return ActionResult(
+                    extracted_content="The timeout means that the user is still working on the third party authentication, so the agent has to wait for a bit more",
+                    include_in_memory=True,
+                )
