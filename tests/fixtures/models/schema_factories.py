@@ -6,11 +6,13 @@ used in the bugninja application. Using Polyfactory ensures consistent and
 maintainable test data generation while reducing code duplication.
 """
 
+from typing import Any, Dict, List, Tuple
 from unittest.mock import MagicMock
 
-from browser_use.agent.views import AgentBrain
-from browser_use.browser.profile import ColorScheme
+from browser_use.agent.views import AgentBrain  # type:ignore
+from browser_use.browser.profile import ColorScheme  # type:ignore
 from polyfactory.factories.pydantic_factory import ModelFactory
+from typing_extensions import Unpack
 
 from src.schemas.pipeline import (
     BugninjaBrainState,
@@ -35,7 +37,7 @@ class ElementComparisonFactory(ModelFactory[ElementComparison]):
     __model__ = ElementComparison
 
     @classmethod
-    def build(cls, **kwargs) -> ElementComparison:
+    def custom_build(cls, **kwargs: Unpack[Tuple[int, str, bool]]) -> ElementComparison:
         """Build an ElementComparison instance with default values."""
         defaults = {
             "index": 0,
@@ -43,7 +45,7 @@ class ElementComparisonFactory(ModelFactory[ElementComparison]):
             "is_match": True,
         }
         defaults.update(kwargs)
-        return super().build(**defaults)
+        return super().build(factory_use_construct=False, **defaults)
 
 
 class StateComparisonFactory(ModelFactory[StateComparison]):
@@ -57,17 +59,17 @@ class StateComparisonFactory(ModelFactory[StateComparison]):
     __model__ = StateComparison
 
     @classmethod
-    def build(cls, **kwargs) -> StateComparison:
+    def custom_build(cls, **kwargs: Unpack[Tuple[List[ElementComparison]]]) -> StateComparison:
         """Build a StateComparison instance with default values."""
         defaults = {
             "evaluation": [
-                ElementComparisonFactory.build(index=0, is_match=True),
-                ElementComparisonFactory.build(index=1, is_match=False),
-                ElementComparisonFactory.build(index=2, is_match=True),
+                ElementComparisonFactory.custom_build(index=0, is_match=True),
+                ElementComparisonFactory.custom_build(index=1, is_match=False),
+                ElementComparisonFactory.custom_build(index=2, is_match=True),
             ]
         }
         defaults.update(kwargs)
-        return super().build(**defaults)
+        return super().build(factory_use_construct=False, **defaults)
 
 
 class BugninjaExtendedActionFactory(ModelFactory[BugninjaExtendedAction]):
@@ -81,7 +83,9 @@ class BugninjaExtendedActionFactory(ModelFactory[BugninjaExtendedAction]):
     __model__ = BugninjaExtendedAction
 
     @classmethod
-    def build(cls, **kwargs) -> BugninjaExtendedAction:
+    def custom_build(
+        cls, **kwargs: Unpack[Tuple[str, Dict[str, Any], Dict[str, Any]]]
+    ) -> BugninjaExtendedAction:
         """Build a BugninjaExtendedAction instance with default values."""
         defaults = {
             "brain_state_id": "test_brain_id",
@@ -93,7 +97,7 @@ class BugninjaExtendedActionFactory(ModelFactory[BugninjaExtendedAction]):
             },
         }
         defaults.update(kwargs)
-        return super().build(**defaults)
+        return super().build(factory_use_construct=False, **defaults)
 
 
 class BugninjaBrowserConfigFactory(ModelFactory[BugninjaBrowserConfig]):
@@ -106,21 +110,6 @@ class BugninjaBrowserConfigFactory(ModelFactory[BugninjaBrowserConfig]):
 
     __model__ = BugninjaBrowserConfig
 
-    # @classmethod
-    # def build(cls, **kwargs) -> BugninjaBrowserConfig:
-    #     """Build a BugninjaBrowserConfig instance with default values."""
-    #     # defaults = {
-    #     #     "user_agent": "Test User Agent",
-    #     #     "viewport": {"width": 1920, "height": 1080},
-    #     #     "device_scale_factor": 1.0,
-    #     #     "color_scheme": ColorScheme.LIGHT,
-    #     #     "accept_downloads": False,
-    #     #     "timeout": 30_000,
-    #     #     "java_script_enabled": True,
-    #     # }
-    #     # defaults.update(kwargs)
-    #     return super().build()
-
 
 class AgentBrainFactory(ModelFactory[AgentBrain]):
     """ModelFactory for generating AgentBrain test instances.
@@ -131,7 +120,7 @@ class AgentBrainFactory(ModelFactory[AgentBrain]):
     """
 
     @classmethod
-    def build(cls, **kwargs) -> AgentBrain:
+    def custom_build(cls, **kwargs: Unpack[Tuple[str, str, str]]) -> AgentBrain:
         """Build an AgentBrain instance with default values."""
         defaults = {
             "evaluation_previous_goal": "Goal evaluation completed successfully",
@@ -139,7 +128,7 @@ class AgentBrainFactory(ModelFactory[AgentBrain]):
             "next_goal": "Proceed to next step",
         }
         defaults.update(kwargs)
-        return AgentBrain(**defaults)
+        return AgentBrain(factory_use_construct=False, **defaults)
 
 
 class BugninjaBrainStateFactory(ModelFactory[BugninjaBrainState]):
@@ -153,7 +142,7 @@ class BugninjaBrainStateFactory(ModelFactory[BugninjaBrainState]):
     __model__ = BugninjaBrainState
 
     @classmethod
-    def build(cls, **kwargs) -> BugninjaBrainState:
+    def custom_build(cls, **kwargs: Unpack[Tuple[str, str, str, str]]) -> BugninjaBrainState:
         """Build a BugninjaBrainState instance with default values."""
         defaults = {
             "id": "test_brain_id",
@@ -162,7 +151,7 @@ class BugninjaBrainStateFactory(ModelFactory[BugninjaBrainState]):
             "next_goal": "Proceed to next goal",
         }
         defaults.update(kwargs)
-        return super().build(**defaults)
+        return super().build(factory_use_construct=False, **defaults)
 
 
 class TraversalFactory(ModelFactory[Traversal]):
@@ -176,23 +165,34 @@ class TraversalFactory(ModelFactory[Traversal]):
     __model__ = Traversal
 
     @classmethod
-    def build(cls, **kwargs) -> Traversal:
+    def custom_build(
+        cls,
+        **kwargs: Unpack[
+            Tuple[
+                str,
+                BugninjaBrowserConfig,
+                Dict[str, Any],
+                Dict[str, AgentBrain],
+                Dict[str, BugninjaExtendedAction],
+            ]
+        ],
+    ) -> Traversal:
         """Build a Traversal instance with default values."""
         defaults = {
             "test_case": "Test navigation task",
             "browser_config": BugninjaBrowserConfigFactory.build(),
             "secrets": {"username": "test_user", "password": "test_pass"},
             "brain_states": {
-                "brain_1": AgentBrainFactory.build(),
-                "brain_2": AgentBrainFactory.build(),
+                "brain_1": AgentBrainFactory.custom_build(),
+                "brain_2": AgentBrainFactory.custom_build(),
             },
             "actions": {
-                "action_0": BugninjaExtendedActionFactory.build(),
-                "action_1": BugninjaExtendedActionFactory.build(),
+                "action_0": BugninjaExtendedActionFactory.custom_build(),
+                "action_1": BugninjaExtendedActionFactory.custom_build(),
             },
         }
         defaults.update(kwargs)
-        return super().build(**defaults)
+        return super().build(factory_use_construct=False, **defaults)
 
 
 class ReplayWithHealingStateMachineFactory(ModelFactory[ReplayWithHealingStateMachine]):
@@ -205,30 +205,6 @@ class ReplayWithHealingStateMachineFactory(ModelFactory[ReplayWithHealingStateMa
 
     __model__ = ReplayWithHealingStateMachine
 
-    # @classmethod
-    # def build(cls, **kwargs) -> ReplayWithHealingStateMachine:
-    #     """Build a ReplayWithHealingStateMachine instance with default values."""
-    #     brain_states = [
-    #         BugninjaBrainStateFactory.build(id="brain_1"),
-    #         BugninjaBrainStateFactory.build(id="brain_2"),
-    #         BugninjaBrainStateFactory.build(id="brain_3"),
-    #     ]
-
-    #     actions = [
-    #         BugninjaExtendedActionFactory.build(brain_state_id="brain_1"),
-    #         BugninjaExtendedActionFactory.build(brain_state_id="brain_2"),
-    #         BugninjaExtendedActionFactory.build(brain_state_id="brain_3"),
-    #     ]
-
-    #     defaults = {
-    #         "current_action": actions[0],
-    #         "current_brain_state": brain_states[0],
-    #         "replay_states": brain_states.copy(),
-    #         "replay_actions": actions.copy(),
-    #     }
-    #     defaults.update(kwargs)
-    #     return super().build(**defaults)
-
 
 # Mock factories for external dependencies
 class BrowserProfileMockFactory:
@@ -239,7 +215,7 @@ class BrowserProfileMockFactory:
     """
 
     @classmethod
-    def build(cls, **kwargs) -> MagicMock:
+    def custom_build(cls, **kwargs: Unpack[Tuple[Dict[str, Any]]]) -> MagicMock:
         """Build a mock BrowserProfile instance with default values."""
         mock_profile = MagicMock()
         defaults = {

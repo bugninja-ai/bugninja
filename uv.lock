@@ -219,8 +219,14 @@ requires-dist = [
     { name = "openai", specifier = "==1.84.0" },
     { name = "polyfactory", specifier = "==2.22.0" },
     { name = "pydantic", specifier = "==2.10.6" },
+<<<<<<< Updated upstream
     { name = "pytest", specifier = "==8.4.1" },
     { name = "pytest-asyncio", specifier = ">=1.0.0" },
+=======
+    { name = "pytest", specifier = ">=8.4.1" },
+    { name = "pytest-asyncio", specifier = ">=1.0.0" },
+    { name = "pytest-pretty", specifier = ">=1.3.0" },
+>>>>>>> Stashed changes
     { name = "python-dotenv", specifier = "==1.1.0" },
     { name = "rich", specifier = "==14.0.0" },
     { name = "ruff", specifier = "==0.11.13" },
@@ -4142,6 +4148,22 @@ wheels = [
 ]
 
 [[package]]
+<<<<<<< Updated upstream
+=======
+name = "pytest-pretty"
+version = "1.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pytest" },
+    { name = "rich" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ba/d7/c699e0be5401fe9ccad484562f0af9350b4e48c05acf39fb3dab1932128f/pytest_pretty-1.3.0.tar.gz", hash = "sha256:97e9921be40f003e40ae78db078d4a0c1ea42bf73418097b5077970c2cc43bf3", size = 219297 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ab/85/2f97a1b65178b0f11c9c77c35417a4cc5b99a80db90dad4734a129844ea5/pytest_pretty-1.3.0-py3-none-any.whl", hash = "sha256:074b9d5783cef9571494543de07e768a4dda92a3e85118d6c7458c67297159b7", size = 5620 },
+]
+
+[[package]]
+>>>>>>> Stashed changes
 name = "python-dateutil"
 version = "2.9.0.post0"
 source = { registry = "https://pypi.org/simple" }

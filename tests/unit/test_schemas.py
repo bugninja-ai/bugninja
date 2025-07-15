@@ -1,17 +1,12 @@
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
-from browser_use.agent.views import AgentBrain
-from browser_use.browser import BrowserProfile
-from browser_use.browser.profile import (
-    ClientCertificate,
+from browser_use.agent.views import AgentBrain  # type:ignore
+from browser_use.browser.profile import (  # type:ignore
     ColorScheme,
-    Geolocation,
-    ProxySettings,
     ViewportSize,
 )
-from rich import print as rich_print
 
 from src.schemas.pipeline import (
     BugninjaBrainState,
@@ -19,8 +14,6 @@ from src.schemas.pipeline import (
     BugninjaExtendedAction,
     ElementComparison,
     ReplayWithHealingStateMachine,
-    StateComparison,
-    Traversal,
 )
 
 # Import Polyfactory factories for test data generation
@@ -38,9 +31,9 @@ from tests.fixtures.models.schema_factories import (
 
 
 class TestElementComparison:
-    """Test suite for ElementComparison model.
+    """Test suite for `ElementComparison` model.
 
-    This test suite validates the ElementComparison schema which represents
+    This test suite validates the `ElementComparison` schema which represents
     the comparison result of a single element against expected state. These
     tests ensure that element comparisons are properly created, validated,
     and handle both positive and negative match scenarios correctly.
@@ -59,16 +52,18 @@ class TestElementComparison:
     def test_element_comparison_with_various_parameters(
         self, index: int, reason: str, is_match: bool
     ) -> None:
-        """Test ElementComparison with various parameter combinations.
+        """Test `ElementComparison` with various parameter combinations.
 
-        This parameterized test validates that ElementComparison handles
+        This parameterized test validates that `ElementComparison` handles
         different input combinations correctly. Testing edge cases like
         empty strings and large indices ensures robust behavior across
         various real-world scenarios.
         """
-        element_comp = ElementComparisonFactory.build(index=index, reason=reason, is_match=is_match)
+        element_comp = ElementComparisonFactory.custom_build(
+            index=index, reason=reason, is_match=is_match
+        )
 
-        # Verify all parameters are correctly applied
+        # Verify all parameters are correctly applied - essential for data integrity
         assert element_comp.index == index, f"Index should be {index}"
         assert element_comp.reason == reason, f"Reason should be '{reason}'"
         assert element_comp.is_match == is_match, f"is_match should be {is_match}"
@@ -94,11 +89,13 @@ class TestStateComparison:
         matching element in a collection of comparisons.
         """
         return [
-            ElementComparisonFactory.build(index=0, reason="First element matches", is_match=True),
-            ElementComparisonFactory.build(
+            ElementComparisonFactory.custom_build(
+                index=0, reason="First element matches", is_match=True
+            ),
+            ElementComparisonFactory.custom_build(
                 index=1, reason="Second element does not match", is_match=False
             ),
-            ElementComparisonFactory.build(
+            ElementComparisonFactory.custom_build(
                 index=2, reason="Third element does not match", is_match=False
             ),
         ]
@@ -107,10 +104,10 @@ class TestStateComparison:
     def sample_element_comparisons_with_no_match_found(self) -> List[ElementComparison]:
         """Create sample element comparisons with no match results for testing."""
         return [
-            ElementComparisonFactory.build(
+            ElementComparisonFactory.custom_build(
                 index=0, reason="First element does not match", is_match=False
             ),
-            ElementComparisonFactory.build(
+            ElementComparisonFactory.custom_build(
                 index=1, reason="Second element does not match", is_match=False
             ),
         ]
@@ -119,13 +116,13 @@ class TestStateComparison:
     def sample_element_comparisons_with_multiple_results(self) -> List[ElementComparison]:
         """Create sample element comparisons with multiple match results for testing."""
         return [
-            ElementComparisonFactory.build(
+            ElementComparisonFactory.custom_build(
                 index=0, reason="First element does match", is_match=True
             ),
-            ElementComparisonFactory.build(
+            ElementComparisonFactory.custom_build(
                 index=1, reason="Second element does not match", is_match=False
             ),
-            ElementComparisonFactory.build(
+            ElementComparisonFactory.custom_build(
                 index=2, reason="Second element does match", is_match=True
             ),
         ]
@@ -142,11 +139,11 @@ class TestStateComparison:
         state matches the current conditions.
         """
         # Create StateComparison with mixed results using Polyfactory
-        state_comp = StateComparisonFactory.build(
+        state_comp = StateComparisonFactory.custom_build(
             evaluation=sample_element_comparisons_with_mixed_results
         )
 
-        # Should return index of first matching element (index 0)
+        # Should return index of first matching element (index 0) - critical for state selection
         result = state_comp.get_equal_state_idx()
         assert result == 0, "Should return index 0 for the first matching element"
 
@@ -161,11 +158,11 @@ class TestStateComparison:
         when state comparisons fail completely.
         """
 
-        state_comp = StateComparisonFactory.build(
+        state_comp = StateComparisonFactory.custom_build(
             evaluation=sample_element_comparisons_with_no_match_found
         )
 
-        # Should return None when no matches are found
+        # Should return None when no matches are found - essential for error handling
         result = state_comp.get_equal_state_idx()
         assert result is None, "Should return 'None' when no elements match"
 
@@ -179,9 +176,9 @@ class TestStateComparison:
         prevents runtime errors.
         """
         # Create StateComparison with empty evaluation using Polyfactory
-        state_comp = StateComparisonFactory.build(evaluation=[])
+        state_comp = StateComparisonFactory.custom_build(evaluation=[])
 
-        # Should return None for empty evaluation
+        # Should return None for empty evaluation - prevents runtime errors
         result = state_comp.get_equal_state_idx()
         assert result is None, "Should return None for empty evaluation collection"
 
@@ -197,11 +194,11 @@ class TestStateComparison:
         state machine transitions.
         """
 
-        state_comp = StateComparisonFactory.build(
+        state_comp = StateComparisonFactory.custom_build(
             evaluation=sample_element_comparisons_with_multiple_results
         )
 
-        # Should return index of first matching element (index 0)
+        # Should return index of first matching element (index 0) - ensures deterministic behavior
         result = state_comp.get_equal_state_idx()
         assert result == 0, "Should return index 0 for the first match when multiple matches exist"
 
@@ -210,19 +207,19 @@ class TestStateComparison:
         "evaluation_data,expected_result",
         [
             ([], None),  # Empty evaluation
-            ([ElementComparisonFactory.build(is_match=False)], None),  # Single non-match
-            ([ElementComparisonFactory.build(is_match=True)], 0),  # Single match
+            ([ElementComparisonFactory.custom_build(is_match=False)], None),  # Single non-match
+            ([ElementComparisonFactory.custom_build(is_match=True)], 0),  # Single match
             (
                 [
-                    ElementComparisonFactory.build(is_match=False),
-                    ElementComparisonFactory.build(is_match=True),
+                    ElementComparisonFactory.custom_build(is_match=False),
+                    ElementComparisonFactory.custom_build(is_match=True),
                 ],
                 1,
             ),  # Match at index 1
             (
                 [
-                    ElementComparisonFactory.build(is_match=True),
-                    ElementComparisonFactory.build(is_match=True),
+                    ElementComparisonFactory.custom_build(is_match=True),
+                    ElementComparisonFactory.custom_build(is_match=True),
                 ],
                 0,
             ),  # Multiple matches, returns first
@@ -238,7 +235,7 @@ class TestStateComparison:
         ensures robust behavior in real-world applications where state
         comparisons can have different patterns and edge cases.
         """
-        state_comp = StateComparisonFactory.build(evaluation=evaluation_data)
+        state_comp = StateComparisonFactory.custom_build(evaluation=evaluation_data)
         result = state_comp.get_equal_state_idx()
         assert (
             result == expected_result
@@ -264,7 +261,7 @@ class TestBugninjaExtendedAction:
         association between actions and brain states.
         """
         # Use Polyfactory to generate test data for consistent and maintainable tests
-        extended_action = BugninjaExtendedActionFactory.build(
+        extended_action = BugninjaExtendedActionFactory.custom_build(
             brain_state_id="test_brain_id",
             action={"click_element_by_index": {"index": 0, "text": "Click the button"}},
             dom_element_data={
@@ -274,7 +271,7 @@ class TestBugninjaExtendedAction:
             },
         )
 
-        # Verify all fields are properly set - critical for action execution
+        # Verify all fields are properly set - critical for action execution and data integrity
         assert (
             extended_action.brain_state_id == "test_brain_id"
         ), "Brain state ID should be correctly set"
@@ -297,13 +294,13 @@ class TestBugninjaExtendedAction:
         navigation actions or system-level operations.
         """
         # Use Polyfactory with custom parameters to test scenario without DOM data
-        extended_action = BugninjaExtendedActionFactory.build(
+        extended_action = BugninjaExtendedActionFactory.custom_build(
             brain_state_id="test_brain_id",
             action={"goto": {"url": "https://example.com"}},
             dom_element_data=None,
         )
 
-        # Verify action works correctly without DOM element data
+        # Verify action works correctly without DOM element data - important for navigation actions
         assert (
             extended_action.brain_state_id == "test_brain_id"
         ), "Brain state ID should be set even without DOM data"
@@ -323,9 +320,9 @@ class TestBugninjaExtendedAction:
         runtime errors when processing action data.
         """
         # Use Polyfactory to generate a valid instance for type testing
-        extended_action = BugninjaExtendedActionFactory.build()
+        extended_action = BugninjaExtendedActionFactory.custom_build()
 
-        # Verify field types are correct - essential for data integrity
+        # Verify field types are correct - essential for data integrity and type safety
         assert isinstance(
             extended_action.brain_state_id, str
         ), "Brain state ID must be a string for proper identification"
@@ -356,7 +353,7 @@ class TestBugninjaExtendedAction:
         ],
     )
     def test_bugninja_extended_action_with_various_action_types(
-        self, action_type, dom_data
+        self, action_type: Dict[str, Any], dom_data: Optional[Dict[str, str]]
     ) -> None:
         """Test `BugninjaExtendedAction` with various action types and configurations.
 
@@ -364,11 +361,11 @@ class TestBugninjaExtendedAction:
         different action types correctly. Testing various action configurations
         ensures robust behavior across different automation scenarios.
         """
-        extended_action = BugninjaExtendedActionFactory.build(
+        extended_action = BugninjaExtendedActionFactory.custom_build(
             brain_state_id="test_brain_id", action=action_type, dom_element_data=dom_data
         )
 
-        # Verify action data is correctly stored
+        # Verify action data is correctly stored - ensures robust behavior across scenarios
         assert extended_action.action == action_type, f"Action should match provided {action_type}"
         assert (
             extended_action.dom_element_data == dom_data
@@ -400,7 +397,7 @@ class TestBugninjaBrowserConfig:
         # Use Polyfactory to create config with default values
         config = BugninjaBrowserConfig()
 
-        # Verify all default values are correctly set - essential for consistent behavior
+        # Verify all default values are correctly set - essential for consistent behavior across automation scenarios
         assert config.user_agent is None, "User agent should be None by default"
         assert config.viewport is None, "Viewport should be None by default"
         assert config.device_scale_factor is None, "Device scale factor should be None by default"
@@ -439,7 +436,7 @@ class TestBugninjaBrowserConfig:
             allowed_domains=["example.com", "test.com"],
         )
 
-        # Verify all custom values are correctly applied - critical for configuration flexibility
+        # Verify all custom values are correctly applied - critical for configuration flexibility and testing specific scenarios
         assert config.user_agent == "Test User Agent", "User agent should match provided value"
         assert config.viewport == {
             "width": 1920,
@@ -465,7 +462,7 @@ class TestBugninjaBrowserConfig:
         with different browser profile formats.
         """
         # Use mock factory to create realistic browser profile with viewport
-        mock_profile = BrowserProfileMockFactory.build(
+        mock_profile = BrowserProfileMockFactory.custom_build(
             user_agent="Test User Agent",
             device_scale_factor=1.5,
             color_scheme=ColorScheme.DARK,
@@ -490,7 +487,7 @@ class TestBugninjaBrowserConfig:
         # Convert to `BugninjaBrowserConfig` using the conversion method
         config = BugninjaBrowserConfig.from_browser_profile(mock_profile)
 
-        # Verify all properties are correctly converted - essential for integration
+        # Verify all properties are correctly converted - essential for integration with external browser automation libraries
         assert config.user_agent == "Test User Agent", "User agent should be converted correctly"
         assert config.viewport == {
             "width": 1920,
@@ -529,7 +526,7 @@ class TestBugninjaBrowserConfig:
         dimensions.
         """
         # Use mock factory to create browser profile without viewport
-        mock_profile = BrowserProfileMockFactory.build(
+        mock_profile = BrowserProfileMockFactory.custom_build(
             user_agent="Test User Agent",
             viewport=None,
             device_scale_factor=1.0,
@@ -549,7 +546,7 @@ class TestBugninjaBrowserConfig:
         # Convert to `BugninjaBrowserConfig` using the conversion method
         config = BugninjaBrowserConfig.from_browser_profile(mock_profile)
 
-        # Verify conversion handles missing viewport correctly
+        # Verify conversion handles missing viewport correctly - important for compatibility with browser profiles that don't specify viewport dimensions
         assert config.user_agent == "Test User Agent", "User agent should be converted correctly"
         assert config.viewport is None, "Viewport should be None when not provided"
         assert (
@@ -591,12 +588,12 @@ class TestTraversal:
         testing complex navigation sequences.
         """
         return {
-            "brain_1": AgentBrainFactory.build(
+            "brain_1": AgentBrainFactory.custom_build(
                 evaluation_previous_goal="Goal evaluation 1",
                 memory="Test memory 1",
                 next_goal="Next goal 1",
             ),
-            "brain_2": AgentBrainFactory.build(
+            "brain_2": AgentBrainFactory.custom_build(
                 evaluation_previous_goal="Goal evaluation 2",
                 memory="Test memory 2",
                 next_goal="Next goal 2",
@@ -612,12 +609,12 @@ class TestTraversal:
         testing complex automation sequences.
         """
         return {
-            "action_0": BugninjaExtendedActionFactory.build(
+            "action_0": BugninjaExtendedActionFactory.custom_build(
                 brain_state_id="brain_1",
                 action={"click": {"selector": "button"}},
                 dom_element_data={"tag_name": "button"},
             ),
-            "action_1": BugninjaExtendedActionFactory.build(
+            "action_1": BugninjaExtendedActionFactory.custom_build(
                 brain_state_id="brain_2",
                 action={"fill": {"selector": "input"}},
                 dom_element_data={"tag_name": "input"},
@@ -626,7 +623,10 @@ class TestTraversal:
 
     # ? VALID CASE
     def test_traversal_creation_with_valid_data(
-        self, sample_browser_config, sample_brain_states_dict, sample_actions_dict
+        self,
+        sample_browser_config: BugninjaBrowserConfig,
+        sample_brain_states_dict: Dict[str, AgentBrain],
+        sample_actions_dict: Dict[str, BugninjaExtendedAction],
     ) -> None:
         """Test creating `Traversal` with valid data using Polyfactory.
 
@@ -635,7 +635,7 @@ class TestTraversal:
         the integrity of test case data throughout the application.
         """
         # Use Polyfactory to create `Traversal` with realistic test data
-        traversal = TraversalFactory.build(
+        traversal = TraversalFactory.custom_build(
             test_case="Test navigation task",
             browser_config=sample_browser_config,
             secrets={"username": "test_user", "password": "test_pass"},
@@ -643,7 +643,7 @@ class TestTraversal:
             actions=sample_actions_dict,
         )
 
-        # Verify all fields are properly set - critical for test case execution
+        # Verify all fields are properly set - critical for test case execution and data integrity throughout the application
         assert (
             traversal.test_case == "Test navigation task"
         ), "Test case should match provided value"
@@ -671,7 +671,7 @@ class TestTraversal:
         testing edge cases and initialization scenarios.
         """
         # Use Polyfactory to create `Traversal` with empty collections
-        traversal = TraversalFactory.build(
+        traversal = TraversalFactory.custom_build(
             test_case="Empty test case",
             browser_config=sample_browser_config,
             secrets={},
@@ -679,7 +679,7 @@ class TestTraversal:
             actions={},
         )
 
-        # Verify empty collections are handled correctly
+        # Verify empty collections are handled correctly - important for testing edge cases and initialization scenarios
         assert traversal.test_case == "Empty test case", "Test case should match provided value"
         assert len(traversal.brain_states) == 0, "Brain states should be empty when not provided"
         assert len(traversal.actions) == 0, "Actions should be empty when not provided"
@@ -703,7 +703,7 @@ class TestBugninjaBrainState:
         and ensuring compatibility with different brain state formats.
         """
         # Use Polyfactory to create a `BugninjaBrainState` for conversion testing
-        bugninja_brain = BugninjaBrainStateFactory.build(
+        bugninja_brain = BugninjaBrainStateFactory.custom_build(
             id="test_brain_id",
             evaluation_previous_goal="Goal evaluation",
             memory="Test memory",
@@ -713,7 +713,7 @@ class TestBugninjaBrainState:
         # Convert to AgentBrain using the conversion method
         agent_brain = bugninja_brain.to_agent_brain()
 
-        # Verify conversion preserves all brain state data
+        # Verify conversion preserves all brain state data - critical for integrating with external brain systems
         assert isinstance(agent_brain, AgentBrain), "Conversion should produce AgentBrain instance"
         assert (
             agent_brain.evaluation_previous_goal == "Goal evaluation"
@@ -721,7 +721,7 @@ class TestBugninjaBrainState:
         assert agent_brain.memory == "Test memory", "Memory should be preserved"
         assert agent_brain.next_goal == "Next goal", "Next goal should be preserved"
 
-        # Verify id is not included in AgentBrain - important for compatibility
+        # Verify id is not included in AgentBrain - important for compatibility with different brain state formats
         assert not hasattr(
             agent_brain, "id"
         ), "AgentBrain should not have id attribute for compatibility"
@@ -744,14 +744,14 @@ class TestBugninjaBrainState:
         different data combinations correctly. Testing various brain state
         configurations ensures robust behavior across different scenarios.
         """
-        brain_state = BugninjaBrainStateFactory.build(
+        brain_state = BugninjaBrainStateFactory.custom_build(
             id=brain_id,
             evaluation_previous_goal=evaluation,
             memory=memory,
             next_goal=next_goal,
         )
 
-        # Verify all parameters are correctly applied
+        # Verify all parameters are correctly applied - ensures robust behavior across different scenarios
         assert brain_state.id == brain_id, f"Brain state ID should be {brain_id}"
         assert (
             brain_state.evaluation_previous_goal == evaluation
@@ -778,19 +778,19 @@ class TestReplayWithHealingStateMachine:
         testing complex state transitions and healing mechanisms.
         """
         return [
-            BugninjaBrainStateFactory.build(
+            BugninjaBrainStateFactory.custom_build(
                 id="brain_1",
                 evaluation_previous_goal="Goal evaluation 1",
                 memory="Test memory 1",
                 next_goal="Next goal 1",
             ),
-            BugninjaBrainStateFactory.build(
+            BugninjaBrainStateFactory.custom_build(
                 id="brain_2",
                 evaluation_previous_goal="Goal evaluation 2",
                 memory="Test memory 2",
                 next_goal="Next goal 2",
             ),
-            BugninjaBrainStateFactory.build(
+            BugninjaBrainStateFactory.custom_build(
                 id="brain_3",
                 evaluation_previous_goal="Goal evaluation 3",
                 memory="Test memory 3",
@@ -807,14 +807,14 @@ class TestReplayWithHealingStateMachine:
         testing complex action sequences and healing mechanisms.
         """
         return [
-            BugninjaExtendedActionFactory.build(
+            BugninjaExtendedActionFactory.custom_build(
                 brain_state_id="brain_1",
                 action={
                     "click_element_by_index": {"index": 6, "xpath": None},
                 },
                 dom_element_data={"tag_name": "button"},
             ),
-            BugninjaExtendedActionFactory.build(
+            BugninjaExtendedActionFactory.custom_build(
                 brain_state_id="brain_2",
                 action={
                     "input_text": {
@@ -825,7 +825,7 @@ class TestReplayWithHealingStateMachine:
                 },
                 dom_element_data={"tag_name": "input"},
             ),
-            BugninjaExtendedActionFactory.build(
+            BugninjaExtendedActionFactory.custom_build(
                 brain_state_id="brain_3",
                 action={
                     "input_text": {
@@ -877,7 +877,7 @@ class TestReplayWithHealingStateMachine:
             replay_actions=sample_actions_list.copy(),
         )
 
-        # Verify all fields are properly initialized - critical for state machine operation
+        # Verify all fields are properly initialized - critical for state machine operation and maintaining the integrity of state machine data
         assert (
             state_machine.current_action == sample_actions_list[0]
         ), "Current action should be set correctly"
@@ -910,7 +910,7 @@ class TestReplayWithHealingStateMachine:
         # Complete the current brain state
         state_machine.complete_current_brain_state()
 
-        # Verify current brain state was moved to passed states
+        # Verify current brain state was moved to passed states - critical for proper state machine progression
         assert (
             len(state_machine.passed_brain_states) == initial_passed_states_count + 1
         ), "Should add one brain state to passed states"
@@ -918,7 +918,7 @@ class TestReplayWithHealingStateMachine:
             state_machine.passed_brain_states[-1] == initial_current_state
         ), "Should add the current brain state to passed states"
 
-        # Verify current brain state was updated to next state
+        # Verify current brain state was updated to next state - essential for maintaining the integrity of state transitions
         assert (
             state_machine.current_brain_state != initial_current_state
         ), "Current brain state should be updated to next state"
@@ -944,7 +944,7 @@ class TestReplayWithHealingStateMachine:
         # Complete the current action
         state_machine.replay_action_done()
 
-        # Verify current action was moved to passed actions
+        # Verify current action was moved to passed actions - essential for proper action sequence progression
         assert (
             len(state_machine.passed_actions) == initial_passed_actions_count + 1
         ), "Should add one action to passed actions"
@@ -952,7 +952,7 @@ class TestReplayWithHealingStateMachine:
             state_machine.passed_actions[-1] == initial_current_action
         ), "Should add the current action to passed actions"
 
-        # Verify current action was updated to next action
+        # Verify current action was updated to next action - critical for maintaining action history
         assert (
             state_machine.current_action != initial_current_action
         ), "Current action should be updated to next action"
@@ -983,7 +983,7 @@ class TestReplayWithHealingStateMachine:
         # Complete the action which should trigger brain state change
         state_machine.replay_action_done()
 
-        # Verify brain state was completed and moved to next
+        # Verify brain state was completed and moved to next - important for maintaining synchronization between actions and brain states
         assert len(state_machine.passed_brain_states) == 1, "Should complete one brain state"
         assert (
             state_machine.passed_brain_states[0] == initial_current_brain_state
@@ -1009,7 +1009,7 @@ class TestReplayWithHealingStateMachine:
         """
         # Create healing actions using Polyfactory
         healing_actions = [
-            BugninjaExtendedActionFactory.build(
+            BugninjaExtendedActionFactory.custom_build(
                 brain_state_id="healing_brain",
                 action={
                     "click_element_by_index": {"index": 6, "xpath": None},
@@ -1024,7 +1024,7 @@ class TestReplayWithHealingStateMachine:
         # Complete step using healing actions
         state_machine.complete_step_by_healing(healing_actions)
 
-        # Verify healing actions were added to passed actions
+        # Verify healing actions were added to passed actions - crucial for handling scenarios where the original replay sequence fails
         assert (
             len(state_machine.passed_actions) == initial_passed_actions_count + 1
         ), "Should add healing action to passed actions"
@@ -1035,7 +1035,7 @@ class TestReplayWithHealingStateMachine:
         # Verify brain state was completed
         assert len(state_machine.passed_brain_states) == 1, "Should complete one brain state"
 
-        # Verify replay actions were updated (skipped to next brain state)
+        # Verify replay actions were updated (skipped to next brain state) - essential for implementing alternative actions to recover
         assert (
             len(state_machine.replay_actions) < initial_replay_actions_count
         ), "Should update replay actions after healing"
@@ -1060,7 +1060,7 @@ class TestReplayWithHealingStateMachine:
         # Set new current state to target brain state
         state_machine.set_new_current_state(target_brain_state_id)
 
-        # Verify current brain state was updated to target
+        # Verify current brain state was updated to target - essential for implementing jump-to-state functionality in complex automation scenarios
         assert (
             state_machine.current_brain_state.id == target_brain_state_id
         ), "Current brain state should be updated to target"
@@ -1085,7 +1085,7 @@ class TestReplayWithHealingStateMachine:
         history of both original and healing actions in the state machine.
         """
         # Create healing brain state and actions using Polyfactory
-        healing_brain_state = BugninjaBrainStateFactory.build(
+        healing_brain_state = BugninjaBrainStateFactory.custom_build(
             id="healing_brain",
             evaluation_previous_goal="Healing evaluation",
             memory="Healing memory",
@@ -1093,7 +1093,7 @@ class TestReplayWithHealingStateMachine:
         )
 
         healing_actions = [
-            BugninjaExtendedActionFactory.build(
+            BugninjaExtendedActionFactory.custom_build(
                 brain_state_id="healing_brain",
                 action={"click_element_by_index": {"index": 6, "xpath": None}},
                 dom_element_data={"tag_name": "button"},
@@ -1108,7 +1108,7 @@ class TestReplayWithHealingStateMachine:
             healing_brain_state, healing_actions
         )
 
-        # Verify healing brain state was added to passed states
+        # Verify healing brain state was added to passed states - important for maintaining a complete history of both original and healing actions
         assert (
             len(state_machine.passed_brain_states) == initial_passed_states_count + 1
         ), "Should add healing brain state to passed states"
@@ -1116,7 +1116,7 @@ class TestReplayWithHealingStateMachine:
             state_machine.passed_brain_states[-1] == healing_brain_state
         ), "Should add the healing brain state to passed states"
 
-        # Verify healing actions were added to passed actions
+        # Verify healing actions were added to passed actions - essential for maintaining complete action history in the state machine
         assert (
             len(state_machine.passed_actions) == initial_passed_actions_count + 1
         ), "Should add healing action to passed actions"
@@ -1136,11 +1136,13 @@ class TestReplayWithHealingStateMachine:
         healing interventions.
         """
         result = state_machine.replay_should_stop(healing_agent_reached_goal=True)
-        assert result is True, "Should stop replay when healing agent reached goal"
+        assert (
+            result is True
+        ), "Should stop replay when healing agent reached goal - important for determining when to stop the replay process after successful healing interventions"
 
     # ? VALID CASE
     def test_replay_should_stop_with_remaining_states(
-        self, state_machine: BugninjaExtendedAction
+        self, state_machine: ReplayWithHealingStateMachine
     ) -> None:
         """Test replay_should_stop when there are remaining states.
 
@@ -1150,11 +1152,13 @@ class TestReplayWithHealingStateMachine:
         continues until completion.
         """
         result = state_machine.replay_should_stop(healing_agent_reached_goal=False)
-        assert result is False, "Should continue replay when there are remaining states"
+        assert (
+            result is False
+        ), "Should continue replay when there are remaining states - ensures the replay process continues until completion"
 
     # ? VALID CASE
     def test_replay_should_stop_with_no_remaining_states(
-        self, state_machine: BugninjaExtendedAction
+        self, state_machine: ReplayWithHealingStateMachine
     ) -> None:
         """Test replay_should_stop when there are no remaining states.
 
@@ -1167,10 +1171,14 @@ class TestReplayWithHealingStateMachine:
         state_machine.replay_states = []
 
         result = state_machine.replay_should_stop(healing_agent_reached_goal=False)
-        assert result is True, "Should stop replay when no remaining states"
+        assert (
+            result is True
+        ), "Should stop replay when no remaining states - ensures the replay process stops when all states have been processed"
 
     # ? VALID CASE
-    def test_replay_should_stop_with_verbose_logging(self, state_machine) -> None:
+    def test_replay_should_stop_with_verbose_logging(
+        self, state_machine: ReplayWithHealingStateMachine
+    ) -> None:
         """Test replay_should_stop with verbose logging enabled.
 
         This test validates that replay_should_stop correctly handles
@@ -1181,7 +1189,7 @@ class TestReplayWithHealingStateMachine:
         with patch("src.schemas.logger") as mock_logger:
             state_machine.replay_should_stop(healing_agent_reached_goal=False, verbose=True)
 
-            # Verify logging was called for debugging purposes
+            # Verify logging was called for debugging purposes - important for debugging complex state machine scenarios
             mock_logger.info.assert_called(), "Should log information when verbose mode is enabled"
 
     # ? VALID CASE
@@ -1195,10 +1203,10 @@ class TestReplayWithHealingStateMachine:
         """
         # Create state machine with empty replay data using Polyfactory
         empty_state_machine = ReplayWithHealingStateMachineFactory.build(
-            current_action=BugninjaExtendedActionFactory.build(
+            current_action=BugninjaExtendedActionFactory.custom_build(
                 brain_state_id="test", action={}, dom_element_data=None
             ),
-            current_brain_state=BugninjaBrainStateFactory.build(
+            current_brain_state=BugninjaBrainStateFactory.custom_build(
                 id="test", evaluation_previous_goal="test", memory="test", next_goal="test"
             ),
             replay_states=[],
@@ -1207,4 +1215,6 @@ class TestReplayWithHealingStateMachine:
 
         # Test replay_should_stop with empty states
         result = empty_state_machine.replay_should_stop(healing_agent_reached_goal=False)
-        assert result is True, "Should stop replay when replay states are empty"
+        assert (
+            result is True
+        ), "Should stop replay when replay states are empty - prevents runtime errors when all states have been processed"

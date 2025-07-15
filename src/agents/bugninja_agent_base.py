@@ -29,6 +29,31 @@ def hook_missing_error(hook_name: str, class_val: type) -> NotImplementedError:
 
 class BugninjaAgentBase(Agent, ABC):
 
+    # Class-level flag to control LLM verification bypass
+    BYPASS_LLM_VERIFICATION = False
+
+    def _detect_best_tool_calling_method(self) -> Optional[str]:
+        """
+        Override the parent method to optionally bypass LLM verification for testing.
+
+        This method can bypass the LLM connection verification that occurs during
+        agent initialization. When BYPASS_LLM_VERIFICATION is True, it returns
+        a default method without testing the actual LLM connection.
+
+        Returns:
+            str: The tool calling method to use
+        """
+        if self.BYPASS_LLM_VERIFICATION:
+            # For testing purposes, return 'raw' as the default tool calling method
+            # This bypasses the need to actually test the LLM connection
+            logger.debug(
+                "🔄 Bypassing LLM verification for testing - using 'raw' tool calling method"
+            )
+            return "raw"
+
+        # Call the parent method for normal operation
+        return super()._detect_best_tool_calling_method()  # type: ignore
+
     @staticmethod
     async def get_raw_html_of_playwright_page(page: Page) -> str:
         # current_page: Page = await self.browser_session.get_current_page()

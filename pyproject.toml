@@ -21,6 +21,7 @@ dependencies = [
     "pydantic==2.10.6",
     "pytest==8.4.1",
     "pytest-asyncio==1.0.0",
+    "pytest-pretty>=1.3.0",
     "python-dotenv==1.1.0",
     "rich==14.0.0",
     "ruff==0.11.13",
@@ -35,7 +36,7 @@ target-version = "py313"
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401", "F403"] # ignore unused imports in __init__.py files
-"test_*.py" = ["F401", "F403", "F811"]  # ignore unused imports in test files as well
+# "test_*.py" = ["F401", "F403", "F811"]  # ignore unused imports in test files as well
 
 [tool.black]
 line-length = 100
@@ -71,7 +72,7 @@ shell = "uv run python replay.py"
 
 [tool.poe.tasks.lint]
 help   = "Lints the whole project searching for inefficiencies in the code"
-shell = "uv run ruff check --fix . && uv run isort . && uv run black . && uv run mypy main.py src tests"
+shell = "uv run ruff check --fix src tests . && uv run isort src tests . && uv run black src tests . && uv run mypy main.py src tests"
 
 
 [tool.poe.tasks.run-celery]

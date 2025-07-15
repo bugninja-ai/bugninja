@@ -55,7 +55,8 @@ globs: **/*.py, src/**/*.py, tests/**/*.py
 - Implement proper setup and teardown for test data
 - Use parameterized tests for testing multiple scenarios efficiently
 - Avoid creating meaningless, redundant or unnecessary testcases or testcases that are already proven correct by a previous testcase
-
+- When you are writing testcases and you need to mock a specific function, do not forget to include `# type: ignore[method-assign]` at the end of the line to tell MyPy that it is safe to do this in the context of testing, however this is ONLY safe in the context of testing related files and fixtures
+- Next to each assertion in testing you have to add an appropriate error message that will be displayed if the assertion fails. The error message has to reflext on what went wrong in the assertion
 
 ## Security
 - Use HTTPS in production
