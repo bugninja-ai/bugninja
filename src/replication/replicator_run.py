@@ -10,6 +10,11 @@ The JSON log file contains steps with:
 - interacted_element: Details about the element to interact with
 - brain: Agent's reasoning and state
 - action_details: Specific details about the action
+
+The replication process includes a free healing mechanism that allows the healing
+agent to take over completely when a replay action fails, running through the
+entire remaining traversal without stopping for state matching or brain state
+boundaries.
 """
 
 import json
@@ -289,24 +294,22 @@ class ReplicatorRun(ReplicatorNavigator):
                     f"🧠 Failed in brain state: {self.replay_state_machine.current_brain_state}"
                 )
 
-                logger.info("🩹 Starting healer agent to complete this brain state...")
+                logger.info(
+                    "🩹 Starting free healing agent to complete entire remaining traversal..."
+                )
 
                 try:
-                    # Use healer agent to complete the current brain state
-                    healing_success = await self._heal_current_brain_state()
+                    # Use free healing agent to complete the entire remaining traversal
+                    healing_success = await self._start_free_healing()
 
                     if healing_success:
                         self.healing_happened = True
-                        logger.info("✅ Brain state completed successfully with healer assistance")
-
-                        # Add pause after healing if enabled
-                        if self.pause_after_each_step:
-                            self._wait_for_enter_key()
+                        logger.info("✅ Free healing completed entire traversal successfully")
 
                     else:
-                        logger.error("❌ Healer failed to complete brain state")
+                        logger.error("❌ Free healing failed to complete traversal")
                         failed = True
-                        failed_reason = "Healer failed to complete brain state"
+                        failed_reason = "Free healing failed to complete traversal"
                         break
 
                 except UserInterruptionError as e:
@@ -316,14 +319,16 @@ class ReplicatorRun(ReplicatorNavigator):
                     break
 
                 except Exception as healing_error:
-                    logger.error("❌ === HEALING FAILED ===")
+                    logger.error("❌ === FREE HEALING FAILED ===")
                     logger.error(f"🚨 Healing error type: {type(healing_error).__name__}")
                     logger.error(f"🚨 Healing error message: {str(healing_error)}")
                     logger.error(
-                        "❌ Both original action and healing failed - stopping replication"
+                        "❌ Both original action and free healing failed - stopping replication"
                     )
                     failed = True
-                    failed_reason = f"Action failed: {str(e)}. Healing failed: {str(healing_error)}"
+                    failed_reason = (
+                        f"Action failed: {str(e)}. Free healing failed: {str(healing_error)}"
+                    )
                     break
 
             # Check if we need to break out of the outer loop
@@ -336,33 +341,37 @@ class ReplicatorRun(ReplicatorNavigator):
         if failed:
             logger.info(f"🚨 Failure reason: {failed_reason}")
 
-        # Save corrected traversal if we have successful actions
-        if not failed and self.healing_happened:
+        # Save corrected traversal if healing happened (regardless of final status)
+        if self.healing_happened:
             output_path = self.traversal_path.replace(".json", "_corrected.json")
             logger.info(f"💾 Saving corrected traversal to: {output_path}")
             self._save_corrected_traversal(output_path)
         else:
-            logger.warning("⚠️ No successful actions to save in corrected traversal")
+            logger.warning("⚠️ No healing occurred - no corrected traversal to save")
 
         return failed, failed_reason
 
-    async def _heal_current_brain_state(self) -> bool:
+    async def _start_free_healing(self) -> bool:
         """
-        Use healer agent to replace failed actions and complete the current brain state.
+        Start the healing agent and let it run freely through the entire remaining traversal.
 
+        This method allows the healing agent to take over completely and run through
+        all remaining actions without stopping for state matching or brain state boundaries.
 
         Returns:
-            True if brain state was completed successfully, False otherwise
+            True if healing agent completed the entire traversal successfully, False otherwise
         """
+        logger.info("🩹 === STARTING FREE HEALING MODE ===")
+        logger.info("🔄 Healing agent will run through entire remaining traversal")
 
         # Create healer agent
         healer_agent = await self.create_self_healing_agent()
 
-        max_healing_steps = 10  # Reasonable limit to prevent infinite loops
-        logger.info(f"🔄 Starting healing loop (max {max_healing_steps} steps)")
+        max_healing_steps = 50  # Increased limit for full traversal healing
+        logger.info(f"🔄 Starting free healing loop (max {max_healing_steps} steps)")
 
         for i in range(max_healing_steps):
-            logger.info(f"🩹 === HEALER STEP #{i+1}===")
+            logger.info(f"🩹 === FREE HEALER STEP #{i+1}/{max_healing_steps} ===")
 
             # Execute healer step
             try:
@@ -372,93 +381,67 @@ class ReplicatorRun(ReplicatorNavigator):
                 return False
 
             if not healer_agent.agent_taken_actions:
+                rich_print(healer_agent.agent_taken_actions)
                 logger.error("❌ Healer agent failed to take any actions")
                 return False
 
-            healer_actions: List[BugninjaExtendedAction] = []
+            if i == 0:
+                # ? Set the failed action's brain state id to the healer agent's first brain state
+                # ?needs in order to tie the replay together
+                self.replay_state_machine.passed_actions[0].brain_state_id = list(
+                    healer_agent.agent_brain_states.keys()
+                )[0]
 
-            # Get all healer actions
-            for healer_action in healer_agent.agent_taken_actions:
-                brain_state_id = healer_action.brain_state_id
-
-                if not brain_state_id:
-                    logger.error("❌ Healer action missing brain_state_id")
-                    return False
-
-                # Convert healer action to BugninjaExtendedAction format
-                healer_extended_action = BugninjaExtendedAction(
-                    brain_state_id=self.replay_state_machine.current_brain_state.id,
-                    action=healer_action.action,
-                    dom_element_data=healer_action.dom_element_data,
-                )
-
-                healer_actions.append(healer_extended_action)
-
-            self.replay_state_machine.complete_step_by_healing(healing_agent_actions=healer_actions)
-
-            # Evaluate current state against whole travel brain states
-            logger.info("🔍 Evaluating current state against whole travel brain states...")
+            # Check if healer agent has reached the goal
             try:
-                healer_agent_current_state: AgentBrain = list(
-                    healer_agent.agent_brain_states.values()
-                )[-1]
 
-                all_states: List[BugninjaBrainState] = (
-                    self.replay_state_machine.passed_brain_states
-                    + [self.replay_state_machine.current_brain_state]
-                    + self.replay_state_machine.replay_states
-                )
+                # Check if we've reached a completion state (this is a simplified check)
+                # In a real implementation, you might check against the original test case's expected final state
+                if healer_agent.agent_taken_actions[-1].action.get("done") is not None:
+                    logger.info("✅ === HEALING AGENT REACHED GOAL ===")
 
-                state_comparison = await self.evaluate_current_state(
-                    healer_agent_current_state,
-                    # ? we have to take the current brain state and the rest of the replay states into account as well
-                    all_states,
-                )
+                    # Replace remaining replay actions with healing actions
+                    self._replace_remaining_with_healing_actions(healer_agent)
 
-                logger.info(
-                    f"📊 State evaluation results: {len(state_comparison.evaluation)} comparisons"
-                )
-
-                rich_print(self.replay_state_machine.passed_brain_states)
-                rich_print("-----")
-                rich_print([self.replay_state_machine.current_brain_state])
-                rich_print("-----")
-                rich_print(self.replay_state_machine.replay_states)
-                rich_print("-----")
-                rich_print(state_comparison)
-
-                matching_state_idx: Optional[int] = state_comparison.get_equal_state_idx()
-
-                if matching_state_idx:
-                    logger.info("")
-                    logger.info(
-                        f"✅ === BRAIN STATE '{self.replay_state_machine.current_brain_state.id}' COMPLETED ==="
-                    )
-                    logger.info("📊 Final stats:")
-                    logger.info(f"   - Healer actions: {len(healer_agent.agent_taken_actions)}")
-                    logger.info("🛑 State match found - stopping healer immediately")
+                    logger.info("🎉 === FREE HEALING COMPLETED SUCCESSFULLY ===")
+                    logger.info("📊 Final Summary:")
+                    logger.info(f"   - Total healing steps: {i+1}")
 
                     return True
-                else:
 
-                    self.replay_state_machine.add_healing_agent_brain_state_and_actions(
-                        healing_agent_brain_state=healer_agent_current_state,
-                        healing_actions=healer_agent.agent_taken_actions,
-                    )
+            except Exception as goal_check_error:
+                logger.warning(f"⚠️ Goal detection failed: {str(goal_check_error)} - continuing")
 
-                    # ? after logging the actions of the agent we clear the actions, +
-                    # ? so that the previous actions do not get added multiple times
-                    healer_agent.agent_taken_actions.clear()
-
-                    logger.info("🔄 No state match found - continuing healer steps")
-
-            except Exception as eval_error:
-                logger.warning(
-                    f"⚠️ State evaluation failed: {str(eval_error)} - continuing healer steps"
-                )
-
-            # Add pause if enabled
-            if self.pause_after_each_step:
-                self._wait_for_enter_key()
-
+        logger.error("❌ === FREE HEALING TIMED OUT ===")
+        logger.error(f"🚨 Reached maximum steps ({max_healing_steps}) without completing goal")
         return False
+
+    def _replace_remaining_with_healing_actions(self, healer_agent: HealerAgent) -> None:
+        """
+        Replace all remaining replay actions and brain states with healing actions.
+
+        Args:
+            healing_actions: List of actions taken by the healing agent
+            healing_brain_states: List of brain states from the healing agent
+        """
+        logger.info("🔄 Replacing remaining replay actions with healing actions...")
+
+        # Convert healing brain states to BugninjaBrainState format
+        healing_brain_states_converted = []
+        for brain_state_id, brain_state in healer_agent.agent_brain_states.items():
+            healing_brain_states_converted.append(
+                BugninjaBrainState(
+                    id=brain_state_id,
+                    evaluation_previous_goal=brain_state.evaluation_previous_goal,
+                    memory=brain_state.memory,
+                    next_goal=brain_state.next_goal,
+                )
+            )
+
+        # Add all healing actions and brain states to passed collections
+        self.replay_state_machine.passed_actions.extend(healer_agent.agent_taken_actions)
+        self.replay_state_machine.passed_brain_states.extend(healing_brain_states_converted)
+
+        # Clear remaining replay actions and brain states
+        self.replay_state_machine.replay_actions.clear()
+        self.replay_state_machine.replay_states.clear()
