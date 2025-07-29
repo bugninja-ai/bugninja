@@ -89,14 +89,15 @@ class NavigatorAgent(BugninjaAgentBase):
 
         current_page = await self.browser_session.get_current_page()
 
-        # Take screenshot and get filename
-        screenshot_filename = await self.screenshot_manager.take_screenshot(
-            current_page, action, self.browser_session
-        )
-
-        # Store screenshot filename with extended action
+        # Get the extended action for screenshot with highlighting
         extended_action = self._find_matching_extended_action(action)
         if extended_action:
+            # Take screenshot and get filename
+            screenshot_filename = await self.screenshot_manager.take_screenshot(
+                current_page, extended_action, self.browser_session
+            )
+
+            # Store screenshot filename with extended action
             extended_action.screenshot_filename = screenshot_filename
             logger.info(f"📸 Stored screenshot filename: {screenshot_filename}")
 

@@ -466,8 +466,11 @@ class ReplicatorRun(ReplicatorNavigator):
     async def _take_screenshot(self, action_type: str) -> str:
         """Take screenshot and return filename"""
 
-        return await self.screenshot_manager.take_screenshot_with_action_type(
-            self.current_page, action_type, self.browser_session
+        # Get the current extended action for highlighting
+        current_action = self.replay_state_machine.current_action
+
+        return await self.screenshot_manager.take_screenshot(
+            self.current_page, current_action, self.browser_session
         )
 
     def get_screenshots_dir(self) -> Path:
