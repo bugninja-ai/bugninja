@@ -21,6 +21,7 @@ from src.schemas.pipeline import (
     BugninjaExtendedAction,
     Traversal,
 )
+from src.utils.screenshot_manager import ScreenshotManager
 
 
 class NavigatorAgent(BugninjaAgentBase):
@@ -33,6 +34,9 @@ class NavigatorAgent(BugninjaAgentBase):
 
         #! we override the default controller with our own
         self.controller = BugninjaController()
+
+        # Initialize screenshot manager
+        self.screenshot_manager = ScreenshotManager(folder_prefix="traversal")
 
     async def _after_run_hook(self) -> None:
         logger.info(msg="✅ AFTER-Run hook called")
@@ -60,14 +64,41 @@ class NavigatorAgent(BugninjaAgentBase):
             browser_state_summary=browser_state_summary,
         )
 
+        # Store extended actions for hook access
+        self.current_step_extended_actions = extended_taken_actions
+
+        # Associate each action with its corresponding extended action index
+        for i, action in enumerate(model_output.action):
+            self._associate_action_with_extended_action(action, i)
+
         # ? adding the taken actions to the list of agent actions
         self.agent_taken_actions.extend(extended_taken_actions)
 
     async def _after_step_hook(
         self, browser_state_summary: BrowserStateSummary, model_output: AgentOutput
-    ) -> None: ...
+    ) -> None:
+        # Clear action mapping to prevent memory accumulation
+        self._clear_action_mapping()
+
     async def _before_action_hook(self, action: ActionModel) -> None: ...
-    async def _after_action_hook(self, action: ActionModel) -> None: ...
+
+    async def _after_action_hook(self, action: ActionModel) -> None:
+        """Take screenshot after action execution"""
+
+        await self.browser_session.remove_highlights()
+
+        current_page = await self.browser_session.get_current_page()
+
+        # Take screenshot and get filename
+        screenshot_filename = await self.screenshot_manager.take_screenshot(
+            current_page, action, self.browser_session
+        )
+
+        # Store screenshot filename with extended action
+        extended_action = self._find_matching_extended_action(action)
+        if extended_action:
+            extended_action.screenshot_filename = screenshot_filename
+            logger.info(f"📸 Stored screenshot filename: {screenshot_filename}")
 
     def save_agent_actions(self, verbose: bool = False) -> None:
         """
@@ -127,6 +158,12 @@ class NavigatorAgent(BugninjaAgentBase):
                 logger.info(f"Step {idx + 1}:")
                 logger.info("Log:")
                 logger.info(model_taken_action)
+
+            # Log screenshot filename if present
+            if model_taken_action.screenshot_filename:
+                logger.info(
+                    f"📸 Action {idx} has screenshot: {model_taken_action.screenshot_filename}"
+                )
 
             actions[f"action_{idx}"] = model_taken_action.model_dump()
 

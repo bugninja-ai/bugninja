@@ -13,6 +13,7 @@ from cuid2 import Cuid as CUID
 from src.agents.bugninja_agent_base import BugninjaAgentBase
 from src.agents.extensions import BugninjaController, extend_agent_action_with_info
 from src.schemas.pipeline import BugninjaExtendedAction
+from src.utils.screenshot_manager import ScreenshotManager
 
 #! keep in mind that the HealerAgent is not inherited from BugninjaAgentBase but from the NavigatorAgent directly
 #! for this reason it inherits the NavigatorAgent hooks as well
@@ -33,6 +34,10 @@ class HealerAgent(BugninjaAgentBase):
 
         #! we override the default controller with our own
         self.controller = BugninjaController()
+
+        # Initialize screenshot manager (will be overridden if shared from replay)
+        if not hasattr(self, "screenshot_manager"):
+            self.screenshot_manager = ScreenshotManager(folder_prefix="healing")
 
     # ? we do not need to override the _after_run_hook for the healer agent
     async def _after_run_hook(self) -> None: ...
@@ -59,11 +64,37 @@ class HealerAgent(BugninjaAgentBase):
             browser_state_summary=browser_state_summary,
         )
 
+        # Store extended actions for hook access
+        self.current_step_extended_actions = extended_taken_actions
+
+        # Associate each action with its corresponding extended action index
+        for i, action in enumerate(model_output.action):
+            self._associate_action_with_extended_action(action, i)
+
         # ? adding the taken actions to the list of agent actions
         self.agent_taken_actions.extend(extended_taken_actions)
 
     async def _after_step_hook(
         self, browser_state_summary: BrowserStateSummary, model_output: AgentOutput
-    ) -> None: ...
+    ) -> None:
+        # Clear action mapping to prevent memory accumulation
+        self._clear_action_mapping()
+
     async def _before_action_hook(self, action: ActionModel) -> None: ...
-    async def _after_action_hook(self, action: ActionModel) -> None: ...
+
+    async def _after_action_hook(self, action: ActionModel) -> None:
+        """Take screenshot after action execution"""
+        await self.browser_session.remove_highlights()
+
+        current_page = await self.browser_session.get_current_page()
+
+        # Store screenshot filename with extended action
+        extended_action = self._find_matching_extended_action(action)
+
+        # Take screenshot and get filename
+        screenshot_filename = await self.screenshot_manager.take_screenshot(
+            current_page, extended_action, self.browser_session
+        )
+
+        extended_action.screenshot_filename = screenshot_filename
+        logger.info(f"📸 Stored screenshot filename: {screenshot_filename}")

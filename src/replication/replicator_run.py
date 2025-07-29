@@ -35,6 +35,7 @@ from src.schemas.pipeline import (
     StateComparison,
 )
 from src.utils.logger_config import set_logger_config
+from src.utils.screenshot_manager import ScreenshotManager
 
 # Configure logging with custom format
 set_logger_config()
@@ -93,6 +94,9 @@ class ReplicatorRun(ReplicatorNavigator):
         # Get the number of actions from the actions dictionary
         self.total_actions = len(self.replay_traversal.actions)
 
+        # Initialize screenshot manager
+        self.screenshot_manager = ScreenshotManager(folder_prefix="replay")
+
         brain_state_list: List[BugninjaBrainState] = [
             BugninjaBrainState(
                 id=i,
@@ -119,6 +123,9 @@ class ReplicatorRun(ReplicatorNavigator):
             logger.info(
                 "⏸️ Pause after each step is ENABLED - press Enter to continue after each action"
             )
+        logger.info(
+            f"📸 Screenshots will be saved to: {self.screenshot_manager.get_screenshots_dir()}"
+        )
 
     def _wait_for_enter_key(self) -> None:
         """
@@ -198,6 +205,11 @@ class ReplicatorRun(ReplicatorNavigator):
             # injected_agent_state=self.create_agent_state_from_traversal_json(cut_after=at_idx),
         )
 
+        # Share screenshot directory and counter with healing agent
+        agent.screenshots_dir = self.screenshot_manager.get_screenshots_dir()
+        agent.screenshot_counter = self.screenshot_manager.get_screenshot_counter()
+        agent.screenshot_manager = self.screenshot_manager
+
         await agent._before_run_hook()
 
         return agent
@@ -270,6 +282,11 @@ class ReplicatorRun(ReplicatorNavigator):
             try:
                 logger.info("▶️ Executing action...")
                 await self._execute_action(action)
+
+                # Take screenshot after action execution
+                screenshot_filename = await self._take_screenshot(action_type)
+                logger.info(f"📸 Screenshot saved: {screenshot_filename}")
+
                 logger.info("✅ Action executed successfully")
 
                 # ? we update the state machine here that a replay action has been taken
@@ -445,3 +462,18 @@ class ReplicatorRun(ReplicatorNavigator):
         # Clear remaining replay actions and brain states
         self.replay_state_machine.replay_actions.clear()
         self.replay_state_machine.replay_states.clear()
+
+    async def _take_screenshot(self, action_type: str) -> str:
+        """Take screenshot and return filename"""
+
+        return await self.screenshot_manager.take_screenshot_with_action_type(
+            self.current_page, action_type, self.browser_session
+        )
+
+    def get_screenshots_dir(self) -> Path:
+        """Get the current screenshots directory for sharing with healing agent"""
+        return self.screenshot_manager.get_screenshots_dir()
+
+    def get_screenshot_counter(self) -> int:
+        """Get the current screenshot counter for sharing with healing agent"""
+        return self.screenshot_manager.get_screenshot_counter()

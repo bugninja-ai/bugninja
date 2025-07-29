@@ -67,6 +67,7 @@ class BugninjaExtendedAction(BaseModel):
     brain_state_id: str
     action: Dict[str, Any]
     dom_element_data: Optional[Dict[str, Any]]
+    screenshot_filename: Optional[str] = None
 
 
 #! Traversal

@@ -2,7 +2,7 @@ import asyncio
 import inspect
 import time
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from browser_use.agent.message_manager.utils import save_conversation  # type: ignore
 from browser_use.agent.service import (  # type: ignore
@@ -22,6 +22,8 @@ from browser_use.controller.registry.views import ActionModel  # type: ignore
 from browser_use.utils import time_execution_async  # type: ignore
 from langchain_core.messages import HumanMessage
 
+from src.schemas.pipeline import BugninjaExtendedAction
+
 
 def hook_missing_error(hook_name: str, class_val: type) -> NotImplementedError:
     return NotImplementedError(f"The '{hook_name}' is not implemented for '{class_val.__name__}'!")
@@ -31,6 +33,14 @@ class BugninjaAgentBase(Agent, ABC):
 
     # Class-level flag to control LLM verification bypass
     BYPASS_LLM_VERIFICATION = False
+
+    def __init__(  # type:ignore
+        self, *args, **kwargs  # type:ignore
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        # Initialize extended actions storage
+        self.current_step_extended_actions: List[BugninjaExtendedAction] = []
+        self._action_to_extended_index: Dict[int, int] = {}
 
     def _detect_best_tool_calling_method(self) -> Optional[str]:
         """
@@ -147,6 +157,33 @@ class BugninjaAgentBase(Agent, ABC):
             NotImplementedError: This method is not implemented
         """
         raise hook_missing_error("_after_action_hook", self.__class__)
+
+    def _find_matching_extended_action(self, action: ActionModel) -> "BugninjaExtendedAction":
+        """Find the matching extended action for a given ActionModel.
+
+        Args:
+            action: The ActionModel to match
+
+        Returns:
+            The matching BugninjaExtendedAction if found, None otherwise
+        """
+        # Use action index for safe matching
+        action_index: int = self._action_to_extended_index.get(id(action), None)  # type: ignore
+        return self.current_step_extended_actions[action_index]
+
+    def _associate_action_with_extended_action(self, action: ActionModel, index: int) -> None:
+        """Associate an ActionModel with its corresponding extended action index.
+
+        Args:
+            action: The ActionModel to associate
+            index: The index of the corresponding extended action
+        """
+        self._action_to_extended_index[id(action)] = index
+
+    def _clear_action_mapping(self) -> None:
+        """Clear the action to extended action mapping to prevent memory accumulation."""
+        if hasattr(self, "_action_to_extended_index"):
+            self._action_to_extended_index.clear()
 
     @time_execution_async("--run (agent)")
     async def run(self, max_steps: int = 100) -> Optional[AgentHistoryList]:

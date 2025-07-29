@@ -73,7 +73,7 @@ async def run_agent(
 
 
 BACPREP_NAVIGATION_PROMPT = """
-Go to app.bacprep.ro login to the platform via email authentication with the 
+Go to app.bacprep.ro/en, login to the platform via email authentication with the 
 provided credentials and edit the name of the user based on the provided information. 
 If successful log out and close the browser.
 """.strip()
