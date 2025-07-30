@@ -81,8 +81,14 @@ class BugninjaBrowserConfig(BaseModel):
     for browser automation tasks.
     """
 
-    user_agent: Optional[str] = Field(default=None)
-    viewport: Optional[Dict[str, int]] = Field(default=None)
+    user_agent: str = Field(
+        default="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        description="User agent string for browser automation",
+    )
+    viewport: Dict[str, int] = Field(
+        default={"width": 1280, "height": 960},
+        description="Viewport dimensions for browser automation",
+    )
     device_scale_factor: Optional[NonNegativeFloat] = Field(default=None)
     color_scheme: ColorScheme = Field(default=ColorScheme.LIGHT)
     accept_downloads: bool = Field(default=False)
@@ -117,8 +123,9 @@ class BugninjaBrowserConfig(BaseModel):
             }
 
         return BugninjaBrowserConfig(
-            user_agent=browser_profile.user_agent,
-            viewport=viewport_element,
+            user_agent=browser_profile.user_agent
+            or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            viewport=viewport_element or {"width": 1280, "height": 960},
             device_scale_factor=browser_profile.device_scale_factor,
             color_scheme=browser_profile.color_scheme,
             accept_downloads=browser_profile.accept_downloads,

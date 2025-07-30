@@ -155,7 +155,6 @@ class ScreenshotManager:
                     const element = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
                     if (element) {
                         element.style.outline = '3px solid red';
-                        element.style.backgroundColor = 'rgba(255, 0, 0, 0.2)';
                         element.setAttribute('data-highlighted', 'true');
                     }
                 }

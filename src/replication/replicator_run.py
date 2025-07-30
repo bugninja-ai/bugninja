@@ -402,13 +402,6 @@ class ReplicatorRun(ReplicatorNavigator):
                 logger.error("❌ Healer agent failed to take any actions")
                 return False
 
-            if i == 0:
-                # ? Set the failed action's brain state id to the healer agent's first brain state
-                # ?needs in order to tie the replay together
-                self.replay_state_machine.passed_actions[0].brain_state_id = list(
-                    healer_agent.agent_brain_states.keys()
-                )[0]
-
             # Check if healer agent has reached the goal
             try:
 
@@ -444,7 +437,7 @@ class ReplicatorRun(ReplicatorNavigator):
         logger.info("🔄 Replacing remaining replay actions with healing actions...")
 
         # Convert healing brain states to BugninjaBrainState format
-        healing_brain_states_converted = []
+        healing_brain_states_converted: List[BugninjaBrainState] = []
         for brain_state_id, brain_state in healer_agent.agent_brain_states.items():
             healing_brain_states_converted.append(
                 BugninjaBrainState(
@@ -454,6 +447,29 @@ class ReplicatorRun(ReplicatorNavigator):
                     next_goal=brain_state.next_goal,
                 )
             )
+
+        # Identify the failed brain state (the brain state of the action that failed)
+        if self.replay_state_machine.passed_actions:
+            failed_brain_state_id = self.replay_state_machine.current_action.brain_state_id
+            healing_brain_state_id: str = healing_brain_states_converted[0].id
+
+            for action in self.replay_state_machine.passed_actions:
+                if action.brain_state_id == failed_brain_state_id:
+                    action.brain_state_id = healing_brain_state_id
+
+            self.replay_state_machine.current_action.brain_state_id = healing_brain_state_id
+            rich_print("########################")
+            rich_print(f"🔄 Failed brain state ID: {failed_brain_state_id}")
+            rich_print(f"🔄 Replacing with healing brain state ID: {healing_brain_state_id}")
+            rich_print("########################")
+
+            # # Update all actions in passed_actions that belong to the failed brain state
+            # # to reference the first healing brain state ID
+            # if healing_brain_states_converted:
+            #     first_healing_brain_state_id = healing_brain_states_converted[0].id
+            #     for action in self.replay_state_machine.passed_actions:
+            #         if action.brain_state_id == failed_brain_state_id:
+            #             action.brain_state_id = first_healing_brain_state_id
 
         # Add all healing actions and brain states to passed collections
         self.replay_state_machine.passed_actions.extend(healer_agent.agent_taken_actions)

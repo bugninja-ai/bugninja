@@ -398,8 +398,14 @@ class TestBugninjaBrowserConfig:
         config = BugninjaBrowserConfig()
 
         # Verify all default values are correctly set - essential for consistent behavior across automation scenarios
-        assert config.user_agent is None, "User agent should be None by default"
-        assert config.viewport is None, "Viewport should be None by default"
+        assert (
+            config.user_agent
+            == "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ), "User agent should have default Chrome user agent"
+        assert config.viewport == {
+            "width": 1280,
+            "height": 960,
+        }, "Viewport should default to 1280x960"
         assert config.device_scale_factor is None, "Device scale factor should be None by default"
         assert config.color_scheme == ColorScheme.LIGHT, "Color scheme should default to LIGHT"
         assert config.accept_downloads is False, "Accept downloads should default to False"
@@ -527,7 +533,7 @@ class TestBugninjaBrowserConfig:
         """
         # Use mock factory to create browser profile without viewport
         mock_profile = BrowserProfileMockFactory.custom_build(
-            user_agent="Test User Agent",
+            user_agent=None,  # Test with None user agent to ensure default is applied
             viewport=None,
             device_scale_factor=1.0,
             color_scheme=ColorScheme.LIGHT,
@@ -546,9 +552,15 @@ class TestBugninjaBrowserConfig:
         # Convert to `BugninjaBrowserConfig` using the conversion method
         config = BugninjaBrowserConfig.from_browser_profile(mock_profile)
 
-        # Verify conversion handles missing viewport correctly - important for compatibility with browser profiles that don't specify viewport dimensions
-        assert config.user_agent == "Test User Agent", "User agent should be converted correctly"
-        assert config.viewport is None, "Viewport should be None when not provided"
+        # Verify conversion handles missing viewport and user agent correctly - important for compatibility with browser profiles that don't specify viewport dimensions
+        assert (
+            config.user_agent
+            == "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ), "User agent should default to Chrome user agent when not provided"
+        assert config.viewport == {
+            "width": 1280,
+            "height": 960,
+        }, "Viewport should default to 1280x960 when not provided"
         assert (
             config.device_scale_factor == 1.0
         ), "Device scale factor should be converted correctly"
