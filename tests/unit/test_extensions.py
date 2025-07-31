@@ -14,7 +14,7 @@ from browser_use.controller.registry.views import ActionModel  # type: ignore
 from browser_use.controller.views import ScrollAction  # type: ignore
 from pydantic import BaseModel
 
-from src.agents import (
+from bugninja.agents import (
     ALTERNATIVE_XPATH_SELECTORS_KEY,
     DOM_ELEMENT_DATA_KEY,
     SELECTOR_ORIENTED_ACTIONS,
@@ -234,13 +234,13 @@ class TestExtensions:
         mock_html = "<html><body><button id='test-button'>Click me</button></body></html>"
 
         with patch(
-            "src.agents.extensions.BugninjaAgentBase.get_raw_html_of_playwright_page",
+            "bugninja.agents.extensions.BugninjaAgentBase.get_raw_html_of_playwright_page",
             new_callable=AsyncMock,
         ) as mock_get_html:
             mock_get_html.return_value = mock_html
 
             # Mock SelectorFactory
-            with patch("src.agents.extensions.SelectorFactory") as mock_factory_class:
+            with patch("bugninja.agents.extensions.SelectorFactory") as mock_factory_class:
                 mock_factory = MagicMock()
                 mock_factory.generate_relative_xpaths_from_full_xpath.return_value = [
                     "//button[@id='test-button']",
@@ -379,13 +379,13 @@ class TestExtensions:
         mock_html = "<html><body><button id='test-button'>Click me</button></body></html>"
 
         with patch(
-            "src.agents.extensions.BugninjaAgentBase.get_raw_html_of_playwright_page",
+            "bugninja.agents.extensions.BugninjaAgentBase.get_raw_html_of_playwright_page",
             new_callable=AsyncMock,
         ) as mock_get_html:
             mock_get_html.return_value = mock_html
 
             # Mock SelectorFactory
-            with patch("src.agents.extensions.SelectorFactory") as mock_factory_class:
+            with patch("bugninja.agents.extensions.SelectorFactory") as mock_factory_class:
                 mock_factory = MagicMock()
                 mock_factory.generate_relative_xpaths_from_full_xpath.return_value = ["//button"]
                 mock_factory_class.return_value = mock_factory
@@ -442,13 +442,13 @@ class TestExtensions:
         mock_html = "<html><body><button id='test-button'>Click me</button></body></html>"
 
         with patch(
-            "src.agents.extensions.BugninjaAgentBase.get_raw_html_of_playwright_page",
+            "bugninja.agents.extensions.BugninjaAgentBase.get_raw_html_of_playwright_page",
             new_callable=AsyncMock,
         ) as mock_get_html:
             mock_get_html.return_value = mock_html
 
             # Mock SelectorFactory to raise an exception
-            with patch("src.agents.extensions.SelectorFactory") as mock_factory_class:
+            with patch("bugninja.agents.extensions.SelectorFactory") as mock_factory_class:
                 mock_factory = MagicMock()
                 mock_factory.generate_relative_xpaths_from_full_xpath.side_effect = Exception(
                     "Selector generation failed"
@@ -581,13 +581,13 @@ class TestExtensions:
         mock_html = "<html><body><button id='test-button'>Click me</button></body></html>"
 
         with patch(
-            "src.agents.extensions.BugninjaAgentBase.get_raw_html_of_playwright_page",
+            "bugninja.agents.extensions.BugninjaAgentBase.get_raw_html_of_playwright_page",
             new_callable=AsyncMock,
         ) as mock_get_html:
             mock_get_html.return_value = mock_html
 
             # Mock SelectorFactory
-            with patch("src.agents.extensions.SelectorFactory") as mock_factory_class:
+            with patch("bugninja.agents.extensions.SelectorFactory") as mock_factory_class:
                 mock_factory = MagicMock()
                 mock_factory.generate_relative_xpaths_from_full_xpath.return_value = ["//button"]
                 mock_factory_class.return_value = mock_factory
@@ -880,13 +880,13 @@ class TestExtensions:
         mock_html = "<html><body><button id='test-button'>Click me</button></body></html>"
 
         with patch(
-            "src.agents.extensions.BugninjaAgentBase.get_raw_html_of_playwright_page",
+            "bugninja.agents.extensions.BugninjaAgentBase.get_raw_html_of_playwright_page",
             new_callable=AsyncMock,
         ) as mock_get_html:
             mock_get_html.return_value = mock_html
 
             # Mock SelectorFactory
-            with patch("src.agents.extensions.SelectorFactory") as mock_factory_class:
+            with patch("bugninja.agents.extensions.SelectorFactory") as mock_factory_class:
                 mock_factory = MagicMock()
                 mock_factory.generate_relative_xpaths_from_full_xpath.return_value = ["//button"]
                 mock_factory_class.return_value = mock_factory
@@ -1000,13 +1000,13 @@ class TestExtensions:
         )
 
         with patch(
-            "src.agents.extensions.BugninjaAgentBase.get_raw_html_of_playwright_page",
+            "bugninja.agents.extensions.BugninjaAgentBase.get_raw_html_of_playwright_page",
             new_callable=AsyncMock,
         ) as mock_get_html:
             mock_get_html.return_value = mock_html
 
             # Mock SelectorFactory
-            with patch("src.agents.extensions.SelectorFactory") as mock_factory_class:
+            with patch("bugninja.agents.extensions.SelectorFactory") as mock_factory_class:
                 mock_factory = MagicMock()
                 mock_factory.generate_relative_xpaths_from_full_xpath.return_value = [
                     "//div[@id='source']"

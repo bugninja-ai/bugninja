@@ -11,8 +11,8 @@ from browser_use.browser.views import BrowserStateSummary  # type:ignore
 from browser_use.controller.registry.views import ActionModel  # type:ignore
 from langchain_core.language_models.chat_models import BaseChatModel
 
-from src.agents import BugninjaAgentBase, BugninjaController, HealerAgent
-from src.schemas import BugninjaExtendedAction
+from bugninja.agents import BugninjaAgentBase, BugninjaController, HealerAgent
+from bugninja.schemas import BugninjaExtendedAction
 
 
 class TestHealerAgent:
@@ -26,7 +26,7 @@ class TestHealerAgent:
         llm_to_use = MagicMock(spec=BaseChatModel)
 
         # Enable LLM verification bypass for testing
-        from src.agents import BugninjaAgentBase
+        from bugninja.agents import BugninjaAgentBase
 
         BugninjaAgentBase.BYPASS_LLM_VERIFICATION = True
 
@@ -344,7 +344,7 @@ class TestHealerAgent:
         }
 
         with patch(
-            "src.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
+            "bugninja.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
         ) as mock_extend:
             mock_extend.return_value = [mock_extended_action]
 
@@ -413,7 +413,7 @@ class TestHealerAgent:
         }
 
         with patch(
-            "src.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
+            "bugninja.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
         ) as mock_extend:
             mock_extend.return_value = [mock_action1, mock_action2]
 
@@ -449,7 +449,7 @@ class TestHealerAgent:
 
         # Mock the extend function to return test data
         with patch(
-            "src.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
+            "bugninja.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
         ) as mock_extend:
             mock_extend.return_value = [MagicMock(spec=BugninjaExtendedAction)]
 
@@ -499,7 +499,7 @@ class TestHealerAgent:
 
             # Mock the extend function to return test data
             with patch(
-                "src.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
+                "bugninja.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
             ) as mock_extend:
                 mock_extend.return_value = [MagicMock(spec=BugninjaExtendedAction)]
 
@@ -533,7 +533,7 @@ class TestHealerAgent:
 
         # Mock the extend function to return consistent test data
         with patch(
-            "src.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
+            "bugninja.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
         ) as mock_extend:
             mock_extend.return_value = [MagicMock(spec=BugninjaExtendedAction)]
 
@@ -599,7 +599,7 @@ class TestHealerAgent:
         }
 
         with patch(
-            "src.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
+            "bugninja.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
         ) as mock_extend:
             mock_extend.return_value = [mock_extended_action]
 
@@ -668,7 +668,7 @@ class TestHealerAgent:
         }
 
         with patch(
-            "src.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
+            "bugninja.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
         ) as mock_extend:
             mock_extend.return_value = [mock_extended_action]
 
@@ -735,7 +735,7 @@ class TestHealerAgent:
 
         # Mock the extend function to raise an exception to simulate failure
         with patch(
-            "src.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
+            "bugninja.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
         ) as mock_extend:
             mock_extend.side_effect = Exception("Extension error")
 
@@ -762,7 +762,7 @@ class TestHealerAgent:
 
         # Mock the extend function to return empty list to simulate no actions
         with patch(
-            "src.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
+            "bugninja.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
         ) as mock_extend:
             mock_extend.return_value = []
 
@@ -801,7 +801,7 @@ class TestHealerAgent:
 
             # Mock the extend function to return test data
             with patch(
-                "src.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
+                "bugninja.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
             ) as mock_extend:
                 mock_extend.return_value = [MagicMock(spec=BugninjaExtendedAction)]
 
@@ -859,7 +859,7 @@ class TestHealerAgent:
         healer_agent.browser_session.get_current_page = AsyncMock(return_value=mock_page)
 
         with patch(
-            "src.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
+            "bugninja.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
         ) as mock_extend:
             mock_extend.return_value = []
 

@@ -22,20 +22,21 @@ import logging
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from browser_use.agent.views import AgentBrain  # type: ignore
 from rich import print as rich_print
 
-from src.agents.healer_agent import HealerAgent
-from src.models.model_configs import azure_openai_model
-from src.replication.replicator_navigation import ReplicatorError, ReplicatorNavigator
-from src.schemas.pipeline import (
+from bugninja.agents.healer_agent import HealerAgent
+from bugninja.models.model_configs import azure_openai_model
+from bugninja.replication.replicator_navigation import (
+    ReplicatorError,
+    ReplicatorNavigator,
+)
+from bugninja.schemas.pipeline import (
     BugninjaBrainState,
     BugninjaExtendedAction,
     ReplayWithHealingStateMachine,
-    StateComparison,
 )
-from src.utils.logger_config import set_logger_config
-from src.utils.screenshot_manager import ScreenshotManager
+from bugninja.utils.logger_config import set_logger_config
+from bugninja.utils.screenshot_manager import ScreenshotManager
 
 # Configure logging with custom format
 set_logger_config()
@@ -147,51 +148,6 @@ class ReplicatorRun(ReplicatorNavigator):
             # Continue anyway to avoid blocking the process
             logger.info("▶️ Continuing to next step...")
 
-    async def evaluate_current_state(
-        # TODO! later add here proper typing in oder to get rid of type matching problems
-        self,
-        current_state: AgentBrain,
-        travel_states: List[AgentBrain],
-    ) -> StateComparison:
-        # Read the system prompt
-        system_prompt_path = Path(__file__).parent / "prompts" / "state_comp_system_prompt.md"
-        with open(system_prompt_path, "r") as f:
-            system_prompt = f.read()
-
-        # Read the user prompt template
-        user_prompt_path = Path(__file__).parent / "prompts" / "state_comp_user_prompt.md"
-        with open(user_prompt_path, "r") as f:
-            user_prompt_template = f.read()
-
-        # Replace placeholders with actual data
-        user_prompt = user_prompt_template.replace(
-            "[[CURRENT_STATE_JSON]]",
-            json.dumps(current_state.model_dump(), indent=4, ensure_ascii=False),
-        ).replace(
-            "[[TRAVEL_STATES]]",
-            json.dumps(
-                {
-                    "travel_states": [
-                        {"idx": idx} | s.model_dump() for idx, s in enumerate(travel_states)
-                    ]
-                },
-                indent=4,
-                ensure_ascii=False,
-            ),
-        )
-
-        json_llm = azure_openai_model().bind(response_format={"type": "json_object"})
-        ai_msg = json_llm.invoke(
-            [
-                ("system", system_prompt),
-                ("human", user_prompt),
-            ]
-        )
-
-        response_json = json.loads(ai_msg.content)  # type:ignore
-
-        return StateComparison.model_validate(response_json)
-
     async def create_self_healing_agent(self) -> HealerAgent:
         """
         Start the self-healing agent.
@@ -206,8 +162,6 @@ class ReplicatorRun(ReplicatorNavigator):
         )
 
         # Share screenshot directory and counter with healing agent
-        agent.screenshots_dir = self.screenshot_manager.get_screenshots_dir()
-        agent.screenshot_counter = self.screenshot_manager.get_screenshot_counter()
         agent.screenshot_manager = self.screenshot_manager
 
         await agent._before_run_hook()
@@ -492,7 +446,3 @@ class ReplicatorRun(ReplicatorNavigator):
     def get_screenshots_dir(self) -> Path:
         """Get the current screenshots directory for sharing with healing agent"""
         return self.screenshot_manager.get_screenshots_dir()
-
-    def get_screenshot_counter(self) -> int:
-        """Get the current screenshot counter for sharing with healing agent"""
-        return self.screenshot_manager.get_screenshot_counter()

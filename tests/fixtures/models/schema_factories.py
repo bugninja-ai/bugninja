@@ -6,7 +6,7 @@ used in the bugninja application. Using Polyfactory ensures consistent and
 maintainable test data generation while reducing code duplication.
 """
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, Tuple
 from unittest.mock import MagicMock
 
 from browser_use.agent.views import AgentBrain  # type:ignore
@@ -14,62 +14,13 @@ from browser_use.browser.profile import ColorScheme  # type:ignore
 from polyfactory.factories.pydantic_factory import ModelFactory
 from typing_extensions import Unpack
 
-from src.schemas.pipeline import (
+from bugninja.schemas.pipeline import (
     BugninjaBrainState,
     BugninjaBrowserConfig,
     BugninjaExtendedAction,
-    ElementComparison,
     ReplayWithHealingStateMachine,
-    StateComparison,
     Traversal,
 )
-
-
-class ElementComparisonFactory(ModelFactory[ElementComparison]):
-    """ModelFactory for generating ElementComparison test instances.
-
-    This factory creates valid ElementComparison objects for testing.
-    The factory ensures all required fields are properly set and provides
-    realistic test data that covers various scenarios including positive
-    and negative matches.
-    """
-
-    __model__ = ElementComparison
-
-    @classmethod
-    def custom_build(cls, **kwargs: Unpack[Tuple[int, str, bool]]) -> ElementComparison:
-        """Build an ElementComparison instance with default values."""
-        defaults = {
-            "index": 0,
-            "reason": "Element matches expected state",
-            "is_match": True,
-        }
-        defaults.update(kwargs)
-        return super().build(factory_use_construct=False, **defaults)
-
-
-class StateComparisonFactory(ModelFactory[StateComparison]):
-    """ModelFactory for generating StateComparison test instances.
-
-    This factory creates StateComparison objects with realistic evaluation
-    data. It provides various scenarios including matches, non-matches,
-    and empty evaluations to test different edge cases.
-    """
-
-    __model__ = StateComparison
-
-    @classmethod
-    def custom_build(cls, **kwargs: Unpack[Tuple[List[ElementComparison]]]) -> StateComparison:
-        """Build a StateComparison instance with default values."""
-        defaults = {
-            "evaluation": [
-                ElementComparisonFactory.custom_build(index=0, is_match=True),
-                ElementComparisonFactory.custom_build(index=1, is_match=False),
-                ElementComparisonFactory.custom_build(index=2, is_match=True),
-            ]
-        }
-        defaults.update(kwargs)
-        return super().build(factory_use_construct=False, **defaults)
 
 
 class BugninjaExtendedActionFactory(ModelFactory[BugninjaExtendedAction]):

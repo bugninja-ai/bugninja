@@ -14,7 +14,7 @@ from browser_use.dom.views import DOMElementNode  # type: ignore
 from langchain_core.messages import BaseMessage, HumanMessage
 from patchright.async_api import Page  # type:ignore
 
-from src.agents import BugninjaAgentBase
+from bugninja.agents import BugninjaAgentBase
 
 
 class ConcreteBugninjaAgent(BugninjaAgentBase):
@@ -101,7 +101,7 @@ class TestBugninjaAgentBase:
     @pytest.fixture
     def agent(self) -> ConcreteBugninjaAgent:
         """Create a concrete BugninjaAgentBase instance for testing."""
-        from src.agents import BugninjaAgentBase
+        from bugninja.agents import BugninjaAgentBase
 
         BugninjaAgentBase.BYPASS_LLM_VERIFICATION = True
         return ConcreteBugninjaAgent()

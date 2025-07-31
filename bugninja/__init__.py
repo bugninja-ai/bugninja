@@ -6,6 +6,7 @@ self-healing capabilities for robust web testing, interaction recording, and aut
 task execution with built-in error recovery mechanisms.
 """
 
+# Core components
 from .agents.navigator_agent import NavigatorAgent
 from .agents.healer_agent import HealerAgent
 from .replication.replicator_run import ReplicatorRun
@@ -13,8 +14,22 @@ from .schemas.pipeline import Traversal, BugninjaBrowserConfig, BugninjaExtended
 from .models.model_configs import azure_openai_model
 from .config import ConfigurationFactory, BugninjaSettings, Environment
 
+# High-level API
+from .api import (
+    BugninjaClient,
+    Task,
+    TaskResult,
+    BugninjaConfig,
+    BugninjaError,
+    TaskExecutionError,
+    SessionReplayError,
+    ConfigurationError,
+    LLMError,
+)
+
 __version__ = "0.1.0"
 __all__ = [
+    # Core components
     "NavigatorAgent",
     "HealerAgent",
     "ReplicatorRun",
@@ -25,4 +40,14 @@ __all__ = [
     "ConfigurationFactory",
     "BugninjaSettings",
     "Environment",
+    # High-level API
+    "BugninjaClient",
+    "Task",
+    "TaskResult",
+    "BugninjaConfig",
+    "BugninjaError",
+    "TaskExecutionError",
+    "SessionReplayError",
+    "ConfigurationError",
+    "LLMError",
 ]

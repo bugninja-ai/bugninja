@@ -73,11 +73,5 @@ shell = "uv run python replay.py"
 
 [tool.poe.tasks.lint]
 help   = "Lints the whole project searching for inefficiencies in the code"
-shell = "uv run ruff check --fix src tests . && uv run isort src tests . && uv run black src tests . && uv run mypy main.py src tests"
-
-
-[tool.poe.tasks.run-celery]
-help   = "Start Celery worker for task queuing"
-shell = "uv run celery -A celery_tasks worker --loglevel=INFO"
-
+shell = "uv run ruff check --fix bugninja tests . && uv run isort bugninja tests . && uv run black bugninja tests . && uv run mypy main.py bugninja tests"
 

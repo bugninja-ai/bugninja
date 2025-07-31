@@ -12,8 +12,8 @@ from browser_use.controller.registry.views import ActionModel  # type: ignore
 from browser_use.dom.views import DOMElementNode  # type: ignore
 from langchain_core.language_models.chat_models import BaseChatModel
 
-from src.agents import BugninjaController, NavigatorAgent
-from src.schemas import BugninjaExtendedAction, Traversal
+from bugninja.agents import BugninjaController, NavigatorAgent
+from bugninja.schemas import BugninjaExtendedAction, Traversal
 
 # Import Polyfactory factories for test data generation
 from tests.fixtures.models.schema_factories import (
@@ -45,7 +45,7 @@ class TestNavigatorAgent:
         llm_to_use = MagicMock(spec=BaseChatModel)
 
         # Enable LLM verification bypass for testing
-        from src.agents import BugninjaAgentBase
+        from bugninja.agents import BugninjaAgentBase
 
         BugninjaAgentBase.BYPASS_LLM_VERIFICATION = True
 
@@ -342,7 +342,7 @@ class TestNavigatorAgent:
         }
 
         with patch(
-            "src.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
+            "bugninja.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
         ) as mock_extend:
             mock_extend.return_value = [mock_extended_action]
 
@@ -411,7 +411,7 @@ class TestNavigatorAgent:
         )
 
         with patch(
-            "src.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
+            "bugninja.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
         ) as mock_extend:
             mock_extend.return_value = [mock_action1, mock_action2]
 
@@ -450,7 +450,7 @@ class TestNavigatorAgent:
 
         # Mock the extend function to return realistic action data
         with patch(
-            "src.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
+            "bugninja.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
         ) as mock_extend:
             mock_extend.return_value = [BugninjaExtendedActionFactory.custom_build()]
 
@@ -894,7 +894,7 @@ class TestNavigatorAgent:
         agent follows the proper interface and can be used within
         the bugninja framework.
         """
-        from src.agents import BugninjaAgentBase
+        from bugninja.agents import BugninjaAgentBase
 
         # Verify inheritance - critical for framework compatibility
         assert isinstance(
@@ -938,7 +938,7 @@ class TestNavigatorAgent:
         )
 
         with patch(
-            "src.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
+            "bugninja.agents.extensions.extend_agent_action_with_info", new_callable=AsyncMock
         ) as mock_extend:
             mock_extend.return_value = [mock_extended_action]
 

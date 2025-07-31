@@ -10,10 +10,10 @@ from browser_use.browser.views import BrowserStateSummary  # type: ignore
 from browser_use.controller.registry.views import ActionModel  # type: ignore
 from cuid2 import Cuid as CUID
 
-from src.agents.bugninja_agent_base import BugninjaAgentBase
-from src.agents.extensions import BugninjaController, extend_agent_action_with_info
-from src.schemas.pipeline import BugninjaExtendedAction
-from src.utils.screenshot_manager import ScreenshotManager
+from bugninja.agents.bugninja_agent_base import BugninjaAgentBase
+from bugninja.agents.extensions import BugninjaController, extend_agent_action_with_info
+from bugninja.schemas.pipeline import BugninjaExtendedAction
+from bugninja.utils.screenshot_manager import ScreenshotManager
 
 #! keep in mind that the HealerAgent is not inherited from BugninjaAgentBase but from the NavigatorAgent directly
 #! for this reason it inherits the NavigatorAgent hooks as well

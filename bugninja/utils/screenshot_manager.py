@@ -8,7 +8,7 @@ from browser_use import BrowserSession  # type: ignore
 from browser_use.browser.session import Page  # type: ignore
 
 if TYPE_CHECKING:
-    from src.schemas.pipeline import BugninjaExtendedAction  # type: ignore
+    from bugninja.schemas.pipeline import BugninjaExtendedAction  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -194,52 +194,6 @@ class ScreenshotManager:
         except Exception as e:
             logger.warning(f"Failed to remove highlight from element with XPath '{xpath}': {e}")
 
-    async def take_screenshot_with_action_type(
-        self,
-        page: Page,
-        action_type: str,
-        browser_session: Optional[BrowserSession] = None,
-    ) -> str:
-        """
-        Take screenshot with action type for naming.
-
-        Args:
-            page: Playwright page object
-            action_type: String representing the action type for filename
-            browser_session: Browser session object for taking screenshots
-
-        Returns:
-            Full relative path to screenshot file
-        """
-        self.screenshot_counter += 1
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{self.screenshot_counter:03d}_{action_type}_{timestamp}.png"
-
-        # Take screenshot using browser_session (captures entire browser window)
-        if browser_session:
-            screenshot_b64 = await browser_session.take_screenshot()
-
-            # Convert base64 to PNG and save
-            with open(self.screenshots_dir / filename, "wb") as f:
-                f.write(base64.b64decode(screenshot_b64))
-        else:
-            # Fallback to page screenshot if no browser_session provided
-            await page.screenshot(path=str(self.screenshots_dir / filename))
-
-        logger.info(f"📸 Screenshot: {filename}")
-
-        # Return full relative path
-        return f"screenshots/{self.screenshots_dir.name}/{filename}"
-
     def get_screenshots_dir(self) -> Path:
         """Get the current screenshots directory"""
         return self.screenshots_dir
-
-    def get_screenshot_counter(self) -> int:
-        """Get the current screenshot counter"""
-        return self.screenshot_counter
-
-    def increment_counter(self) -> None:
-        """Increment the screenshot counter"""
-        self.screenshot_counter += 1

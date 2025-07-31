@@ -11,8 +11,8 @@ from browser_use.agent.views import AgentBrain  # type: ignore
 from patchright.async_api import BrowserContext as PatchrightBrowserContext
 from patchright.async_api import Page
 
-from src.schemas.pipeline import BugninjaExtendedAction, Traversal
-from src.utils.logger_config import set_logger_config
+from bugninja.schemas.pipeline import BugninjaExtendedAction, Traversal
+from bugninja.utils.logger_config import set_logger_config
 
 # Configure logging with custom format
 set_logger_config()

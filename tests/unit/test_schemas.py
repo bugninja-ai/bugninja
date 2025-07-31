@@ -8,7 +8,7 @@ from browser_use.browser.profile import (  # type:ignore
     ViewportSize,
 )
 
-from src.schemas.pipeline import (
+from bugninja.schemas.pipeline import (
     BugninjaBrainState,
     BugninjaBrowserConfig,
     BugninjaExtendedAction,
@@ -1198,7 +1198,7 @@ class TestReplayWithHealingStateMachine:
         debugging complex state machine scenarios and understanding
         the decision-making process.
         """
-        with patch("src.schemas.logger") as mock_logger:
+        with patch("bugninja.schemas.logger") as mock_logger:
             state_machine.replay_should_stop(healing_agent_reached_goal=False, verbose=True)
 
             # Verify logging was called for debugging purposes - important for debugging complex state machine scenarios

@@ -14,7 +14,7 @@ Bugninja provides a complete ecosystem for AI-driven browser automation with thr
 
 ### Core Components
 
-#### 1. **BugninjaAgentBase** (`src/agents/bugninja_agent_base.py`)
+#### 1. **BugninjaAgentBase** (`bugninja/agents/bugninja_agent_base.py`)
 The foundation class that all agents inherit from, providing:
 - **Hook System**: Lifecycle hooks for before/after actions and steps
 - **Multi-Action Support**: Execute multiple actions in sequence
@@ -22,21 +22,21 @@ The foundation class that all agents inherit from, providing:
 - **State Management**: Comprehensive browser state tracking
 - **Memory Integration**: Procedural memory for complex workflows
 
-#### 2. **NavigatorAgent** (`src/agents/navigator_agent.py`)
+#### 2. **NavigatorAgent** (`bugninja/agents/navigator_agent.py`)
 A specialized agent for web navigation and task execution:
 - **Action Recording**: Captures all interactions with detailed DOM element data
 - **Brain State Tracking**: Records agent reasoning and decision-making
 - **Traversal Persistence**: Saves complete session data to JSON files
 - **Alternative Selectors**: Generates multiple XPath selectors for robust element identification
 
-#### 3. **HealerAgent** (`src/agents/healer_agent.py`)
+#### 3. **HealerAgent** (`bugninja/agents/healer_agent.py`)
 An intelligent recovery agent that can:
 - **Self-Healing**: Automatically fix failed interactions
 - **State Comparison**: Compare current state with expected states
 - **Alternative Strategies**: Use different approaches when original actions fail
 - **Seamless Integration**: Work alongside other agents for error recovery
 
-#### 4. **BugninjaController** (`src/agents/extensions.py`)
+#### 4. **BugninjaController** (`bugninja/agents/extensions.py`)
 Enhanced controller with additional browser actions:
 - **Custom Scroll Actions**: Intelligent page scrolling with fallback mechanisms
 - **Extended Action Support**: Additional browser interaction capabilities
@@ -44,14 +44,14 @@ Enhanced controller with additional browser actions:
 
 ### Replication System
 
-#### 5. **ReplicatorNavigator** (`src/replication/replicator_navigation.py`)
+#### 5. **ReplicatorNavigator** (`bugninja/replication/replicator_navigation.py`)
 Base class for replaying recorded browser sessions:
 - **Action Execution**: Replay recorded actions with intelligent fallbacks
 - **Selector Strategies**: Multiple approaches for element identification
 - **Error Recovery**: Built-in retry mechanisms for failed actions
 - **User Interaction**: Pause and continue functionality for debugging
 
-#### 6. **ReplicatorRun** (`src/replication/replicator_run.py`)
+#### 6. **ReplicatorRun** (`bugninja/replication/replicator_run.py`)
 Advanced replication with self-healing capabilities:
 - **State Machine**: Tracks progress through brain states
 - **Automatic Healing**: Integrates HealerAgent for failed actions
@@ -107,9 +107,125 @@ Each action includes:
 
 ## 🛠️ Usage Examples
 
-### Basic Navigation Agent
+### 🚀 High-Level API (Recommended)
+
+The new high-level API provides a simple, intuitive interface for browser automation:
+
 ```python
-from src.agents.navigator_agent import NavigatorAgent
+from bugninjaapi import BugninjaClient, Task, BugninjaConfig
+
+# Create client with default configuration
+client = BugninjaClient()
+
+# Execute a simple task
+task = Task(
+    description="Navigate to example.com and click the login button",
+    target_url="https://example.com",
+    max_steps=50,
+    enable_healing=True
+)
+
+result = await client.run_task(task)
+
+if result.success:
+    print(f"Task completed in {result.steps_completed} steps")
+    print(f"Session saved to: {result.session_file}")
+else:
+    print(f"Task failed: {result.error_message}")
+```
+
+### 🔧 Custom Configuration
+
+```python
+from bugninjaapi import BugninjaClient, Task, BugninjaConfig
+
+# Create custom configuration
+config = BugninjaConfig(
+    llm_provider="azure_openai",
+    llm_model="gpt-4.1",
+    headless=True,
+    viewport_width=1920,
+    viewport_height=1080,
+    enable_healing=True
+)
+
+client = BugninjaClient(config=config)
+
+# Execute task with custom config
+task = Task(
+    description="Search for 'Python automation' on Google",
+    target_url="https://www.google.com",
+    max_steps=30
+)
+
+result = await client.run_task(task)
+```
+
+### 📋 Session Management
+
+```python
+from bugninjaapi import BugninjaClient
+from pathlib import Path
+
+client = BugninjaClient()
+
+# List available sessions
+sessions = client.list_sessions()
+for session in sessions:
+    print(f"Session: {session.file_path}")
+    print(f"Created: {session.created_at}")
+
+# Replay a session
+session_file = Path("./traversals/session_20240115.json")
+result = await client.replay_session(session_file)
+
+# Heal a failed session
+result = await client.heal_session(session_file)
+```
+
+### 🛡️ Error Handling
+
+```python
+from bugninjaapi import (
+    BugninjaClient, Task, 
+    BugninjaError, TaskExecutionError, 
+    ConfigurationError, LLMError
+)
+
+try:
+    client = BugninjaClient()
+    task = Task(description="Navigate to example.com")
+    result = await client.run_task(task)
+    
+except TaskExecutionError as e:
+    print(f"Task failed: {e}")
+    print(f"Steps completed: {e.steps_completed}")
+    
+except ConfigurationError as e:
+    print(f"Configuration error: {e}")
+    
+except LLMError as e:
+    print(f"LLM error: {e}")
+```
+
+### 🔄 Context Manager Usage
+
+```python
+from bugninjaapi import BugninjaClient, Task
+
+async with BugninjaClient() as client:
+    task = Task(description="Navigate to example.com")
+    result = await client.run_task(task)
+    # Client automatically cleaned up
+```
+
+### 🏗️ Low-Level API (Advanced Usage)
+
+For advanced use cases, you can still use the low-level components directly:
+
+#### Basic Navigation Agent
+```python
+from bugninjaagents.navigator_agent import NavigatorAgent
 
 # Create and run a navigation agent
 agent = NavigatorAgent(
@@ -122,9 +238,9 @@ agent = NavigatorAgent(
 await agent.run(max_steps=50)
 ```
 
-### Self-Healing Replication
+#### Self-Healing Replication
 ```python
-from src.replication.replicator_run import ReplicatorRun
+from bugninjareplication.replicator_run import ReplicatorRun
 
 # Replay recorded session with self-healing
 replicator = ReplicatorRun(
@@ -137,9 +253,9 @@ replicator = ReplicatorRun(
 await replicator.start()
 ```
 
-### Custom Healer Agent
+#### Custom Healer Agent
 ```python
-from src.agents.healer_agent import HealerAgent
+from bugninjaagents.healer_agent import HealerAgent
 
 # Create specialized healing agent
 healer = HealerAgent(
@@ -152,9 +268,88 @@ healer = HealerAgent(
 await healer.run(max_steps=10)
 ```
 
-## 🔧 Configuration
+## 🏗️ API Structure
 
-### Browser Profile
+### High-Level API Components
+
+The new high-level API is built around Pydantic models for type safety and validation:
+
+#### **BugninjaClient**
+Main entry point for browser automation operations:
+- **Task Execution**: Run browser automation tasks with `run_task()`
+- **Session Management**: Replay and heal recorded sessions
+- **Configuration**: Environment-aware configuration with validation
+- **Error Handling**: Comprehensive exception hierarchy
+- **Resource Management**: Automatic cleanup with context managers
+
+#### **Task Model**
+Pydantic model for defining browser automation tasks:
+```python
+Task(
+    description="Navigate to example.com and click login",
+    target_url="https://example.com",
+    max_steps=50,
+    enable_healing=True,
+    custom_config={"screenshot_on_error": True}
+)
+```
+
+#### **TaskResult Model**
+Pydantic model for task execution results:
+```python
+TaskResult(
+    success=True,
+    session_file=Path("./traversals/session.json"),
+    steps_completed=15,
+    execution_time=45.2,
+    metadata={"screenshots_taken": 5}
+)
+```
+
+#### **BugninjaConfig Model**
+Pydantic model for client configuration:
+```python
+BugninjaConfig(
+    llm_provider="azure_openai",
+    llm_model="gpt-4.1",
+    headless=True,
+    viewport_width=1920,
+    viewport_height=1080,
+    enable_healing=True
+)
+```
+
+#### **Exception Hierarchy**
+Comprehensive error handling with specific exception types:
+- **BugninjaError**: Base exception for all operations
+- **TaskExecutionError**: Task execution failures
+- **SessionReplayError**: Session replay failures
+- **ConfigurationError**: Configuration validation errors
+- **LLMError**: Language model operation errors
+- **BrowserError**: Browser automation errors
+- **ValidationError**: Input validation errors
+
+### Configuration Management
+
+#### Environment Variables
+The API supports environment variable configuration:
+```bash
+# LLM Configuration
+BUGNINJA_LLM_PROVIDER=azure_openai
+BUGNINJA_LLM_MODEL=gpt-4.1
+BUGNINJA_LLM_TEMPERATURE=0.001
+
+# Browser Configuration
+BUGNINJA_HEADLESS=true
+BUGNINJA_VIEWPORT_WIDTH=1920
+BUGNINJA_VIEWPORT_HEIGHT=1080
+
+# Task Configuration
+BUGNINJA_ENABLE_HEALING=true
+BUGNINJA_ENABLE_SCREENSHOTS=true
+```
+
+#### Browser Profile
 ```python
 from browser_use import BrowserProfile
 
@@ -165,7 +360,7 @@ browser_profile = BrowserProfile(
 )
 ```
 
-### Agent Settings
+#### Agent Settings
 ```python
 agent_settings = {
     "use_vision": True,
@@ -176,7 +371,7 @@ agent_settings = {
 
 ## 📁 File Structure
 ```
-src/
+bugninja/
 ├── agents/
 │   ├── bugninja_agent_base.py    # Base agent class
 │   ├── navigator_agent.py        # Navigation agent
@@ -225,7 +420,7 @@ Bugninja uses a centralized configuration system with Pydantic Settings for type
 
 ### **Environment-Specific Configuration**
 ```python
-from src import ConfigurationFactory, Environment
+from bugninja import ConfigurationFactory, Environment
 
 # Development environment (debug enabled, verbose logging)
 dev_settings = ConfigurationFactory.get_settings(Environment.DEVELOPMENT)
@@ -257,7 +452,7 @@ Bugninja provides a clean, intuitive API structure with progressive disclosure o
 
 ### **Simple Usage (Recommended)**
 ```python
-from src import NavigatorAgent, ReplicatorRun, Traversal, azure_openai_model
+from bugninja import NavigatorAgent, ReplicatorRun, Traversal, azure_openai_model
 
 # Configure and run agent
 llm = azure_openai_model()
@@ -271,9 +466,9 @@ await replicator.start()
 
 ### **Advanced Usage (Submodules)**
 ```python
-from src.agents import HealerAgent, BugninjaAgentBase
-from src.schemas import StateComparison, BugninjaExtendedAction
-from src.utils import ScreenshotManager, SelectorFactory
+from bugninjaagents import HealerAgent, BugninjaAgentBase
+from bugninjaschemas import StateComparison, BugninjaExtendedAction
+from bugninjautils import ScreenshotManager, SelectorFactory
 
 # Custom agent development
 class CustomAgent(BugninjaAgentBase):
@@ -286,7 +481,7 @@ selector_factory = SelectorFactory(html_content="...")
 
 ### **Configuration**
 ```python
-from src import ConfigurationFactory, Environment, BugninjaBrowserConfig
+from bugninja import ConfigurationFactory, Environment, BugninjaBrowserConfig
 
 # Get environment-specific settings
 settings = ConfigurationFactory.get_settings(Environment.DEVELOPMENT)
@@ -311,7 +506,7 @@ print(f"Production settings: {summary}")
 
 2. **Configure LLM**
    ```python
-   from src import azure_openai_model
+   from bugninja import azure_openai_model
    llm = azure_openai_model()
    ```
 
@@ -327,7 +522,7 @@ print(f"Production settings: {summary}")
 
 4. **Run Your First Agent**
    ```python
-   from src import NavigatorAgent
+   from bugninja import NavigatorAgent
    
    agent = NavigatorAgent(
        task="Navigate to example.com and take a screenshot",
@@ -350,7 +545,7 @@ uv run python main.py
 uv run python replay.py
 
 # Lint and format the code
-uv run ruff check --fix . && uv run isort . && uv run black . && uv run mypy main.py src
+uv run ruff check --fix . && uv run isort . && uv run black . && uv run mypy main.py bugninja
 
 # Start Celery worker for task queuing
 uv run celery -A celery_tasks worker --loglevel=INFO

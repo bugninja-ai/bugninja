@@ -14,9 +14,9 @@ from browser_use.controller.service import Controller, logger  # type: ignore
 from browser_use.controller.views import ScrollAction  # type: ignore
 from pydantic import BaseModel
 
-from src.agents.bugninja_agent_base import BugninjaAgentBase
-from src.schemas.pipeline import BugninjaExtendedAction
-from src.utils.selector_factory import SelectorFactory
+from bugninja.agents.bugninja_agent_base import BugninjaAgentBase
+from bugninja.schemas.pipeline import BugninjaExtendedAction
+from bugninja.utils.selector_factory import SelectorFactory
 
 SELECTOR_ORIENTED_ACTIONS: List[str] = [
     "click_element_by_index",

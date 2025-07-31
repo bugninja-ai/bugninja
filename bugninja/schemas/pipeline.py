@@ -13,48 +13,13 @@ from browser_use.browser.profile import (  # type: ignore
 from pydantic import BaseModel, Field, NonNegativeFloat
 from rich import print as rich_print
 
-from src.utils.logger_config import set_logger_config
+from bugninja.utils.logger_config import set_logger_config
 
 # Configure logging with custom format
 set_logger_config()
 logger = logging.getLogger(__name__)
 
 #! State comparisons
-
-
-class ElementComparison(BaseModel):
-    """Represents the comparison result of a single element against expected state.
-
-    This model stores the comparison details for a single element, including
-    its index position, the reason for the comparison result, and whether
-    the element matches the expected state.
-    """
-
-    index: int
-    reason: str
-    is_match: bool
-
-
-class StateComparison(BaseModel):
-    """Represents a collection of element comparisons for analyzing overall state.
-
-    This model contains a list of `ElementComparison` objects and provides
-    methods to analyze the overall state comparison results.
-    """
-
-    evaluation: List[ElementComparison]
-
-    def get_equal_state_idx(self) -> Optional[int]:
-        """Find the index of the first matching element in the evaluation.
-
-        Returns:
-            The index of the first matching element, or None if no matches found.
-        """
-        for idx, element in enumerate(self.evaluation):
-            if element.is_match:
-                return idx
-
-        return None
 
 
 class BugninjaExtendedAction(BaseModel):

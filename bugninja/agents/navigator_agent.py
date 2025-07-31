@@ -14,14 +14,14 @@ from browser_use.browser.views import BrowserStateSummary  # type: ignore
 from browser_use.controller.registry.views import ActionModel  # type: ignore
 from cuid2 import Cuid as CUID
 
-from src.agents.bugninja_agent_base import BugninjaAgentBase
-from src.agents.extensions import BugninjaController, extend_agent_action_with_info
-from src.schemas.pipeline import (
+from bugninja.agents.bugninja_agent_base import BugninjaAgentBase
+from bugninja.agents.extensions import BugninjaController, extend_agent_action_with_info
+from bugninja.schemas.pipeline import (
     BugninjaBrowserConfig,
     BugninjaExtendedAction,
     Traversal,
 )
-from src.utils.screenshot_manager import ScreenshotManager
+from bugninja.utils.screenshot_manager import ScreenshotManager
 
 
 class NavigatorAgent(BugninjaAgentBase):

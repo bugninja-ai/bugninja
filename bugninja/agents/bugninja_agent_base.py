@@ -23,7 +23,7 @@ from browser_use.utils import time_execution_async  # type: ignore
 from langchain_core.messages import HumanMessage
 
 if TYPE_CHECKING:
-    from src.schemas.pipeline import BugninjaExtendedAction
+    from bugninja.schemas.pipeline import BugninjaExtendedAction
 
 
 def hook_missing_error(hook_name: str, class_val: type) -> NotImplementedError:
