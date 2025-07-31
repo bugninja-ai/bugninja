@@ -84,6 +84,12 @@ Advanced replication with self-healing capabilities:
 - **User Control**: Pause, continue, and debug capabilities
 - **Corrected Outputs**: Save successful replays with healing actions
 
+### 🖥️ Command-Line Interface
+- **Markdown Task Files**: Define tasks in human-readable markdown format
+- **Simple Commands**: Easy-to-use CLI for task execution and session management
+- **Rich Output**: Beautiful terminal output with progress indicators
+- **Environment Variables**: Support for secure credential management
+
 ## 📊 Data Structures
 
 ### Traversal Data
@@ -96,6 +102,135 @@ Each recorded session includes:
   "brain_states": "Agent reasoning and decisions",
   "actions": "All interactions with DOM element data"
 }
+```
+
+## 🖥️ Command-Line Interface
+
+Bugninja provides a simple and powerful CLI for browser automation tasks.
+
+### Installation
+
+```bash
+# Install the package
+pip install bugninja
+
+# Or run directly from source
+python bugninja_cli.py --help
+```
+
+### Quick Start
+
+1. **Create a task file** (`my_task.md`):
+```markdown
+# My Browser Task
+
+## Description
+Navigate to example.com and click the login button
+
+## Configuration
+- **Allowed Domains**: example.com
+- **Max Steps**: 50
+
+## Secrets
+```json
+{
+  "username": "{{MY_USERNAME}}",
+  "password": "{{MY_PASSWORD}}"
+}
+```
+```
+
+2. **Run the task**:
+```bash
+bugninja run my_task.md
+```
+
+3. **Replay a session**:
+```bash
+bugninja replay
+```
+
+### Available Commands
+
+#### `run` - Execute browser automation tasks
+```bash
+# Run task from markdown file
+bugninja run task.md
+
+# Override max steps
+bugninja run task.md --max-steps 200
+
+# Interactive mode (pause after each step)
+bugninja run task.md --interactive
+```
+
+#### `replay` - Replay recorded sessions
+```bash
+# Replay latest session
+bugninja replay
+
+# Replay specific session
+bugninja replay --session-file ./traversals/session.json
+
+# Interactive replay
+bugninja replay --interactive
+```
+
+#### `heal` - Heal failed sessions
+```bash
+# Heal latest session
+bugninja heal
+
+# Heal specific session
+bugninja heal --session-file ./traversals/failed_session.json
+
+# Interactive healing
+bugninja heal --interactive
+```
+
+#### `list` - List available sessions
+```bash
+# List all sessions
+bugninja list
+```
+
+### Task File Format
+
+Task files use a simple markdown format:
+
+```markdown
+# Task Title
+Brief description
+
+## Description
+Detailed task description that will be passed to the AI agent
+
+## Configuration
+- **Allowed Domains**: domain1.com, domain2.com
+- **Max Steps**: 100
+- **Target URL**: https://example.com (optional)
+
+## Secrets
+```json
+{
+  "username": "{{ENV_USERNAME}}",
+  "password": "{{ENV_PASSWORD}}"
+}
+```
+
+## Notes
+Additional notes or instructions
+```
+
+### Environment Variables
+
+Use `{{VARIABLE_NAME}}` syntax in secrets to reference environment variables:
+
+```bash
+export MY_USERNAME="user@example.com"
+export MY_PASSWORD="secret123"
+
+bugninja run task.md
 ```
 
 ### Extended Actions

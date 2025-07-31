@@ -79,7 +79,7 @@ class Task(BaseModel):
     class Config:
         """Pydantic configuration for Task model."""
 
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "description": "Navigate to example.com and click the login button",
                 "target_url": "https://example.com",
@@ -137,7 +137,7 @@ class TaskResult(BaseModel):
     class Config:
         """Pydantic configuration for TaskResult model."""
 
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "success": True,
                 "session_file": "/path/to/session.json",
@@ -233,7 +233,7 @@ class BugninjaConfig(BaseModel):
 
         env_prefix = "BUGNINJA_"
         case_sensitive = False
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "llm_provider": "azure_openai",
                 "llm_model": "gpt-4.1",
@@ -279,7 +279,7 @@ class SessionInfo(BaseModel):
     class Config:
         """Pydantic configuration for SessionInfo model."""
 
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "file_path": "/path/to/session.json",
                 "created_at": "2024-01-15T10:30:00",

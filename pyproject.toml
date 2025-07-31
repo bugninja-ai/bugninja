@@ -4,6 +4,18 @@ version = "0.1.0"
 description = "AI-Powered Browser Automation & Self-Healing Framework"
 readme = "README.md"
 requires-python = ">=3.13"
+authors = [
+    {name = "Bugninja Team", email = "team@bugninja.com"}
+]
+license = {text = "MIT"}
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+]
+keywords = ["browser", "automation", "ai", "testing", "web"]
 dependencies = [
     "black==25.1.0",
     "browser-use[memory]==0.2.5",
@@ -26,9 +38,13 @@ dependencies = [
     "python-dotenv==1.1.0",
     "rich==14.0.0",
     "ruff==0.11.13",
+    "typer>=0.16.0",
     "types-lxml==2025.3.30",
     "uvloop>=0.21.0",
 ]
+
+[project.scripts]
+bugninja = "bugninja_cli:app"
 
 
 [tool.ruff]
@@ -56,6 +72,11 @@ disallow_untyped_defs = true
 
 
 [tool.poe.tasks]
+
+
+[tool.poe.tasks.bugninja]
+help   = "Access the Bugninja CLI"
+shell = "uv run python bugninja_cli.py"
 
 #? Development related commands
 [tool.poe.tasks.run]

@@ -14,7 +14,7 @@ with comprehensive type safety and validation using Pydantic models.
 """
 
 from bugninja.api.client import BugninjaClient
-from bugninja.api.models import Task, TaskResult, BugninjaConfig
+from bugninja.api.models import Task, TaskResult, BugninjaConfig, SessionInfo
 from bugninja.api.exceptions import (
     BugninjaError,
     TaskExecutionError,
@@ -29,6 +29,7 @@ __all__ = [
     "Task",
     "TaskResult",
     "BugninjaConfig",
+    "SessionInfo",
     "BugninjaError",
     "TaskExecutionError",
     "SessionReplayError",
