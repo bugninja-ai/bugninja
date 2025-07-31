@@ -14,7 +14,7 @@ from browser_use.controller.registry.views import ActionModel  # type: ignore
 from browser_use.controller.views import ScrollAction  # type: ignore
 from pydantic import BaseModel
 
-from src.agents.extensions import (
+from src.agents import (
     ALTERNATIVE_XPATH_SELECTORS_KEY,
     DOM_ELEMENT_DATA_KEY,
     SELECTOR_ORIENTED_ACTIONS,

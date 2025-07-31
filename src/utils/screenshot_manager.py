@@ -2,12 +2,13 @@ import base64
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from browser_use import BrowserSession  # type: ignore
 from browser_use.browser.session import Page  # type: ignore
 
-from src.schemas.pipeline import BugninjaExtendedAction  # type: ignore
+if TYPE_CHECKING:
+    from src.schemas.pipeline import BugninjaExtendedAction  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ class ScreenshotManager:
     async def take_screenshot(
         self,
         page: Page,
-        action: BugninjaExtendedAction,
+        action: "BugninjaExtendedAction",
         browser_session: Optional[BrowserSession] = None,
     ) -> str:
         """

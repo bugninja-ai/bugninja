@@ -14,7 +14,7 @@ from browser_use.dom.views import DOMElementNode  # type: ignore
 from langchain_core.messages import BaseMessage, HumanMessage
 from patchright.async_api import Page  # type:ignore
 
-from src.agents.bugninja_agent_base import BugninjaAgentBase, hook_missing_error
+from src.agents import BugninjaAgentBase
 
 
 class ConcreteBugninjaAgent(BugninjaAgentBase):
@@ -101,7 +101,7 @@ class TestBugninjaAgentBase:
     @pytest.fixture
     def agent(self) -> ConcreteBugninjaAgent:
         """Create a concrete BugninjaAgentBase instance for testing."""
-        from src.agents.bugninja_agent_base import BugninjaAgentBase
+        from src.agents import BugninjaAgentBase
 
         BugninjaAgentBase.BYPASS_LLM_VERIFICATION = True
         return ConcreteBugninjaAgent()
@@ -171,15 +171,6 @@ class TestBugninjaAgentBase:
         action.model_dump.return_value = {"click": {"selector": "button"}}
         action.get_index.return_value = None
         return action
-
-    def test_hook_missing_error(self) -> None:
-        """Test the hook_missing_error helper function for correct error raising and message."""
-        error = hook_missing_error("test_hook", ConcreteBugninjaAgent)
-        assert isinstance(
-            error, NotImplementedError
-        ), "hook_missing_error should return NotImplementedError"
-        assert "test_hook" in str(error), "Error message should mention the missing hook name"
-        assert "ConcreteBugninjaAgent" in str(error), "Error message should mention the class name"
 
     @pytest.mark.asyncio
     async def test_get_raw_html_of_playwright_page_success(

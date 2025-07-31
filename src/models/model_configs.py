@@ -1,28 +1,38 @@
-import os
+"""
+LLM model configuration using the new settings system.
 
-from dotenv import load_dotenv
+This module provides LLM model creation functions that use the centralized
+configuration management system for type-safe and environment-aware settings.
+"""
+
+from typing import Optional
+
 from langchain_openai import AzureChatOpenAI
-from pydantic import SecretStr
 
-load_dotenv()
-
-
-# TODO!: create a proper config oriented and well documented factory method here
+from ..config import ConfigurationFactory, Environment, create_azure_openai_model
 
 
-def azure_openai_model(temperature: float = 0.001) -> AzureChatOpenAI:
-    AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-    AZURE_OPENAI_KEY = os.getenv("AZURE_OPENAI_KEY")
+def azure_openai_model(
+    temperature: Optional[float] = None, environment: Environment = Environment.DEVELOPMENT
+) -> AzureChatOpenAI:
+    """Create Azure OpenAI model with configuration.
 
-    if AZURE_OPENAI_ENDPOINT is None or AZURE_OPENAI_KEY is None:
-        raise ValueError(
-            "Missing Azure OpenAI configuration. Please set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_KEY environment variables."
-        )
+    Args:
+        temperature: Optional temperature override (uses default from settings if None)
+        environment: The target environment for configuration
 
-    return AzureChatOpenAI(
-        model="gpt-4.1",
-        api_version="2024-02-15-preview",
-        azure_endpoint=AZURE_OPENAI_ENDPOINT,
-        api_key=SecretStr(AZURE_OPENAI_KEY),
-        temperature=temperature,
-    )
+    Returns:
+        Configured AzureChatOpenAI instance
+
+    Raises:
+        ValueError: If LLM configuration is invalid or missing
+    """
+    # Get settings for the environment
+    settings = ConfigurationFactory.get_settings(environment)
+
+    # Use provided temperature or default from settings
+    if temperature is not None:
+        settings.azure_openai_temperature = temperature
+
+    # Create and return the model
+    return create_azure_openai_model(environment)

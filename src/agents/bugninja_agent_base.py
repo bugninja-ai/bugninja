@@ -2,7 +2,7 @@ import asyncio
 import inspect
 import time
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from browser_use.agent.message_manager.utils import save_conversation  # type: ignore
 from browser_use.agent.service import (  # type: ignore
@@ -22,7 +22,8 @@ from browser_use.controller.registry.views import ActionModel  # type: ignore
 from browser_use.utils import time_execution_async  # type: ignore
 from langchain_core.messages import HumanMessage
 
-from src.schemas.pipeline import BugninjaExtendedAction
+if TYPE_CHECKING:
+    from src.schemas.pipeline import BugninjaExtendedAction
 
 
 def hook_missing_error(hook_name: str, class_val: type) -> NotImplementedError:
@@ -39,7 +40,7 @@ class BugninjaAgentBase(Agent, ABC):
     ) -> None:
         super().__init__(*args, **kwargs)
         # Initialize extended actions storage
-        self.current_step_extended_actions: List[BugninjaExtendedAction] = []
+        self.current_step_extended_actions: List["BugninjaExtendedAction"] = []
         self._action_to_extended_index: Dict[int, int] = {}
 
     def _detect_best_tool_calling_method(self) -> Optional[str]:
@@ -165,7 +166,7 @@ class BugninjaAgentBase(Agent, ABC):
             action: The ActionModel to match
 
         Returns:
-            The matching BugninjaExtendedAction if found, None otherwise
+            The matching "BugninjaExtendedAction" if found, None otherwise
         """
         # Use action index for safe matching
         action_index: int = self._action_to_extended_index.get(id(action), None)  # type: ignore

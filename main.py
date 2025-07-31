@@ -8,8 +8,8 @@ from browser_use import BrowserProfile  # type: ignore
 from dotenv import load_dotenv
 from faker import Faker
 
-from src.agents.navigator_agent import NavigatorAgent
-from src.models.model_configs import azure_openai_model
+# Get authentication prompt from configuration
+from src import ConfigurationFactory, Environment, NavigatorAgent, azure_openai_model
 
 fake = Faker()
 
@@ -42,13 +42,8 @@ async def capture_screenshot_hook(agent: NavigatorAgent) -> None:
     print(f"Screenshot saved: {screenshot_path}")
 
 
-AUTHENTICATION_HANDLING_EXTRA_PROMPT: str = (
-    """
-### HANDLING THIRD PARTY AUTHENTICATION
-
-It is very important that you are able to handle third-party authentication or the non-authentication software, such as applications or SMS verifications, in your action space. There is a declared action for this type of interaction, and you must not forget that you can handle this. In this scenario, you will wait for the user's response, and the user will be signaling when the third-party authentication is completed. After that is done, you must re-evaluate the updated state of the browser.
-""".strip()
-)
+settings = ConfigurationFactory.get_settings(Environment.DEVELOPMENT)
+AUTHENTICATION_HANDLING_EXTRA_PROMPT: str = settings.authentication_handling_prompt
 
 
 async def run_agent(

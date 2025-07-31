@@ -11,10 +11,8 @@ from browser_use.browser.views import BrowserStateSummary  # type:ignore
 from browser_use.controller.registry.views import ActionModel  # type:ignore
 from langchain_core.language_models.chat_models import BaseChatModel
 
-from src.agents.bugninja_agent_base import BugninjaAgentBase
-from src.agents.extensions import BugninjaController
-from src.agents.healer_agent import HealerAgent
-from src.schemas.pipeline import BugninjaExtendedAction
+from src.agents import BugninjaAgentBase, BugninjaController, HealerAgent
+from src.schemas import BugninjaExtendedAction
 
 
 class TestHealerAgent:
@@ -28,7 +26,7 @@ class TestHealerAgent:
         llm_to_use = MagicMock(spec=BaseChatModel)
 
         # Enable LLM verification bypass for testing
-        from src.agents.bugninja_agent_base import BugninjaAgentBase
+        from src.agents import BugninjaAgentBase
 
         BugninjaAgentBase.BYPASS_LLM_VERIFICATION = True
 

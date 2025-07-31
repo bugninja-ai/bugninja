@@ -219,6 +219,89 @@ src/
 - **Error Isolation**: Failures don't affect subsequent runs
 - **Audit Trail**: Complete logging of all actions
 
+## ⚙️ Configuration Management
+
+Bugninja uses a centralized configuration system with Pydantic Settings for type-safe, environment-aware configuration:
+
+### **Environment-Specific Configuration**
+```python
+from src import ConfigurationFactory, Environment
+
+# Development environment (debug enabled, verbose logging)
+dev_settings = ConfigurationFactory.get_settings(Environment.DEVELOPMENT)
+
+# Production environment (optimized for performance)
+prod_settings = ConfigurationFactory.get_settings(Environment.PRODUCTION)
+
+# Testing environment (minimal features for fast execution)
+test_settings = ConfigurationFactory.get_settings(Environment.TESTING)
+```
+
+### **Configuration Features**
+- **Type Safety**: All configuration values are validated
+- **Environment Variables**: Automatic loading from `.env` files
+- **Environment Overrides**: Different settings per deployment environment
+- **Validation**: Automatic validation with custom rules
+- **Documentation**: Self-documenting configuration with descriptions
+
+### **Configuration File**
+Copy `env.example` to `.env` and customize your settings:
+```bash
+cp env.example .env
+# Edit .env with your configuration values
+```
+
+## 📦 API Structure
+
+Bugninja provides a clean, intuitive API structure with progressive disclosure of complexity:
+
+### **Simple Usage (Recommended)**
+```python
+from src import NavigatorAgent, ReplicatorRun, Traversal, azure_openai_model
+
+# Configure and run agent
+llm = azure_openai_model()
+agent = NavigatorAgent(task="...", llm=llm, browser_session=...)
+await agent.run()
+
+# Replay recorded session
+replicator = ReplicatorRun(json_path="traversal.json")
+await replicator.start()
+```
+
+### **Advanced Usage (Submodules)**
+```python
+from src.agents import HealerAgent, BugninjaAgentBase
+from src.schemas import StateComparison, BugninjaExtendedAction
+from src.utils import ScreenshotManager, SelectorFactory
+
+# Custom agent development
+class CustomAgent(BugninjaAgentBase):
+    # Implementation...
+
+# Advanced utilities
+screenshot_manager = ScreenshotManager(folder_prefix="custom")
+selector_factory = SelectorFactory(html_content="...")
+```
+
+### **Configuration**
+```python
+from src import ConfigurationFactory, Environment, BugninjaBrowserConfig
+
+# Get environment-specific settings
+settings = ConfigurationFactory.get_settings(Environment.DEVELOPMENT)
+
+# Configure browser using code-based settings
+config = BugninjaBrowserConfig(
+    viewport={"width": settings.browser_config["viewport_width"], "height": settings.browser_config["viewport_height"]},
+    user_agent=settings.browser_config["user_agent"]
+)
+
+# Get configuration summary
+summary = ConfigurationFactory.get_settings_summary(Environment.PRODUCTION)
+print(f"Production settings: {summary}")
+```
+
 ## 🚀 Getting Started
 
 1. **Install Dependencies**
@@ -228,7 +311,7 @@ src/
 
 2. **Configure LLM**
    ```python
-   from src.models.model_configs import azure_openai_model
+   from src import azure_openai_model
    llm = azure_openai_model()
    ```
 
@@ -244,7 +327,7 @@ src/
 
 4. **Run Your First Agent**
    ```python
-   from src.agents.navigator_agent import NavigatorAgent
+   from src import NavigatorAgent
    
    agent = NavigatorAgent(
        task="Navigate to example.com and take a screenshot",

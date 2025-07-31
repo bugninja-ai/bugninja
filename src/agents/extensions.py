@@ -55,7 +55,7 @@ async def extend_agent_action_with_info(
     current_page: Page,
     model_output: AgentOutput = None,
     browser_state_summary: BrowserStateSummary = None,
-) -> List[BugninjaExtendedAction]:
+) -> List["BugninjaExtendedAction"]:
     """
     Extends agent actions with additional DOM element information and alternative selectors.
 
@@ -96,7 +96,7 @@ async def extend_agent_action_with_info(
           alternative selectors to None if generation fails
     """
 
-    currently_taken_actions: List[BugninjaExtendedAction] = []
+    currently_taken_actions: List["BugninjaExtendedAction"] = []
 
     for action in model_output.action:
         short_action_descriptor: Dict[str, Any] = action.model_dump(exclude_none=True)

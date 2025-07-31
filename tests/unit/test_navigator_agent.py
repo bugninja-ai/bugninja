@@ -12,9 +12,8 @@ from browser_use.controller.registry.views import ActionModel  # type: ignore
 from browser_use.dom.views import DOMElementNode  # type: ignore
 from langchain_core.language_models.chat_models import BaseChatModel
 
-from src.agents.extensions import BugninjaController
-from src.agents.navigator_agent import NavigatorAgent
-from src.schemas.pipeline import BugninjaExtendedAction, Traversal
+from src.agents import BugninjaController, NavigatorAgent
+from src.schemas import BugninjaExtendedAction, Traversal
 
 # Import Polyfactory factories for test data generation
 from tests.fixtures.models.schema_factories import (
@@ -46,7 +45,7 @@ class TestNavigatorAgent:
         llm_to_use = MagicMock(spec=BaseChatModel)
 
         # Enable LLM verification bypass for testing
-        from src.agents.bugninja_agent_base import BugninjaAgentBase
+        from src.agents import BugninjaAgentBase
 
         BugninjaAgentBase.BYPASS_LLM_VERIFICATION = True
 
@@ -895,7 +894,7 @@ class TestNavigatorAgent:
         agent follows the proper interface and can be used within
         the bugninja framework.
         """
-        from src.agents.bugninja_agent_base import BugninjaAgentBase
+        from src.agents import BugninjaAgentBase
 
         # Verify inheritance - critical for framework compatibility
         assert isinstance(

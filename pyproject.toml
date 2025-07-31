@@ -1,7 +1,7 @@
 [project]
-name = "browser-use-experiments"
+name = "bugninja"
 version = "0.1.0"
-description = "Add your description here"
+description = "AI-Powered Browser Automation & Self-Healing Framework"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -19,6 +19,7 @@ dependencies = [
     "openai==1.84.0",
     "polyfactory==2.22.0",
     "pydantic==2.10.6",
+    "pydantic-settings>=2.10.1",
     "pytest==8.4.1",
     "pytest-asyncio==1.0.0",
     "pytest-pretty>=1.3.0",
