@@ -1,9 +1,21 @@
 [project]
-name = "browser-use-experiments"
+name = "bugninja"
 version = "0.1.0"
-description = "Add your description here"
+description = "AI-Powered Browser Automation & Self-Healing Framework"
 readme = "README.md"
 requires-python = ">=3.13"
+authors = [
+    {name = "Bugninja Team", email = "team@bugninja.com"}
+]
+license = {text = "MIT"}
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+]
+keywords = ["browser", "automation", "ai", "testing", "web"]
 dependencies = [
     "black==25.1.0",
     "browser-use[memory]==0.2.5",
@@ -19,15 +31,20 @@ dependencies = [
     "openai==1.84.0",
     "polyfactory==2.22.0",
     "pydantic==2.10.6",
+    "pydantic-settings>=2.10.1",
     "pytest==8.4.1",
     "pytest-asyncio==1.0.0",
     "pytest-pretty>=1.3.0",
     "python-dotenv==1.1.0",
     "rich==14.0.0",
     "ruff==0.11.13",
+    "typer>=0.16.0",
     "types-lxml==2025.3.30",
     "uvloop>=0.21.0",
 ]
+
+[project.scripts]
+bugninja = "bugninja_cli:app"
 
 
 [tool.ruff]
@@ -56,6 +73,11 @@ disallow_untyped_defs = true
 
 [tool.poe.tasks]
 
+
+[tool.poe.tasks.bugninja]
+help   = "Access the Bugninja CLI"
+shell = "uv run python bugninja_cli.py"
+
 #? Development related commands
 [tool.poe.tasks.run]
 help   = "Start test traversal agent interaction"
@@ -72,11 +94,5 @@ shell = "uv run python replay.py"
 
 [tool.poe.tasks.lint]
 help   = "Lints the whole project searching for inefficiencies in the code"
-shell = "uv run ruff check --fix src tests . && uv run isort src tests . && uv run black src tests . && uv run mypy main.py src tests"
-
-
-[tool.poe.tasks.run-celery]
-help   = "Start Celery worker for task queuing"
-shell = "uv run celery -A celery_tasks worker --loglevel=INFO"
-
+shell = "uv run ruff check --fix bugninja tests . && uv run isort bugninja tests . && uv run black bugninja tests . && uv run mypy main.py bugninja tests"
 
