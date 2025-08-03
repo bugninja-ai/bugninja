@@ -64,7 +64,6 @@ async def run_task(
         # Create task object
         task = Task(
             description=config["description"],
-            target_url=config["target_url"],
             max_steps=config["max_steps"],
             enable_healing=True,
             allowed_domains=config["allowed_domains"],

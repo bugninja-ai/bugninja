@@ -53,8 +53,8 @@ async def get_user_input_async() -> UserInputResponse:
 async def extend_agent_action_with_info(
     brain_state_id: str,
     current_page: Page,
-    model_output: AgentOutput = None,
-    browser_state_summary: BrowserStateSummary = None,
+    model_output: AgentOutput,
+    browser_state_summary: BrowserStateSummary,
 ) -> List["BugninjaExtendedAction"]:
     """
     Extends agent actions with additional DOM element information and alternative selectors.

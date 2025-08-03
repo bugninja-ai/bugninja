@@ -4,7 +4,7 @@ import json
 import logging
 import sys
 from abc import ABC
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple
 
 from browser_use import BrowserProfile, BrowserSession  # type: ignore
 from browser_use.agent.views import AgentBrain  # type: ignore
@@ -38,6 +38,7 @@ class SelectorError(ReplicatorError):
 
 
 class ReplicatorNavigator(ABC):
+    secrets: Dict[str, str]
 
     @staticmethod
     def _get_user_input() -> str:
@@ -200,7 +201,7 @@ class ReplicatorNavigator(ABC):
         if switch_tab_id is None:
             raise ActionError("No page ID provided for tab switching")
 
-        contexts: List[PatchrightBrowserContext] = self.browser_session.browser.contexts
+        contexts: Sequence[PatchrightBrowserContext] = self.browser_session.browser.contexts
 
         if not len(contexts):
             raise ActionError("No browser contexts found for tab switching")
@@ -562,6 +563,7 @@ class ReplicatorNavigator(ABC):
         self.current_page = await self.browser_session.get_current_page()
 
     async def after_run(self, did_run_fail: bool, failed_reason: Optional[str]) -> None:
+
         logger.info("🧹 Cleaning up resources")
         await self.cleanup()
 
@@ -581,12 +583,11 @@ class ReplicatorNavigator(ABC):
 
         await self.before_run()
 
-        did_run_fail: bool
         failed_reason: Optional[str]
 
-        did_run_fail, failed_reason = await self._run()
+        success, failed_reason = await self._run()
 
-        await self.after_run(did_run_fail=did_run_fail, failed_reason=failed_reason)
+        await self.after_run(did_run_fail=not success, failed_reason=failed_reason)
 
     async def _run(self) -> Tuple[bool, Optional[str]]:
         """This function describes what should happen during the replication of the replay.

@@ -51,7 +51,6 @@ async def run_task_with_client(
         # Create task with all necessary parameters
         task = Task(
             description=task_description,
-            target_url=None,  # Optional field - no specific target URL
             max_steps=max_steps,
             enable_healing=True,
             allowed_domains=allowed_domains,
@@ -88,15 +87,31 @@ If successful log out and close the browser.
 """.strip()
 
 
-async def bacprep_navigation() -> TaskResult:
+async def bacprep_navigation_1() -> TaskResult:
     """Execute BACPREP navigation task."""
     print("🚀 Starting BACPREP navigation task...")
 
     return await run_task_with_client(
         task_description=BACPREP_NAVIGATION_PROMPT,
         secrets={
-            "credential_email": "feligaf715@lewou.com",
-            "credential_password": os.getenv("BACPREP_LOGIN_PASSWORD"),
+            "credential_email": os.getenv("BACPREP_MAIL_1"),
+            "credential_password": os.getenv("BACPREP_LOGIN_PASSWORD_1"),
+            "new_username": fake.name(),
+        },
+        allowed_domains=["app.bacprep.ro"],
+        max_steps=150,
+    )
+
+
+async def bacprep_navigation_2() -> TaskResult:
+    """Execute BACPREP navigation task."""
+    print("🚀 Starting BACPREP navigation task...")
+
+    return await run_task_with_client(
+        task_description=BACPREP_NAVIGATION_PROMPT,
+        secrets={
+            "credential_email": os.getenv("BACPREP_MAIL_2"),
+            "credential_password": os.getenv("BACPREP_LOGIN_PASSWORD_2"),
             "new_username": fake.name(),
         },
         allowed_domains=["app.bacprep.ro"],
@@ -140,7 +155,7 @@ async def main() -> None:
 
     try:
         # Run BACPREP navigation task
-        result = await bacprep_navigation()
+        result = await bacprep_navigation_1()
 
         if result.success:
             print("\n✅ BACPREP task completed successfully!")

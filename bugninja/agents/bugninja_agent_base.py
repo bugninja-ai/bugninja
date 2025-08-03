@@ -2,7 +2,7 @@ import asyncio
 import inspect
 import time
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from browser_use.agent.message_manager.utils import save_conversation  # type: ignore
 from browser_use.agent.service import (  # type: ignore
@@ -22,6 +22,9 @@ from browser_use.controller.registry.views import ActionModel  # type: ignore
 from browser_use.utils import time_execution_async  # type: ignore
 from langchain_core.messages import HumanMessage
 
+from bugninja.events import EventPublisherManager
+from bugninja.events.types import EventType
+
 if TYPE_CHECKING:
     from bugninja.schemas.pipeline import BugninjaExtendedAction
 
@@ -31,7 +34,6 @@ def hook_missing_error(hook_name: str, class_val: type) -> NotImplementedError:
 
 
 class BugninjaAgentBase(Agent, ABC):
-
     # Class-level flag to control LLM verification bypass
     BYPASS_LLM_VERIFICATION = False
 
@@ -42,6 +44,10 @@ class BugninjaAgentBase(Agent, ABC):
         # Initialize extended actions storage
         self.current_step_extended_actions: List["BugninjaExtendedAction"] = []
         self._action_to_extended_index: Dict[int, int] = {}
+
+        # Initialize event publisher manager (explicitly passed)
+        self.event_manager: Optional[EventPublisherManager] = None
+        self.run_id: Optional[str] = None
 
     def _detect_best_tool_calling_method(self) -> Optional[str]:
         """
@@ -72,6 +78,55 @@ class BugninjaAgentBase(Agent, ABC):
         await page.wait_for_load_state("load")
         html_content_of_page: str = await page.content()
         return html_content_of_page
+
+    def _get_current_action_type(self) -> str:
+        """Get the current action type for event publishing.
+
+        Returns:
+            The current action type as a string, or "unknown" if not available.
+        """
+        if not self.state.last_result:
+            return "unknown"
+
+        # Get the last action result
+        last_result = self.state.last_result[-1] if self.state.last_result else None
+        if last_result and hasattr(last_result, "action_type"):
+            action_type = getattr(last_result, "action_type", None)
+            if isinstance(action_type, str):
+                return action_type
+        return "unknown"
+
+    async def _get_current_url(self) -> str:
+        """Get the current URL for event publishing.
+
+        Returns:
+            The current page URL as a string, or "unknown" if not available.
+        """
+        try:
+            if hasattr(self, "browser_session") and self.browser_session:
+                current_page = await self.browser_session.get_current_page()
+                url = current_page.url
+                if isinstance(url, str):
+                    return url
+        except Exception:
+            pass
+        return "unknown"
+
+    async def _publish_run_event(self, event_type: str, data: Dict[str, Any]) -> None:
+        """Publish event to all available publishers.
+
+        Args:
+            event_type: Type of event to publish
+            data: Event data
+        """
+        if not self.event_manager or not self.run_id:
+            return
+
+        try:
+            await self.event_manager.publish_event(self.run_id, event_type, data)
+        except Exception:
+            # Continue execution even if event publishing fails
+            pass
 
     @abstractmethod
     async def _before_step_hook(
@@ -108,7 +163,7 @@ class BugninjaAgentBase(Agent, ABC):
 
         Args:
             browser_state_summary (BrowserStateSummary): The BrowserStateSummary of the current step
-            model_output (AgentOutput): The output of the agent representing the action that was taken
+            model_output (AgentOutput): The output of the agent representing the actions to be taken
 
         Raises:
             NotImplementedError: This method is not implemented
@@ -117,8 +172,7 @@ class BugninjaAgentBase(Agent, ABC):
 
     @abstractmethod
     async def _before_run_hook(self) -> None:
-        """A hook that is called BEFORE the agent starts running.
-        Ideal for any initialization that needs to be done before the agent starts running.
+        """A hook that is called BEFORE a run is started!
 
         Raises:
             NotImplementedError: This method is not implemented
@@ -127,8 +181,7 @@ class BugninjaAgentBase(Agent, ABC):
 
     @abstractmethod
     async def _after_run_hook(self) -> None:
-        """A hook that is called AFTER the agent is done running.
-        Ideal for any cleanup that needs to be done after the agent is done running, or saving any sort of data
+        """A hook that is called AFTER a run is finished!
 
         Raises:
             NotImplementedError: This method is not implemented
@@ -137,7 +190,7 @@ class BugninjaAgentBase(Agent, ABC):
 
     @abstractmethod
     async def _before_action_hook(self, action: ActionModel) -> None:
-        """A hook that is called BEFORE a single action is taken by the agent
+        """A hook that is called BEFORE an action is taken!
 
         Args:
             action (ActionModel): The action that is about to be taken
@@ -149,10 +202,10 @@ class BugninjaAgentBase(Agent, ABC):
 
     @abstractmethod
     async def _after_action_hook(self, action: ActionModel) -> None:
-        """A hook that is called AFTER a single action was taken by the agent.
+        """A hook that is called AFTER an action is taken!
 
         Args:
-            action (ActionModel): The action that was taken
+            action (ActionModel): The action that was just taken
 
         Raises:
             NotImplementedError: This method is not implemented
@@ -160,36 +213,21 @@ class BugninjaAgentBase(Agent, ABC):
         raise hook_missing_error("_after_action_hook", self.__class__)
 
     def _find_matching_extended_action(self, action: ActionModel) -> "BugninjaExtendedAction":
-        """Find the matching extended action for a given ActionModel.
-
-        Args:
-            action: The ActionModel to match
-
-        Returns:
-            The matching "BugninjaExtendedAction" if found, None otherwise
-        """
-        # Use action index for safe matching
+        """Find the matching extended action for a given action."""
         action_index: int = self._action_to_extended_index.get(id(action), None)  # type: ignore
         return self.current_step_extended_actions[action_index]
 
     def _associate_action_with_extended_action(self, action: ActionModel, index: int) -> None:
-        """Associate an ActionModel with its corresponding extended action index.
-
-        Args:
-            action: The ActionModel to associate
-            index: The index of the corresponding extended action
-        """
+        """Associate an action with its extended action index."""
         self._action_to_extended_index[id(action)] = index
 
     def _clear_action_mapping(self) -> None:
-        """Clear the action to extended action mapping to prevent memory accumulation."""
-        if hasattr(self, "_action_to_extended_index"):
-            self._action_to_extended_index.clear()
+        """Clear the action mapping."""
+        self._action_to_extended_index.clear()
 
     @time_execution_async("--run (agent)")
     async def run(self, max_steps: int = 100) -> Optional[AgentHistoryList]:
         """Execute the task with maximum number of steps"""
-
         await self._before_run_hook()
         results = await super().run(max_steps=max_steps, on_step_start=None, on_step_end=None)
         await self._after_run_hook()
@@ -348,6 +386,21 @@ class BugninjaAgentBase(Agent, ABC):
             await self._after_step_hook(
                 browser_state_summary=browser_state_summary, model_output=model_output
             )
+
+            # Publish step completion event
+            if self.event_manager and self.run_id:
+                current_action = self._get_current_action_type()
+                current_url = await self._get_current_url()
+
+                await self._publish_run_event(
+                    EventType.STEP_COMPLETED,
+                    {
+                        "step_number": self.state.n_steps,
+                        "action_type": current_action,
+                        "current_url": current_url,
+                    },
+                )
+
         except InterruptedError:
             # logger.debug('Agent paused')
             self.state.last_result = [
@@ -387,7 +440,7 @@ class BugninjaAgentBase(Agent, ABC):
         actions: list[ActionModel],
         check_for_new_elements: bool = True,
     ) -> list[ActionResult]:
-        """Execute multiple actions"""
+        """Execute multiple actions."""
         results: list[ActionResult] = []
 
         cached_selector_map = await self.browser_session.get_selector_map()
@@ -448,6 +501,22 @@ class BugninjaAgentBase(Agent, ABC):
 
                 await asyncio.sleep(self.browser_profile.wait_between_actions)
                 # hash all elements. if it is a subset of cached_state its fine - else break (new elements on page)
+
+                # Associate action with extended action
+                self._associate_action_with_extended_action(action, i)
+
+                # Publish action completion event
+                if self.event_manager and self.run_id:
+                    await self._publish_run_event(
+                        EventType.ACTION_COMPLETED,
+                        {
+                            "action_index": i,
+                            "action_type": (
+                                action.action_type if hasattr(action, "action_type") else "unknown"
+                            ),
+                            "success": not result.error if hasattr(result, "error") else True,
+                        },
+                    )
 
             except asyncio.CancelledError:
                 # Gracefully handle task cancellation

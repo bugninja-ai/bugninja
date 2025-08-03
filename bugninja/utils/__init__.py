@@ -1,8 +1,10 @@
 """
-Bugninja Utils - Utility classes and helpers
+Utility modules for Bugninja framework.
 
-This module provides utility classes for screenshot management, selector generation,
-and other helper functionality for browser automation.
+This module provides various utility functions and classes for:
+- Screenshot management
+- DOM element selection
+- And other common utilities
 """
 
 from .screenshot_manager import ScreenshotManager

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from browser_use import BrowserSession  # type: ignore
-from browser_use.browser.session import Page  # type: ignore
+from patchright.async_api import Page  # type: ignore
 
 if TYPE_CHECKING:
     from bugninja.schemas.pipeline import BugninjaExtendedAction  # type: ignore

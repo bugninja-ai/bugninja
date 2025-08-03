@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class Task(BaseModel):
@@ -28,7 +28,6 @@ class Task(BaseModel):
     ## Fields
 
     1. **description** - Human-readable task description (required)
-    2. **target_url** - Optional target URL for the task
     3. **max_steps** - Maximum number of steps to execute (1-1000)
     4. **enable_healing** - Enable self-healing capabilities
     5. **custom_config** - Custom configuration overrides
@@ -43,8 +42,6 @@ class Task(BaseModel):
         max_length=1000,
         description="Human-readable description of the task to perform",
     )
-
-    target_url: Optional[HttpUrl] = Field(None, description="Optional target URL for the task")
 
     max_steps: int = Field(
         default=100, ge=1, le=1000, description="Maximum number of steps to execute"
@@ -82,7 +79,6 @@ class Task(BaseModel):
         json_schema_extra = {
             "example": {
                 "description": "Navigate to example.com and click the login button",
-                "target_url": "https://example.com",
                 "max_steps": 50,
                 "enable_healing": True,
                 "allowed_domains": ["example.com"],
@@ -257,7 +253,6 @@ class SessionInfo(BaseModel):
     1. **file_path** - Path to the session file
     2. **created_at** - When the session was created
     3. **steps_count** - Number of steps in the session
-    4. **target_url** - Target URL of the session
     5. **success** - Whether the session completed successfully
     6. **metadata** - Additional session metadata
     """
@@ -267,8 +262,6 @@ class SessionInfo(BaseModel):
     created_at: datetime = Field(description="When the session was created")
 
     steps_count: int = Field(ge=0, description="Number of steps in the session")
-
-    target_url: Optional[str] = Field(None, description="Target URL of the session")
 
     success: bool = Field(description="Whether the session completed successfully")
 
@@ -284,7 +277,6 @@ class SessionInfo(BaseModel):
                 "file_path": "/path/to/session.json",
                 "created_at": "2024-01-15T10:30:00",
                 "steps_count": 25,
-                "target_url": "https://example.com",
                 "success": True,
             }
         }

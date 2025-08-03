@@ -39,8 +39,38 @@ class HealerAgent(BugninjaAgentBase):
         if not hasattr(self, "screenshot_manager"):
             self.screenshot_manager = ScreenshotManager(folder_prefix="healing")
 
+        # Initialize event tracking for healing run (if event_manager is provided)
+        if self.event_manager and self.event_manager.has_publishers():
+            try:
+                run_id = await self.event_manager.initialize_run(
+                    run_type="healing",
+                    metadata={
+                        "task_description": "Healing intervention",
+                        "original_task": getattr(self, "task", "Unknown"),
+                    },
+                )
+                self.run_id = run_id
+                logger.info(f"🎯 Started healing run: {run_id}")
+            except Exception as e:
+                logger.warning(f"Failed to initialize event tracking: {e}")
+
     # ? we do not need to override the _after_run_hook for the healer agent
-    async def _after_run_hook(self) -> None: ...
+    async def _after_run_hook(self) -> None:
+        """Complete event tracking for healing run.
+
+        This hook finalizes the event tracking for healing interventions,
+        marking the run as completed or failed based on the final result.
+        """
+        # Complete event tracking for healing run
+        if self.event_manager and self.run_id:
+            try:
+                success = not any(
+                    result.error for result in self.state.last_result if hasattr(result, "error")
+                )
+                await self.event_manager.complete_run(self.run_id, success)
+                logger.info(f"✅ Completed healing run: {self.run_id}")
+            except Exception as e:
+                logger.warning(f"Failed to complete event tracking: {e}")
 
     async def _before_step_hook(
         self,

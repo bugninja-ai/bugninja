@@ -31,7 +31,6 @@ def parse_task_markdown(file_path: Path) -> Dict[str, Any]:
         - description: Task description string
         - allowed_domains: List of allowed domain strings
         - max_steps: Maximum steps integer (default: 100)
-        - target_url: Optional target URL string
         - secrets: Dictionary of secrets with environment variables resolved
 
     Raises:
@@ -62,7 +61,6 @@ def parse_task_markdown(file_path: Path) -> Dict[str, Any]:
         "secrets": {},
         "allowed_domains": [],
         "max_steps": 100,
-        "target_url": None,
     }
 
     # Extract configuration from ## Configuration section
@@ -81,11 +79,6 @@ def parse_task_markdown(file_path: Path) -> Dict[str, Any]:
         steps_match = re.search(r"Max Steps[:\s]*(\d+)", config_section, re.IGNORECASE)
         if steps_match:
             config["max_steps"] = int(steps_match.group(1))
-
-        # Parse target URL (optional, can be any valid URL)
-        url_match = re.search(r"Target URL[:\s]*([^\n]+)", config_section, re.IGNORECASE)
-        if url_match:
-            config["target_url"] = url_match.group(1).strip()
 
     return config
 

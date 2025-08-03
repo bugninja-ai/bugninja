@@ -9,7 +9,7 @@ browser automation framework.
 import typer
 from rich.console import Console
 
-from bugninja.cli.commands import heal, list_cmd, replay, run
+from bugninja.cli.commands import heal, list_cmd, replay, run, status
 
 console = Console()
 
@@ -21,10 +21,11 @@ app = typer.Typer(
 )
 
 # Add commands
-app.add_typer(run, name="run", help="Execute browser automation tasks")
-app.add_typer(replay, name="replay", help="Replay recorded sessions")
-app.add_typer(heal, name="heal", help="Heal failed sessions")
-app.add_typer(list_cmd, name="list", help="List available sessions")
+app.add_typer(run.app, name="run", help="Execute browser automation tasks")
+app.add_typer(replay.app, name="replay", help="Replay recorded sessions")
+app.add_typer(heal.app, name="heal", help="Heal failed sessions")
+app.add_typer(list_cmd.app, name="list", help="List available sessions")
+app.add_typer(status.app, name="status", help="Monitor run status")
 
 
 @app.callback()
@@ -40,6 +41,7 @@ def main() -> None:
     - Replay recorded sessions with automatic healing
     - Heal failed sessions using AI-powered recovery
     - List and manage available sessions
+    - Monitor run status and progress (requires Redis)
     - Environment variable support for secure credential management
 
     For detailed help on specific commands, use: bugninja <command> --help

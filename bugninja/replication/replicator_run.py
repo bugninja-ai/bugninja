@@ -20,11 +20,13 @@ boundaries.
 import json
 import logging
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from rich import print as rich_print
 
 from bugninja.agents.healer_agent import HealerAgent
+from bugninja.events import EventPublisherManager
+from bugninja.events.types import EventType
 from bugninja.models.model_configs import azure_openai_model
 from bugninja.replication.replicator_navigation import (
     ReplicatorError,
@@ -65,6 +67,7 @@ class ReplicatorRun(ReplicatorNavigator):
         fail_on_unimplemented_action: bool = False,
         sleep_after_actions: float = 1.0,
         pause_after_each_step: bool = True,
+        event_manager: Optional[EventPublisherManager] = None,
     ):
         """
         Initialize the ReplicatorRun with a JSON file path.
@@ -74,7 +77,7 @@ class ReplicatorRun(ReplicatorNavigator):
             fail_on_unimplemented_action: Whether to fail on unimplemented actions
             sleep_after_actions: Time to sleep after each action
             pause_after_each_step: Whether to pause and wait for Enter key after each step
-            secrets: Dictionary of secrets to replace in actions
+            event_manager: Optional event publisher manager for tracking
         """
 
         super().__init__(
@@ -97,6 +100,10 @@ class ReplicatorRun(ReplicatorNavigator):
 
         # Initialize screenshot manager
         self.screenshot_manager = ScreenshotManager(folder_prefix="replay")
+
+        # Initialize event publisher manager (explicitly passed)
+        self.event_manager = event_manager
+        self.run_id = None
 
         brain_state_list: List[BugninjaBrainState] = [
             BugninjaBrainState(
@@ -201,6 +208,22 @@ class ReplicatorRun(ReplicatorNavigator):
             f"📊 Total brain states to process: {len(self.replay_state_machine.replay_states)+1}"
         )
 
+        # Initialize event tracking for replay run
+        if self.event_manager and self.event_manager.has_publishers():
+            try:
+                run_id = await self.event_manager.initialize_run(
+                    run_type="replay",
+                    metadata={
+                        "traversal_file": self.traversal_path,
+                        "total_actions": self.total_actions,
+                        "task_description": "Replay traversal",
+                    },
+                )
+                self.run_id = run_id  # type: ignore
+                logger.info(f"🎯 Started replay run: {run_id}")
+            except Exception as e:
+                logger.warning(f"Failed to initialize event tracking: {e}")
+
         # ? we go until the self healing state is not finished
 
         agent_reached_goal: bool = False
@@ -246,6 +269,17 @@ class ReplicatorRun(ReplicatorNavigator):
                 # ? we update the state machine here that a replay action has been taken
                 self.replay_state_machine.replay_action_done()
 
+                # Publish action completion event
+                if self.event_manager and self.run_id:
+                    await self._publish_run_event(
+                        EventType.ACTION_COMPLETED,
+                        {
+                            "action_index": self._get_current_action_index(),
+                            "action_type": action_type,
+                            "success": True,
+                        },
+                    )
+
                 # Add pause after action if enabled
                 if self.pause_after_each_step:
                     self._wait_for_enter_key()
@@ -270,17 +304,54 @@ class ReplicatorRun(ReplicatorNavigator):
                 )
 
                 try:
-                    # Use free healing agent to complete the entire remaining traversal
-                    healing_success = await self._start_free_healing()
+                    # Start healing event tracking
+                    if self.event_manager and self.run_id:
+                        await self._publish_run_event(
+                            EventType.HEALING_STARTED,
+                            {
+                                "action_index": self._get_current_action_index(),
+                                "error": str(e),
+                            },
+                        )
 
-                    if healing_success:
+                    # Use free healing agent to complete the entire remaining traversal
+                    agent_reached_goal, healer_agent = await self._start_free_healing()
+
+                    if agent_reached_goal:
                         self.healing_happened = True
-                        logger.info("✅ Free healing completed entire traversal successfully")
+                        logger.info("✅ === HEALING AGENT REACHED GOAL ===")
+
+                        # Replace remaining replay actions with healing actions
+                        self._replace_remaining_with_healing_actions(healer_agent)
+
+                        logger.info("🎉 === FREE HEALING COMPLETED SUCCESSFULLY ===")
+
+                        # Complete healing event tracking
+                        if self.event_manager and self.run_id:
+                            await self._publish_run_event(
+                                EventType.RUN_COMPLETED,
+                                {
+                                    "success": True,
+                                    "healing_used": True,
+                                },
+                            )
 
                     else:
-                        logger.error("❌ Free healing failed to complete traversal")
+                        logger.error("❌ === FREE HEALING TIMED OUT ===")
+
                         failed = True
                         failed_reason = "Free healing failed to complete traversal"
+
+                        # Complete failed healing event tracking
+                        if self.event_manager and self.run_id:
+                            await self._publish_run_event(
+                                EventType.RUN_FAILED,
+                                {
+                                    "success": False,
+                                    "error": failed_reason,
+                                    "healing_used": True,
+                                },
+                            )
                         break
 
                 except UserInterruptionError as e:
@@ -289,23 +360,25 @@ class ReplicatorRun(ReplicatorNavigator):
                     failed_reason = str(e)
                     break
 
-                except Exception as healing_error:
-                    logger.error("❌ === FREE HEALING FAILED ===")
-                    logger.error(f"🚨 Healing error type: {type(healing_error).__name__}")
-                    logger.error(f"🚨 Healing error message: {str(healing_error)}")
-                    logger.error(
-                        "❌ Both original action and free healing failed - stopping replication"
-                    )
-                    failed = True
-                    failed_reason = (
-                        f"Action failed: {str(e)}. Free healing failed: {str(healing_error)}"
-                    )
-                    break
-
-            # Check if we need to break out of the outer loop
-            if failed:
-                break
-
+        # Complete run event tracking
+        if self.event_manager and self.run_id:
+            if not failed:
+                await self._publish_run_event(
+                    EventType.RUN_COMPLETED,
+                    {
+                        "success": True,
+                        "healing_used": self.healing_happened,
+                    },
+                )
+            else:
+                await self._publish_run_event(
+                    EventType.RUN_FAILED,
+                    {
+                        "success": False,
+                        "error": failed_reason,
+                        "healing_used": self.healing_happened,
+                    },
+                )
         logger.info("")
         logger.info("🏁 === REPLICATION COMPLETED ===")
         logger.info(f"📊 Final status: {'❌ FAILED' if failed else '✅ SUCCESS'}")
@@ -320,9 +393,9 @@ class ReplicatorRun(ReplicatorNavigator):
         else:
             logger.warning("⚠️ No healing occurred - no corrected traversal to save")
 
-        return failed, failed_reason
+        return not failed, failed_reason
 
-    async def _start_free_healing(self) -> bool:
+    async def _start_free_healing(self) -> Tuple[bool, HealerAgent]:
         """
         Start the healing agent and let it run freely through the entire remaining traversal.
 
@@ -349,12 +422,12 @@ class ReplicatorRun(ReplicatorNavigator):
                 await healer_agent.step()
             except Exception as e:
                 logger.error(f"❌ Healer step failed: {str(e)}")
-                return False
+                return False, healer_agent
 
             if not healer_agent.agent_taken_actions:
                 rich_print(healer_agent.agent_taken_actions)
                 logger.error("❌ Healer agent failed to take any actions")
-                return False
+                return False, healer_agent
 
             # Check if healer agent has reached the goal
             try:
@@ -371,14 +444,14 @@ class ReplicatorRun(ReplicatorNavigator):
                     logger.info("📊 Final Summary:")
                     logger.info(f"   - Total healing steps: {i+1}")
 
-                    return True
+                    return True, healer_agent
 
             except Exception as goal_check_error:
                 logger.warning(f"⚠️ Goal detection failed: {str(goal_check_error)} - continuing")
 
         logger.error("❌ === FREE HEALING TIMED OUT ===")
         logger.error(f"🚨 Reached maximum steps ({max_healing_steps}) without completing goal")
-        return False
+        return False, healer_agent
 
     def _replace_remaining_with_healing_actions(self, healer_agent: HealerAgent) -> None:
         """
@@ -440,9 +513,40 @@ class ReplicatorRun(ReplicatorNavigator):
         current_action = self.replay_state_machine.current_action
 
         return await self.screenshot_manager.take_screenshot(
-            self.current_page, current_action, self.browser_session
+            page=self.current_page, action=current_action, browser_session=self.browser_session
         )
 
     def get_screenshots_dir(self) -> Path:
         """Get the current screenshots directory for sharing with healing agent"""
         return self.screenshot_manager.get_screenshots_dir()
+
+    def _get_current_action_index(self) -> int:
+        """Get the current action index for progress tracking."""
+        return len(self.replay_state_machine.passed_actions)
+
+    async def _get_current_url(self) -> str:
+        """Get the current URL for progress tracking."""
+        try:
+            if hasattr(self, "browser_session") and self.browser_session:
+                current_page = await self.browser_session.get_current_page()
+                url = current_page.url
+                if isinstance(url, str):
+                    return url
+        except Exception:
+            pass
+        return "unknown"
+
+    async def _publish_run_event(self, event_type: str, data: Dict[str, Any]) -> None:
+        """Publish event to all available publishers (NEW).
+
+        Args:
+            event_type: Type of event to publish
+            data: Event data
+        """
+        if not self.event_manager or not self.run_id:
+            return
+
+        try:
+            await self.event_manager.publish_event(self.run_id, event_type, data)
+        except Exception as e:
+            logger.warning(f"Failed to publish event {event_type}: {e}")

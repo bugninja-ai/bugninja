@@ -1,6 +1,27 @@
 version: "3.8"
 
 services:
+  redis:
+    image: redis:latest
+    restart: always
+    command:
+      - /bin/sh
+      - -c
+      # - Double dollars, so that the variable is not expanded by Docker Compose
+      # - Surround by quotes, so that the shell does not split the password
+      # - The ${variable:?message} syntax causes shell to exit with a non-zero
+      #   code and print a message, when the variable is not set or empty
+      - redis-server --requirepass "$${REDIS_PASSWORD:?REDIS_PASSWORD variable is not set}"
+    ports:
+        - "6379:6379"
+    volumes:
+        - redis_data:/root/redis
+        - redis_conf:/usr/local/etc/redis/redis.conf
+    environment:
+        - REDIS_PASSWORD=bugninja_password
+        - REDIS_PORT=6379
+        - REDIS_DATABASES=0
+
   sonarqube:
     image: sonarqube:lts-community
     depends_on:
@@ -35,3 +56,6 @@ volumes:
   sonarqube_temp:
   sonar_db:
   sonar_db_data:
+  # redis
+  redis_data:
+  redis_conf:

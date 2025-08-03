@@ -6,10 +6,12 @@ support, validation, and default values for all Bugninja components.
 """
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings
+
+from bugninja.events.types import EventPublisherType
 
 
 class BugninjaSettings(BaseSettings):
@@ -43,6 +45,11 @@ class BugninjaSettings(BaseSettings):
         default="2024-02-15-preview",
         alias="AZURE_OPENAI_API_VERSION",
         description="Azure OpenAI API version",
+    )
+
+    # Event Publisher Configuration
+    event_publishers: List[EventPublisherType] = Field(
+        default=[EventPublisherType.NULL], description="List of event publisher types to use"
     )
 
     # Logging Configuration
@@ -157,6 +164,5 @@ It is very important that you are able to handle third-party authentication or t
         "env_file": ".env",
         "env_file_encoding": "utf-8",
         "case_sensitive": False,
-        "validate_assignment": True,
-        "extra": "ignore",  # Ignore extra fields from environment
+        "extra": "ignore",
     }

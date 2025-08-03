@@ -38,9 +38,40 @@ class NavigatorAgent(BugninjaAgentBase):
         # Initialize screenshot manager
         self.screenshot_manager = ScreenshotManager(folder_prefix="traversal")
 
+        # Initialize event tracking for navigation run (if event_manager is provided)
+        if self.event_manager and self.event_manager.has_publishers():
+            try:
+                run_id = await self.event_manager.initialize_run(
+                    run_type="navigation",
+                    metadata={
+                        "task_description": self.task,
+                        "target_url": getattr(self, "target_url", None),
+                    },
+                )
+                self.run_id = run_id
+                logger.info(f"🎯 Started navigation run: {run_id}")
+            except Exception as e:
+                logger.warning(f"Failed to initialize event tracking: {e}")
+
     async def _after_run_hook(self) -> None:
+        """Complete event tracking for navigation run.
+
+        This hook finalizes the event tracking for navigation runs,
+        marking the run as completed or failed based on the final result.
+        """
         logger.info(msg="✅ AFTER-Run hook called")
         self.save_agent_actions()
+
+        # Complete event tracking for navigation run
+        if self.event_manager and self.run_id:
+            try:
+                success = not any(
+                    result.error for result in self.state.last_result if hasattr(result, "error")
+                )
+                await self.event_manager.complete_run(self.run_id, success)
+                logger.info(f"✅ Completed navigation run: {self.run_id}")
+            except Exception as e:
+                logger.warning(f"Failed to complete event tracking: {e}")
 
     async def _before_step_hook(
         self,

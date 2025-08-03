@@ -147,7 +147,6 @@ class BugninjaClient:
             ```python
             task = Task(
                 description="Navigate to example.com and click the login button",
-                target_url="https://example.com",
                 max_steps=50,
                 allowed_domains=["example.com"],
                 secrets={"username": "user@example.com", "password": "secret"}
@@ -230,7 +229,6 @@ class BugninjaClient:
                 screenshots_dir=screenshots_dir,
                 metadata={
                     "task_description": task.description,
-                    "target_url": str(task.target_url) if task.target_url else None,
                     "enable_healing": task.enable_healing,
                     "browser_headless": self.config.headless,
                     "allowed_domains": task.allowed_domains,
@@ -491,7 +489,6 @@ class BugninjaClient:
                         file_path=file_path,
                         created_at=datetime.fromtimestamp(stat.st_mtime),
                         steps_count=0,  # Would need to parse file to get actual count
-                        target_url=None,  # Would need to parse file to get actual URL
                         success=True,  # Would need to parse file to determine success
                     )
 

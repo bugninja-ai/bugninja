@@ -255,7 +255,6 @@ client = BugninjaClient()
 # Execute a simple task
 task = Task(
     description="Navigate to example.com and click the login button",
-    target_url="https://example.com",
     max_steps=50,
     enable_healing=True
 )
@@ -289,7 +288,6 @@ client = BugninjaClient(config=config)
 # Execute task with custom config
 task = Task(
     description="Search for 'Python automation' on Google",
-    target_url="https://www.google.com",
     max_steps=30
 )
 
@@ -422,7 +420,6 @@ Pydantic model for defining browser automation tasks:
 ```python
 Task(
     description="Navigate to example.com and click login",
-    target_url="https://example.com",
     max_steps=50,
     enable_healing=True,
     custom_config={"screenshot_on_error": True}
@@ -632,68 +629,92 @@ summary = ConfigurationFactory.get_settings_summary(Environment.PRODUCTION)
 print(f"Production settings: {summary}")
 ```
 
-## 🚀 Getting Started
+## 📊 Event-Driven Progress Tracking
 
-1. **Install Dependencies**
+Bugninja includes an optional event-driven progress tracking system that allows you to monitor browser automation runs in real-time.
+
+### **Setup Event Tracking**
+
+1. **Configure Event Publishers**
+   ```python
+   # In your settings or environment
+   from bugninja.events.types import EventPublisherType
+   
+   # Enable Redis publisher
+   event_publishers = [EventPublisherType.REDIS]
+   
+   # Or use null publisher for testing
+   event_publishers = [EventPublisherType.NULL]
+   ```
+
+2. **Install Redis (Optional)**
    ```bash
-   uv sync
-   ```
-
-2. **Configure LLM**
-   ```python
-   from bugninja import azure_openai_model
-   llm = azure_openai_model()
-   ```
-
-3. **Create Browser Session**
-   ```python
-   from browser_use import BrowserSession, BrowserProfile
+   # Ubuntu/Debian
+   sudo apt-get install redis-server
    
-   browser_session = BrowserSession(
-       browser_profile=BrowserProfile(headless=False)
-   )
-   await browser_session.start()
+   # macOS
+   brew install redis
+   
+   # Start Redis
+   redis-server
    ```
 
-4. **Run Your First Agent**
-   ```python
-   from bugninja import NavigatorAgent
-   
-   agent = NavigatorAgent(
-       task="Navigate to example.com and take a screenshot",
-       llm=llm,
-       browser_session=browser_session
-   )
-   
-   await agent.run()
+3. **Configure Environment Variables**
+   ```bash
+   export REDIS_HOST=localhost
+   export REDIS_PORT=6379
+   # Optional: export REDIS_PASSWORD=your_password
    ```
 
-### 🛠️ Development Commands
+4. **Monitor Run Status**
+   ```bash
+   # Show all runs summary
+   bugninja status
+   
+   # Show specific run details
+   bugninja status --run-id run_abc123
+   ```
 
-The project includes several convenient development commands using Poetry:
+### **Event Tracking Features**
 
-```bash
-# Run the main application
-uv run python main.py
+- **Multi-Publisher Support**: Use multiple publishers simultaneously (Redis, Null, etc.)
+- **Thread-Safe Operations**: Concurrent runs with data integrity
+- **Event Types**: Track run start, step completion, action completion, healing, run completion
+- **Run Types**: Distinguish between navigation, replay, and healing runs
+- **Error Tracking**: Monitor failed runs with detailed error information
+- **CLI Integration**: Built-in status monitoring commands
 
-# Replay the last saved traversal
-uv run python replay.py
+### **Programmatic Event Monitoring**
 
-# Lint and format the code
-uv run ruff check --fix . && uv run isort . && uv run black . && uv run mypy main.py bugninja
+```python
+from bugninja.config import ConfigurationFactory, Environment
+from bugninja.events import EventPublisherFactory, EventPublisherManager
+from bugninja.events.types import EventPublisherType
 
-# Start Celery worker for task queuing
-uv run celery -A celery_tasks worker --loglevel=INFO
+# Get event publishers with explicit configuration
+settings = ConfigurationFactory.get_settings(Environment.DEVELOPMENT)
+
+# Create publishers with explicit configuration
+publisher_types = [EventPublisherType.REDIS]  # Default to Redis
+configs = {}
+
+# Add Redis configuration if available in settings
+if hasattr(settings, "redis_host") and settings.redis_host:
+    configs["redis"] = {
+        "redis_host": settings.redis_host,
+        "redis_port": getattr(settings, "redis_port", 6379),
+        "redis_db": getattr(settings, "redis_db", 0),
+        "redis_password": getattr(settings, "redis_password", None),
+    }
+
+publishers = EventPublisherFactory.create_publishers(publisher_types, configs)
+event_manager = EventPublisherManager(publishers)
+
+if event_manager.has_publishers():
+    # Check available publishers
+    available_publishers = event_manager.get_available_publishers()
+    print(f"Available publishers: {len(available_publishers)}")
+    
+    for publisher in available_publishers:
+        print(f"- {publisher.__class__.__name__}")
 ```
-
-## 🤝 Contributing
-
-Bugninja is designed with extensibility in mind. Key areas for contribution:
-
-- **New Agent Types**: Specialized agents for specific use cases
-- **Enhanced Selectors**: Additional element identification strategies
-- **Healing Strategies**: New approaches for error recovery
-- **Performance Optimizations**: Faster execution and reduced resource usage
-
-
-**Bugninja** - Where AI meets browser automation with intelligence and resilience! 🐛✨
