@@ -15,7 +15,6 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from bugninja.api import BugninjaClient, Task, TaskResult
 from bugninja.cli.parser import parse_task_markdown, validate_task_config
-from bugninja.config import ConfigurationFactory, Environment
 
 console = Console()
 
@@ -69,11 +68,6 @@ async def run_task(
             allowed_domains=config["allowed_domains"],
             secrets=config["secrets"],
         )
-
-        # Get authentication prompt from settings
-        settings = ConfigurationFactory.get_settings(Environment.DEVELOPMENT)
-        if settings.authentication_handling_prompt:
-            task.extend_planner_system_message = settings.authentication_handling_prompt
 
         # Execute task
         console.print("🚀 Starting task execution...")

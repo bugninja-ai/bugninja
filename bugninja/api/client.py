@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from browser_use import BrowserProfile, BrowserSession  # type: ignore[import-untyped]
+from playwright._impl._api_structures import ViewportSize
 
 from bugninja.agents import NavigatorAgent
 from bugninja.api.exceptions import (
@@ -33,8 +34,10 @@ from bugninja.api.exceptions import (
 )
 from bugninja.api.models import BugninjaConfig, SessionInfo, Task, TaskResult
 from bugninja.config import ConfigurationFactory, Environment
+from bugninja.events import EventPublisherManager
 from bugninja.models import azure_openai_model
 from bugninja.replication import ReplicatorRun
+from bugninja.utils.prompt_string_factories import AUTHENTICATION_HANDLING_EXTRA_PROMPT
 
 
 class BugninjaClient:
@@ -68,12 +71,17 @@ class BugninjaClient:
         ```
     """
 
-    def __init__(self, config: Optional[BugninjaConfig] = None) -> None:
+    def __init__(
+        self,
+        config: Optional[BugninjaConfig] = None,
+        event_manager: Optional[EventPublisherManager] = None,
+    ) -> None:
         """Initialize Bugninja client with optional configuration.
 
         Args:
             config: Optional configuration object. If not provided, uses
                    default configuration with environment variable support.
+            event_manager: Optional event publisher manager for tracking.
 
         Raises:
             ConfigurationError: If configuration is invalid.
@@ -84,6 +92,9 @@ class BugninjaClient:
 
             # Initialize internal configuration
             self._settings = ConfigurationFactory.get_settings(Environment.DEVELOPMENT)
+
+            # Store event manager
+            self._event_manager = event_manager
 
             # Validate configuration
             self._validate_config()
@@ -171,10 +182,9 @@ class BugninjaClient:
             # Create browser session with configured settings
             browser_profile = BrowserProfile(
                 headless=self.config.headless,
-                viewport={
-                    "width": self.config.viewport_width,
-                    "height": self.config.viewport_height,
-                },
+                viewport=ViewportSize(
+                    width=self.config.viewport_width, height=self.config.viewport_height
+                ),
                 user_agent=self.config.user_agent,
                 strict_selectors=self.config.strict_selectors,
                 allowed_domains=task.allowed_domains,
@@ -195,8 +205,12 @@ class BugninjaClient:
                 llm=llm,
                 browser_session=browser_session,
                 sensitive_data=task.secrets,
-                extend_planner_system_message=task.extend_planner_system_message,
+                extend_planner_system_message=AUTHENTICATION_HANDLING_EXTRA_PROMPT,
             )
+
+            # Set event manager if available
+            if self._event_manager:
+                agent.event_manager = self._event_manager
 
             # Execute task and record history
             history = await agent.run(max_steps=task.max_steps or self.config.default_max_steps)

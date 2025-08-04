@@ -83,8 +83,8 @@ class BugninjaBrowserConfig(BaseModel):
 
         if viewport is not None:
             viewport_element = {
-                "width": viewport.width,
-                "height": viewport.height,
+                "width": viewport.get("width"),
+                "height": viewport.get("height"),
             }
 
         return BugninjaBrowserConfig(

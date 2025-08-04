@@ -66,7 +66,6 @@ class EventPublisherFactory:
                         publishers.append(RedisEventPublisher(redis_client))
                     # Note: If Redis client creation fails, we skip this publisher
                     # instead of failing the entire factory
-
                 # Future: elif publisher_type == EventPublisherType.RABBITMQ:
                 # Future: elif publisher_type == EventPublisherType.KAFKA:
 

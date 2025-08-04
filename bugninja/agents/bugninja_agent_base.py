@@ -79,23 +79,6 @@ class BugninjaAgentBase(Agent, ABC):
         html_content_of_page: str = await page.content()
         return html_content_of_page
 
-    def _get_current_action_type(self) -> str:
-        """Get the current action type for event publishing.
-
-        Returns:
-            The current action type as a string, or "unknown" if not available.
-        """
-        if not self.state.last_result:
-            return "unknown"
-
-        # Get the last action result
-        last_result = self.state.last_result[-1] if self.state.last_result else None
-        if last_result and hasattr(last_result, "action_type"):
-            action_type = getattr(last_result, "action_type", None)
-            if isinstance(action_type, str):
-                return action_type
-        return "unknown"
-
     async def _get_current_url(self) -> str:
         """Get the current URL for event publishing.
 
@@ -389,14 +372,12 @@ class BugninjaAgentBase(Agent, ABC):
 
             # Publish step completion event
             if self.event_manager and self.run_id:
-                current_action = self._get_current_action_type()
                 current_url = await self._get_current_url()
 
                 await self._publish_run_event(
                     EventType.STEP_COMPLETED,
                     {
                         "step_number": self.state.n_steps,
-                        "action_type": current_action,
                         "current_url": current_url,
                     },
                 )
@@ -511,9 +492,7 @@ class BugninjaAgentBase(Agent, ABC):
                         EventType.ACTION_COMPLETED,
                         {
                             "action_index": i,
-                            "action_type": (
-                                action.action_type if hasattr(action, "action_type") else "unknown"
-                            ),
+                            "action_data": action_data,
                             "success": not result.error if hasattr(result, "error") else True,
                         },
                     )

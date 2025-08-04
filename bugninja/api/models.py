@@ -33,7 +33,6 @@ class Task(BaseModel):
     5. **custom_config** - Custom configuration overrides
     6. **allowed_domains** - List of allowed domains for navigation
     7. **secrets** - Sensitive data for authentication
-    8. **extend_planner_system_message** - Custom system message for the planner
     """
 
     description: str = Field(
@@ -59,10 +58,6 @@ class Task(BaseModel):
 
     secrets: Optional[Dict[str, Any]] = Field(
         default=None, description="Sensitive data for authentication and task execution"
-    )
-
-    extend_planner_system_message: Optional[str] = Field(
-        default=None, description="Custom system message to extend the planner's capabilities"
     )
 
     @field_validator("description")
@@ -150,7 +145,7 @@ class BugninjaConfig(BaseModel):
     """Configuration for Bugninja client.
 
     This model provides comprehensive configuration options for the Bugninja
-    automation engine with validation and environment variable support.
+    automation engine with validation and direct configuration support.
 
     ## Configuration Sections
 
@@ -227,8 +222,6 @@ class BugninjaConfig(BaseModel):
     class Config:
         """Pydantic configuration for BugninjaConfig model."""
 
-        env_prefix = "BUGNINJA_"
-        case_sensitive = False
         json_schema_extra = {
             "example": {
                 "llm_provider": "azure_openai",
