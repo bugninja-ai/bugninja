@@ -2,38 +2,11 @@
 Factory for creating event publishers.
 """
 
-from typing import Any, Dict, List, Optional
-
-from redis import Redis
+from typing import Any, Dict, List
 
 from .base import EventPublisher
-from .publishers import NullEventPublisher, RedisEventPublisher
+from .publishers import NullEventPublisher
 from .types import EventPublisherType
-
-
-def create_redis_client_from_config(config: Dict[str, Any]) -> Optional[Redis]:
-    """Create Redis client from configuration.
-
-    Args:
-        config: Redis configuration dictionary
-
-    Returns:
-        Redis client if configuration is valid, None otherwise
-    """
-    try:
-        return Redis(
-            host=config.get("redis_host", "localhost"),
-            port=config.get("redis_port", 6379),
-            db=config.get("redis_db", 0),
-            password=config.get("redis_password"),
-            decode_responses=True,
-            socket_connect_timeout=5,
-            socket_timeout=5,
-            retry_on_timeout=True,
-            health_check_interval=30,
-        )
-    except Exception:
-        return None
 
 
 class EventPublisherFactory:
@@ -59,11 +32,6 @@ class EventPublisherFactory:
                 if publisher_type == EventPublisherType.NULL:
                     publishers.append(NullEventPublisher())
 
-                elif publisher_type == EventPublisherType.REDIS:
-                    redis_config = configs.get("redis", {})
-                    redis_client = create_redis_client_from_config(redis_config)
-                    if redis_client:
-                        publishers.append(RedisEventPublisher(redis_client))
                     # Note: If Redis client creation fails, we skip this publisher
                     # instead of failing the entire factory
                 # Future: elif publisher_type == EventPublisherType.RABBITMQ:

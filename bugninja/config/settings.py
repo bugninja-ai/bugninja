@@ -98,7 +98,7 @@ class BugninjaSettings(BaseSettings):
         return {
             "viewport_width": 1280,
             "viewport_height": 960,
-            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "user_agent": None,
             "device_scale_factor": None,
             "timeout": 30_000,
         }

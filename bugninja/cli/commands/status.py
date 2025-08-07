@@ -25,6 +25,10 @@ app = typer.Typer(
 )
 
 
+# TODO!:AGENT have to rethink this whole section, because status querying only works if event tracking is enabled and there is
+#! a valid event tracker added to the configuration
+
+
 async def show_run_status(run_id: Optional[str] = None) -> None:
     """Show status of browser automation runs.
 

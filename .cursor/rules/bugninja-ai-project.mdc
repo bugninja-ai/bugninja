@@ -1,0 +1,12 @@
+---
+alwaysApply: true
+---
+
+### 📦 What is Bugninja.AI?
+
+**Bugninja.AI** is a Python library for AI-powered browser automation, designed to make testing modern web applications intuitive, resilient, and intelligent. With Bugninja, users can write natural language test case descriptions, which AI agents then use to interact with and test web interfaces just like a real user would. Each interaction is saved as a *traversal*, which can later be replayed for automated testing using frameworks like Playwright. If something breaks during a replay, Bugninja’s **self-healing agent** automatically tries to fix the test by adapting to changes in the page. This ensures reliable testing even as your web app evolves. It’s especially helpful for developers and QA teams who want smart, AI-assisted, and future-proof test automation.
+
+### 🔧 About the Library
+
+Bugninja is a **Python-first** open-source project built on top of the `browser-use` library. It extends browser automation functionality through its custom framework and specialized AI agents. You can use Bugninja either as a **CLI tool** or import it as a standalone Python module. Its modular architecture follows professional engineering standards, maintains high code quality, and is built with scalability and best practices in mind. Whether you're running quick browser tasks, building complex test flows, or integrating it into your CI pipeline, Bugninja is designed to be both powerful and easy to use — a tool any open-source developer would be proud to contribute to.
+

@@ -9,7 +9,6 @@ class EventPublisherType(str, Enum):
     """Supported event publisher types."""
 
     NULL = "null"  # No-op publisher for testing/development
-    REDIS = "redis"  # Redis-based publisher
     RICH_TERMINAL = "rich_terminal"  # Rich terminal output publisher
     # Future: RABBITMQ = "rabbitmq"
     # Future: KAFKA = "kafka"

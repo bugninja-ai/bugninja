@@ -14,11 +14,13 @@ results, and configuration using Pydantic for comprehensive validation.
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
+from browser_use.browser.profile import BROWSERUSE_PROFILES_DIR  # type: ignore
 from pydantic import BaseModel, Field, field_validator
 
 
+# TODO!:AGENT we have to have a better name for Tasks, like BugninjaTask
 class Task(BaseModel):
     """Represents a browser automation task.
 
@@ -82,6 +84,7 @@ class Task(BaseModel):
         }
 
 
+# TODO!:AGENT we have to have a better name for TaskResults, like BugninjaTaskResult
 class TaskResult(BaseModel):
     """Result of a browser automation task.
 
@@ -178,13 +181,18 @@ class BugninjaConfig(BaseModel):
         default=960, ge=600, le=2160, description="Browser viewport height"
     )
 
-    user_agent: str = Field(
-        default="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    user_agent: Optional[str] = Field(
+        default=None,
         description="Browser user agent string",
     )
 
     strict_selectors: bool = Field(
         default=True, description="Use strict selectors for element identification"
+    )
+
+    user_data_dir: Optional[Union[Path, str]] = Field(
+        default=BROWSERUSE_PROFILES_DIR / "default",
+        description="Directory for browser user data (cookies, cache, etc.)",
     )
 
     # Task Configuration
@@ -212,11 +220,12 @@ class BugninjaConfig(BaseModel):
 
     logs_dir: Path = Field(default=Path("./logs"), description="Directory for storing log files")
 
-    @field_validator("screenshots_dir", "traversals_dir", "logs_dir")
+    @field_validator("screenshots_dir", "traversals_dir", "logs_dir", "user_data_dir")
     @classmethod
     def create_directories_if_not_exist(cls, v: Path) -> Path:
         """Create directories if they don't exist."""
-        v.mkdir(parents=True, exist_ok=True)
+        if v is not None:
+            v.mkdir(parents=True, exist_ok=True)
         return v
 
     class Config:

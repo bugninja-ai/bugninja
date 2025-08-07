@@ -10,6 +10,8 @@ from typing import Any, Dict, Optional
 from .environments import Environment, EnvironmentSettings
 from .settings import BugninjaSettings
 
+# TODO!:AGENT this current configuration factory here does not support multiple AI models to be utilized, and naming conventions also do not reflect on this
+
 
 class ConfigurationFactory:
     """Factory for creating and managing configuration instances.

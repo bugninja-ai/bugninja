@@ -659,13 +659,6 @@ Bugninja includes an optional event-driven progress tracking system that allows 
    redis-server
    ```
 
-3. **Configure Environment Variables**
-   ```bash
-   export REDIS_HOST=localhost
-   export REDIS_PORT=6379
-   # Optional: export REDIS_PASSWORD=your_password
-   ```
-
 4. **Monitor Run Status**
    ```bash
    # Show all runs summary

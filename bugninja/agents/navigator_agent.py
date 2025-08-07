@@ -63,7 +63,9 @@ class NavigatorAgent(BugninjaAgentBase):
         self.save_agent_actions()
 
         # Complete event tracking for navigation run
-        if self.event_manager and self.run_id:
+        if self.event_manager:
+            if not self.state.last_result:
+                raise Exception("No results found for navigation run")
             try:
                 success = not any(
                     result.error for result in self.state.last_result if hasattr(result, "error")
@@ -170,14 +172,11 @@ class NavigatorAgent(BugninjaAgentBase):
         # Create traversals directory if it doesn't exist
         os.makedirs(traversal_dir, exist_ok=True)
 
-        # Generate a unique ID for this traversal
-        traversal_id = CUID().generate()
-
         # Get current timestamp in a readable format
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         # Save the traversal data with timestamp and unique ID
-        traversal_file = traversal_dir / f"traverse_{timestamp}_{traversal_id}.json"
+        traversal_file = traversal_dir / f"traverse_{timestamp}_{self.run_id}.json"
 
         actions: Dict[str, Any] = {}
 
@@ -215,4 +214,4 @@ class NavigatorAgent(BugninjaAgentBase):
                 ensure_ascii=False,
             )
 
-        logger.info(f"Traversal saved with ID: {timestamp}_{traversal_id}")
+        logger.info(f"Traversal saved with ID: {timestamp}_{self.run_id}")

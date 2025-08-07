@@ -19,6 +19,7 @@ set_logger_config()
 logger = logging.getLogger(__name__)
 
 
+# TODO!:AGENT errors should go to separate file for cleanliness
 class ReplicatorError(Exception):
     """Base exception for ReplicatorRun errors."""
 
@@ -40,6 +41,7 @@ class SelectorError(ReplicatorError):
 class ReplicatorNavigator(ABC):
     secrets: Dict[str, str]
 
+    # TODO! likely should not be part of the class, but rather a function in utils folder for replication
     @staticmethod
     def _get_user_input() -> str:
         """
@@ -83,6 +85,7 @@ class ReplicatorNavigator(ABC):
             logger.warning(f"⚠️ Input error: {e} - continuing automatically")
             return ""
 
+    # TODO!: validation of the JSON file should be done here, not in the CLI
     @staticmethod
     def _load_traversal_from_json(json_path: str) -> Traversal:
         """
@@ -116,6 +119,7 @@ class ReplicatorNavigator(ABC):
 
         self.browser_session = BrowserSession(
             browser_profile=BrowserProfile(
+                # TODO!: the comment below is complete an utter nonsense, have to make it comply with user_data_dir
                 # ? these None settings are necessary in order for every new run to be perfectly independent and clean
                 user_data_dir=None,
                 storage_state=None,
@@ -383,11 +387,6 @@ class ReplicatorNavigator(ABC):
             logger.debug(f"🎯 Using fallback selector: {selector}")
 
         return selectors
-
-    #! The 'can_be_skipped flag has been added for a specific reason.
-    #! If there are steps taken by the original AI agent that do not necessarily contribute for the completion of the whole flow, the specific element can be skipped.
-    #! Right now, we do not have a solution to automatically map which steps of specific flows can be or should be skipped, but in the upcoming features,
-    #! I will most likely develop an AI agent solution for this.
 
     async def _execute_action(self, interaction: BugninjaExtendedAction) -> None:
         """

@@ -271,5 +271,7 @@ test_output
 graph.html
 traversals
 screenshots
+data_dir
+user_data_dir
 
 .scannerwork

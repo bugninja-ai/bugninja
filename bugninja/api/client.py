@@ -15,11 +15,17 @@ entry point for browser automation operations with a simple, intuitive API.
 
 import asyncio
 import time
+from asyncio import Task as AsyncioTask
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-from browser_use import BrowserProfile, BrowserSession  # type: ignore[import-untyped]
+from browser_use import (  # type: ignore[import-untyped]
+    AgentHistoryList,
+    BrowserProfile,
+    BrowserSession,
+)
+from cuid2 import Cuid as CUID
 from playwright._impl._api_structures import ViewportSize
 
 from bugninja.agents import NavigatorAgent
@@ -105,6 +111,7 @@ class BugninjaClient:
         except Exception as e:
             raise ConfigurationError(f"Failed to initialize Bugninja client: {e}", original_error=e)
 
+    # TODO!:AGENT validation of config should be the responsibility of the BugninjaConfig, not the Client!
     def _validate_config(self) -> None:
         """Validate client configuration.
 
@@ -188,6 +195,7 @@ class BugninjaClient:
                 user_agent=self.config.user_agent,
                 strict_selectors=self.config.strict_selectors,
                 allowed_domains=task.allowed_domains,
+                user_data_dir=self.config.user_data_dir,
             )
 
             browser_session = BrowserSession(browser_profile=browser_profile)
@@ -285,6 +293,142 @@ class BugninjaClient:
                 # await browser_session.cleanup()
                 self._active_sessions.remove(browser_session)
 
+    # TODO! has to be completed and additionally the parallel running of existing testcases must be implemented as well
+    async def parallel_run_tasks(self, task_list: List[Task]) -> None:
+
+        navigation_agents: List[NavigatorAgent] = []
+        try:
+
+            for task in task_list:
+                # Validate task description
+                if not task.description.strip():
+                    raise ValidationError(
+                        "Task description cannot be empty", field_name="description"
+                    )
+
+                user_dir_path: Path = Path("./data_dir")
+
+                if self.config.user_data_dir:
+                    if isinstance(self.config.user_data_dir, str):
+                        user_dir_path = Path(self.config.user_data_dir)
+
+                # ? unique saving path for each browser user_data_dir
+                # TODO: CUID here should be consistent with the run_id of the agent
+                user_data_dir_for_task: Path = user_dir_path / CUID().generate()
+
+                # Create browser session with configured settings
+                browser_profile = BrowserProfile(
+                    headless=self.config.headless,
+                    viewport=ViewportSize(
+                        width=self.config.viewport_width, height=self.config.viewport_height
+                    ),
+                    user_agent=self.config.user_agent,
+                    strict_selectors=self.config.strict_selectors,
+                    allowed_domains=task.allowed_domains,
+                    user_data_dir=user_data_dir_for_task,
+                )
+
+                browser_session = BrowserSession(browser_profile=browser_profile)
+                self._active_sessions.append(browser_session)
+
+                # Create and run agent with task parameters
+                agent = NavigatorAgent(
+                    task=task.description,
+                    llm=azure_openai_model(
+                        temperature=self.config.llm_temperature, environment=Environment.DEVELOPMENT
+                    ),
+                    browser_session=browser_session,
+                    sensitive_data=task.secrets,
+                    extend_planner_system_message=AUTHENTICATION_HANDLING_EXTRA_PROMPT,
+                )
+
+                # Set event manager if available
+                if self._event_manager:
+                    agent.event_manager = self._event_manager
+
+                navigation_agents.append(agent)
+
+            async with asyncio.TaskGroup() as tg:
+                navigation_runs: List[AsyncioTask[Optional[AgentHistoryList]]] = []
+                for nav_agent in navigation_agents:
+                    navigation_runs.append(tg.create_task(nav_agent.run()))
+
+            for background_task in navigation_runs:
+                # TODO! have to be completed
+                print(background_task.result())
+
+            # # Calculate execution time
+            # execution_time = time.time() - start_time
+
+            # # Determine file paths from most recent files
+            # traversal_file = None
+            # screenshots_dir = None
+
+            # # Find the most recent traversal file
+            # traversal_files = list(self.config.traversals_dir.glob("*.json"))
+            # if traversal_files:
+            #     traversal_file = max(traversal_files, key=lambda f: f.stat().st_mtime)
+
+            #     # Create screenshots directory based on traversal file name
+            #     if traversal_file:
+            #         screenshots_dir = self.config.screenshots_dir / traversal_file.stem
+
+            # return [
+            #     TaskResult(
+            #         success=True,
+            #         session_file=traversal_file,  # Use traversal file as session file
+            #         error_message=None,
+            #         steps_completed=0,  # mock value for now
+            #         execution_time=execution_time,
+            #         traversal_file=traversal_file,
+            #         screenshots_dir=screenshots_dir,
+            #         metadata={
+            #             "task_description": t.description,
+            #             "enable_healing": t.enable_healing,
+            #             "browser_headless": self.config.headless,
+            #             "allowed_domains": task.allowed_domains,
+            #             "has_secrets": task.secrets is not None,
+            #         },
+            #     ) for t in task_list
+            # ]
+
+        # TODO!:AGENT this exception handling should be a different function since this will be used excessively for each execution
+        except Exception as e:
+
+            # Determine error type and create appropriate exception
+            if isinstance(e, (LLMError, BrowserError, ValidationError)):
+                raise
+
+            if "LLM" in str(e) or "OpenAI" in str(e):
+                raise LLMError(
+                    f"LLM operation failed: {e}",
+                    llm_provider=self.config.llm_provider,
+                    llm_model=self.config.llm_model,
+                    original_error=e,
+                )
+
+            if "browser" in str(e).lower() or "page" in str(e).lower():
+                raise BrowserError(
+                    f"Browser operation failed: {e}",
+                    browser_action="task_execution",
+                    original_error=e,
+                )
+
+            raise TaskExecutionError(
+                f"Task execution failed: {e}",
+                task_description="Task execution failed",
+                steps_completed=0,
+                original_error=e,
+            )
+
+        finally:
+            # Clean up browser session
+            if navigation_agents:
+                for na in navigation_agents:
+                    await na.close()
+
+            await self.cleanup()
+
     async def replay_session(
         self, session_file: Path, pause_after_each_step: bool = False
     ) -> TaskResult:
@@ -323,22 +467,23 @@ class BugninjaClient:
         """
         start_time = time.time()
 
-        try:
-            # Validate session file exists
-            if not session_file.exists():
-                raise ValidationError(
-                    f"Session file does not exist: {session_file}",
-                    field_name="session_file",
-                    field_value=str(session_file),
-                )
+        # Validate session file exists
+        if not session_file.exists():
+            raise ValidationError(
+                f"Session file does not exist: {session_file}",
+                field_name="session_file",
+                field_value=str(session_file),
+            )
 
-            # Validate session file is JSON
-            if not session_file.suffix == ".json":
-                raise ValidationError(
-                    f"Session file must be a JSON file: {session_file}",
-                    field_name="session_file",
-                    field_value=str(session_file),
-                )
+        # Validate session file is JSON
+        if not session_file.suffix == ".json":
+            raise ValidationError(
+                f"Session file must be a JSON file: {session_file}",
+                field_name="session_file",
+                field_value=str(session_file),
+            )
+
+        try:
 
             # Create replicator with configured settings
             replicator = ReplicatorRun(
@@ -356,9 +501,15 @@ class BugninjaClient:
                 success = False
                 error_message = str(e)
 
+            finally:
+                # TODO!:AGENT cleanup should consistently happen for both success and failure for both replicator agents and navigator runs as well
+                await replicator.cleanup()
+
             # Calculate execution time
             execution_time = time.time() - start_time
 
+            # TODO!:AGENT TaskResults has to be refactored
+            #! - success flag, execution started, execution ended, error message, metadata not needed
             return TaskResult(
                 success=success,
                 session_file=session_file,
@@ -373,15 +524,18 @@ class BugninjaClient:
                 },
             )
 
-        except ValidationError:
-            raise
         except Exception as e:
             execution_time = time.time() - start_time
+
+            # TODO!:AGENT instead of simple exception here, we should have a proper handling of return values
+            # failing runs should produce valid results as well
 
             raise SessionReplayError(
                 f"Session replay failed: {e}", session_file=str(session_file), original_error=e
             )
 
+    # TODO!:AGENT control adjustment
+    #! healing is not a thing that can be done separately --> either run_task, replay_session, or replay_session_with_healing
     async def heal_session(
         self, session_file: Path, pause_after_each_step: bool = False
     ) -> TaskResult:
@@ -487,7 +641,7 @@ class BugninjaClient:
                 print(f"Steps: {session.steps_count}")
             ```
         """
-        sessions = []
+        sessions: List[SessionInfo] = []
 
         try:
             # Find all session files in traversals directory

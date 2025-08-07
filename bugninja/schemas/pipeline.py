@@ -1,12 +1,16 @@
 import logging
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 
 from browser_use.agent.views import AgentBrain  # type: ignore
 from browser_use.browser import BrowserProfile  # type: ignore
 from browser_use.browser.profile import (  # type: ignore
+    BROWSERUSE_PROFILES_DIR,
+    BrowserChannel,
     ClientCertificate,
     ColorScheme,
     Geolocation,
+    HttpCredentials,
     ProxySettings,
     ViewportSize,
 )
@@ -46,26 +50,32 @@ class BugninjaBrowserConfig(BaseModel):
     for browser automation tasks.
     """
 
-    user_agent: str = Field(
-        default="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        description="User agent string for browser automation",
-    )
-    viewport: Dict[str, int] = Field(
-        default={"width": 1280, "height": 960},
+    viewport: ViewportSize = Field(
+        default=ViewportSize(width=1280, height=960),
         description="Viewport dimensions for browser automation",
     )
+    channel: BrowserChannel
+    user_data_dir: Optional[Union[Path, str]] = Field(default=BROWSERUSE_PROFILES_DIR / "default")
+
+    user_agent: Optional[str] = Field(default=None)
     device_scale_factor: Optional[NonNegativeFloat] = Field(default=None)
     color_scheme: ColorScheme = Field(default=ColorScheme.LIGHT)
     accept_downloads: bool = Field(default=False)
     proxy: Optional[ProxySettings] = Field(default=None)
     client_certificates: List[ClientCertificate] = Field(default_factory=list)
     extra_http_headers: Dict[str, str] = Field(default_factory=dict)
-    http_credentials: Optional[Dict[str, str]] = Field(default=None)
+    http_credentials: Optional[HttpCredentials] = Field(default=None)
     java_script_enabled: bool = Field(default=True)
     geolocation: Optional[Geolocation] = Field(default=None)
     timeout: float = Field(default=30_000)
     headers: Optional[Dict[str, str]] = Field(default=None)
     allowed_domains: Optional[List[str]] = Field(default=None)
+
+    @staticmethod
+    def default_factory() -> "BugninjaBrowserConfig":
+        return BugninjaBrowserConfig(
+            viewport=ViewportSize(width=1280, height=960), channel=BrowserChannel.CHROMIUM
+        )
 
     @staticmethod
     def from_browser_profile(browser_profile: BrowserProfile) -> "BugninjaBrowserConfig":
@@ -78,19 +88,11 @@ class BugninjaBrowserConfig(BaseModel):
             BugninjaBrowserConfig instance with converted settings.
         """
 
-        viewport: Optional[ViewportSize] = browser_profile.viewport
-        viewport_element: Optional[Dict[str, int]] = None
-
-        if viewport is not None:
-            viewport_element = {
-                "width": viewport.get("width"),
-                "height": viewport.get("height"),
-            }
-
         return BugninjaBrowserConfig(
-            user_agent=browser_profile.user_agent
-            or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            viewport=viewport_element or {"width": 1280, "height": 960},
+            channel=browser_profile.channel,
+            user_data_dir=browser_profile.user_data_dir,
+            user_agent=browser_profile.user_agent,
+            viewport=browser_profile.viewport or ViewportSize(width=1280, height=960),
             device_scale_factor=browser_profile.device_scale_factor,
             color_scheme=browser_profile.color_scheme,
             accept_downloads=browser_profile.accept_downloads,

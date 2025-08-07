@@ -8,6 +8,8 @@ for different deployment scenarios (development, testing, staging, production).
 from enum import Enum
 from typing import Any, Dict
 
+# TODO!:AGENT environment support this way may be an unnecessary overkill
+
 
 class Environment(str, Enum):
     """Supported deployment environments."""

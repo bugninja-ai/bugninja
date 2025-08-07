@@ -64,11 +64,15 @@ class HealerAgent(BugninjaAgentBase):
         # Complete event tracking for healing run
         if self.event_manager and self.run_id:
             try:
+                if not self.state.last_result:
+                    raise Exception("No results found for healing run")
+
                 success = not any(
                     result.error for result in self.state.last_result if hasattr(result, "error")
                 )
                 await self.event_manager.complete_run(self.run_id, success)
                 logger.info(f"✅ Completed healing run: {self.run_id}")
+
             except Exception as e:
                 logger.warning(f"Failed to complete event tracking: {e}")
 
@@ -120,12 +124,14 @@ class HealerAgent(BugninjaAgentBase):
 
         # Get the extended action for screenshot with highlighting
         extended_action = self._find_matching_extended_action(action)
-        if extended_action:
-            # Take screenshot and get filename
-            screenshot_filename = await self.screenshot_manager.take_screenshot(
-                current_page, extended_action, self.browser_session
-            )
 
-            # Store screenshot filename with extended action
-            extended_action.screenshot_filename = screenshot_filename
-            logger.info(f"📸 Stored screenshot filename: {screenshot_filename}")
+        if not extended_action:
+            raise Exception("Extended action not found for screenshot")
+
+        screenshot_filename = await self.screenshot_manager.take_screenshot(
+            current_page, extended_action, self.browser_session
+        )
+
+        # Store screenshot filename with extended action
+        extended_action.screenshot_filename = screenshot_filename
+        logger.info(f"📸 Stored screenshot filename: {screenshot_filename}")

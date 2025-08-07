@@ -103,6 +103,8 @@ class ReplicatorRun(ReplicatorNavigator):
 
         # Initialize event publisher manager (explicitly passed)
         self.event_manager = event_manager
+
+        # TODO!:AGENT run_id mustn't be None
         self.run_id = None
 
         brain_state_list: List[BugninjaBrainState] = [

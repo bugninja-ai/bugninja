@@ -395,7 +395,7 @@ class TestBugninjaBrowserConfig:
         across different automation scenarios.
         """
         # Use Polyfactory to create config with default values
-        config = BugninjaBrowserConfig()
+        config = BugninjaBrowserConfig.default_factory()
 
         # Verify all default values are correctly set - essential for consistent behavior across automation scenarios
         assert (
