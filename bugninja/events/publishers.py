@@ -20,21 +20,27 @@ class NullEventPublisher(EventPublisher):
         """Check if null publisher is available (always True)."""
         return self._available
 
-    async def initialize_run(self, run_type: str, metadata: Dict[str, Any]) -> str:
+    async def initialize_run(
+        self, run_type: str, metadata: Dict[str, Any], existing_run_id: Optional[str] = None
+    ) -> str:
         """Initialize a run (no-op implementation).
 
         Args:
             run_type: Type of run
             metadata: Run metadata
+            existing_run_id: Optional existing run ID to use instead of generating new one
 
         Returns:
-            Generated run ID
+            Generated run ID or existing run ID
 
         Raises:
             PublisherUnavailableError: If publisher is not available
         """
         if not self.is_available():
             raise PublisherUnavailableError("Null publisher is not available")
+
+        if existing_run_id:
+            return existing_run_id
         return f"null_run_{uuid.uuid4().hex[:8]}"
 
     async def update_run_state(self, run_id: str, state: RunState) -> None:

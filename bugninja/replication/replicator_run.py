@@ -22,6 +22,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from cuid2 import Cuid as CUID
 from rich import print as rich_print
 
 from bugninja.agents.healer_agent import HealerAgent
@@ -36,6 +37,7 @@ from bugninja.schemas.pipeline import (
     BugninjaBrainState,
     BugninjaExtendedAction,
     ReplayWithHealingStateMachine,
+    Traversal,
 )
 from bugninja.utils.logger_config import set_logger_config
 from bugninja.utils.screenshot_manager import ScreenshotManager
@@ -67,6 +69,7 @@ class ReplicatorRun(ReplicatorNavigator):
         fail_on_unimplemented_action: bool = False,
         sleep_after_actions: float = 1.0,
         pause_after_each_step: bool = True,
+        enable_healing: bool = True,
         event_manager: Optional[EventPublisherManager] = None,
     ):
         """
@@ -77,6 +80,7 @@ class ReplicatorRun(ReplicatorNavigator):
             fail_on_unimplemented_action: Whether to fail on unimplemented actions
             sleep_after_actions: Time to sleep after each action
             pause_after_each_step: Whether to pause and wait for Enter key after each step
+            enable_healing: Whether to enable healing when actions fail (default: True)
             event_manager: Optional event publisher manager for tracking
         """
 
@@ -91,8 +95,10 @@ class ReplicatorRun(ReplicatorNavigator):
         self.retry_delay = 0.5
 
         self.healing_happened = False
+        self._traversal: Optional[Traversal] = None  # Store traversal after successful run
 
         self.pause_after_each_step = pause_after_each_step
+        self.enable_healing = enable_healing
         self.secrets = self.replay_traversal.secrets
 
         # Get the number of actions from the actions dictionary
@@ -104,8 +110,8 @@ class ReplicatorRun(ReplicatorNavigator):
         # Initialize event publisher manager (explicitly passed)
         self.event_manager = event_manager
 
-        # TODO!:AGENT run_id mustn't be None
-        self.run_id = None
+        # Generate run_id at creation time for consistency
+        self.run_id = CUID().generate()
 
         brain_state_list: List[BugninjaBrainState] = [
             BugninjaBrainState(
@@ -166,6 +172,7 @@ class ReplicatorRun(ReplicatorNavigator):
             llm=azure_openai_model(),
             browser_session=self.browser_session,
             sensitive_data=self.secrets,
+            parent_run_id=self.run_id,  # Pass parent's run_id to maintain consistency
             # TODO! experiment with adding the proper state from previous runs for the brain to be aware what is happening
             # injected_agent_state=self.create_agent_state_from_traversal_json(cut_after=at_idx),
         )
@@ -177,9 +184,12 @@ class ReplicatorRun(ReplicatorNavigator):
 
         return agent
 
-    def _save_corrected_traversal(self, output_path: str) -> None:
+    def _save_corrected_traversal(self, output_path: str) -> Traversal:
         """
         Save the corrected traversal containing successful actions and healer replacements.
+
+        Returns:
+            Traversal: The corrected traversal object
         """
         logger.info("💾 Building corrected traversal with healer actions...")
 
@@ -199,7 +209,11 @@ class ReplicatorRun(ReplicatorNavigator):
                 ensure_ascii=False,
             )
 
+        # Store the traversal object for later access
+        self._traversal = self.replay_traversal
+
         logger.info(f"💾 Corrected traversal saved to: {output_path}")
+        return self.replay_traversal
 
     async def _run(self) -> Tuple[bool, Optional[str]]:
         failed = False
@@ -213,16 +227,16 @@ class ReplicatorRun(ReplicatorNavigator):
         # Initialize event tracking for replay run
         if self.event_manager and self.event_manager.has_publishers():
             try:
-                run_id = await self.event_manager.initialize_run(
+                await self.event_manager.initialize_run(
                     run_type="replay",
                     metadata={
                         "traversal_file": self.traversal_path,
                         "total_actions": self.total_actions,
                         "task_description": "Replay traversal",
                     },
+                    existing_run_id=self.run_id,  # Use existing run_id instead of generating new one
                 )
-                self.run_id = run_id  # type: ignore
-                logger.info(f"🎯 Started replay run: {run_id}")
+                logger.info(f"🎯 Started replay run: {self.run_id}")
             except Exception as e:
                 logger.warning(f"Failed to initialize event tracking: {e}")
 
@@ -301,65 +315,74 @@ class ReplicatorRun(ReplicatorNavigator):
                     f"🧠 Failed in brain state: {self.replay_state_machine.current_brain_state}"
                 )
 
-                logger.info(
-                    "🩹 Starting free healing agent to complete entire remaining traversal..."
-                )
+                if self.enable_healing:
+                    logger.info(
+                        "🩹 Starting free healing agent to complete entire remaining traversal..."
+                    )
 
-                try:
-                    # Start healing event tracking
-                    if self.event_manager and self.run_id:
-                        await self._publish_run_event(
-                            EventType.HEALING_STARTED,
-                            {
-                                "action_index": self._get_current_action_index(),
-                                "error": str(e),
-                            },
-                        )
-
-                    # Use free healing agent to complete the entire remaining traversal
-                    agent_reached_goal, healer_agent = await self._start_free_healing()
-
-                    if agent_reached_goal:
-                        self.healing_happened = True
-                        logger.info("✅ === HEALING AGENT REACHED GOAL ===")
-
-                        # Replace remaining replay actions with healing actions
-                        self._replace_remaining_with_healing_actions(healer_agent)
-
-                        logger.info("🎉 === FREE HEALING COMPLETED SUCCESSFULLY ===")
-
-                        # Complete healing event tracking
+                    try:
+                        # Start healing event tracking
                         if self.event_manager and self.run_id:
                             await self._publish_run_event(
-                                EventType.RUN_COMPLETED,
+                                EventType.HEALING_STARTED,
                                 {
-                                    "success": True,
-                                    "healing_used": True,
+                                    "action_index": self._get_current_action_index(),
+                                    "error": str(e),
                                 },
                             )
 
-                    else:
-                        logger.error("❌ === FREE HEALING TIMED OUT ===")
+                        # Use free healing agent to complete the entire remaining traversal
+                        agent_reached_goal, healer_agent = await self._start_free_healing()
 
+                        if agent_reached_goal:
+                            self.healing_happened = True
+                            logger.info("✅ === HEALING AGENT REACHED GOAL ===")
+
+                            # Replace remaining replay actions with healing actions
+                            self._replace_remaining_with_healing_actions(healer_agent)
+
+                            logger.info("🎉 === FREE HEALING COMPLETED SUCCESSFULLY ===")
+
+                            # Complete healing event tracking
+                            if self.event_manager and self.run_id:
+                                await self._publish_run_event(
+                                    EventType.RUN_COMPLETED,
+                                    {
+                                        "success": True,
+                                        "healing_used": True,
+                                    },
+                                )
+
+                        else:
+                            logger.error("❌ === FREE HEALING TIMED OUT ===")
+
+                            failed = True
+                            failed_reason = "Free healing failed to complete traversal"
+
+                            # Complete failed healing event tracking
+                            if self.event_manager and self.run_id:
+                                await self._publish_run_event(
+                                    EventType.RUN_FAILED,
+                                    {
+                                        "success": False,
+                                        "error": failed_reason,
+                                        "healing_used": True,
+                                    },
+                                )
+                            break
+
+                    except UserInterruptionError as e:
+                        logger.info("⏹️ User interrupted the healing process")
                         failed = True
-                        failed_reason = "Free healing failed to complete traversal"
-
-                        # Complete failed healing event tracking
-                        if self.event_manager and self.run_id:
-                            await self._publish_run_event(
-                                EventType.RUN_FAILED,
-                                {
-                                    "success": False,
-                                    "error": failed_reason,
-                                    "healing_used": True,
-                                },
-                            )
+                        failed_reason = str(e)
                         break
-
-                except UserInterruptionError as e:
-                    logger.info("⏹️ User interrupted the healing process")
+                else:
+                    # Healing is disabled, fail immediately
+                    logger.error("❌ === HEALING DISABLED - REPLICATION FAILED ===")
                     failed = True
-                    failed_reason = str(e)
+                    failed_reason = (
+                        f"Action '{action_type}' failed and healing is disabled: {str(e)}"
+                    )
                     break
 
         # Complete run event tracking
@@ -393,7 +416,9 @@ class ReplicatorRun(ReplicatorNavigator):
             logger.info(f"💾 Saving corrected traversal to: {output_path}")
             self._save_corrected_traversal(output_path)
         else:
-            logger.warning("⚠️ No healing occurred - no corrected traversal to save")
+            # Store the original traversal if no healing occurred
+            self._traversal = self.replay_traversal
+            logger.warning("⚠️ No healing occurred - using original traversal")
 
         return not failed, failed_reason
 

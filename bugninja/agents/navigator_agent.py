@@ -2,7 +2,7 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from browser_use.agent.service import logger  # type: ignore
 from browser_use.agent.views import (  # type: ignore
@@ -31,6 +31,7 @@ class NavigatorAgent(BugninjaAgentBase):
 
         self.agent_taken_actions: List[BugninjaExtendedAction] = []
         self.agent_brain_states: Dict[str, AgentBrain] = {}
+        self._traversal: Optional[Traversal] = None  # Store traversal after successful run
 
         #! we override the default controller with our own
         self.controller = BugninjaController()
@@ -41,15 +42,15 @@ class NavigatorAgent(BugninjaAgentBase):
         # Initialize event tracking for navigation run (if event_manager is provided)
         if self.event_manager and self.event_manager.has_publishers():
             try:
-                run_id = await self.event_manager.initialize_run(
+                await self.event_manager.initialize_run(
                     run_type="navigation",
                     metadata={
                         "task_description": self.task,
                         "target_url": getattr(self, "target_url", None),
                     },
+                    existing_run_id=self.run_id,  # Use existing run_id instead of generating new one
                 )
-                self.run_id = run_id
-                logger.info(f"🎯 Started navigation run: {run_id}")
+                logger.info(f"🎯 Started navigation run: {self.run_id}")
             except Exception as e:
                 logger.warning(f"Failed to initialize event tracking: {e}")
 
@@ -60,7 +61,8 @@ class NavigatorAgent(BugninjaAgentBase):
         marking the run as completed or failed based on the final result.
         """
         logger.info(msg="✅ AFTER-Run hook called")
-        self.save_agent_actions()
+        # Save agent actions and store traversal
+        self._traversal = self.save_agent_actions()
 
         # Complete event tracking for navigation run
         if self.event_manager:
@@ -134,7 +136,7 @@ class NavigatorAgent(BugninjaAgentBase):
             extended_action.screenshot_filename = screenshot_filename
             logger.info(f"📸 Stored screenshot filename: {screenshot_filename}")
 
-    def save_agent_actions(self, verbose: bool = False) -> None:
+    def save_agent_actions(self, verbose: bool = False) -> Traversal:
         """
         Saves the agent's traversal data to a JSON file for analysis and replay purposes.
 
@@ -148,7 +150,7 @@ class NavigatorAgent(BugninjaAgentBase):
                 during the saving process. Defaults to False.
 
         Returns:
-            None
+            Traversal: The created traversal object
 
         Notes:
             - Creates a 'traversals' directory if it doesn't exist
@@ -214,4 +216,8 @@ class NavigatorAgent(BugninjaAgentBase):
                 ensure_ascii=False,
             )
 
+        # Store the traversal object for later access
+        self._traversal = traversal
+
         logger.info(f"Traversal saved with ID: {timestamp}_{self.run_id}")
+        return traversal

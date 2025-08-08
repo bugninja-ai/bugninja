@@ -25,11 +25,6 @@ class TestHealerAgent:
         test_task: str = "Some random task to complete"
         llm_to_use = MagicMock(spec=BaseChatModel)
 
-        # Enable LLM verification bypass for testing
-        from bugninja.agents import BugninjaAgentBase
-
-        BugninjaAgentBase.BYPASS_LLM_VERIFICATION = True
-
         agent = HealerAgent(llm=llm_to_use, task=test_task)
 
         # Initialize required attributes from parent class

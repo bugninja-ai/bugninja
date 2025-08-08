@@ -13,11 +13,42 @@ results, and configuration using Pydantic for comprehensive validation.
 """
 
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from browser_use.browser.profile import BROWSERUSE_PROFILES_DIR  # type: ignore
 from pydantic import BaseModel, Field, field_validator
+
+from bugninja.schemas.pipeline import Traversal
+
+
+class OperationType(Enum):
+    """Enumeration of operation types for Bugninja operations."""
+
+    FIRST_TRAVERSAL = "first_traversal"  # Navigation agent creating new traversal
+    REPLAY = "replay"  # Replicator replaying existing traversal
+
+
+class HealingStatus(Enum):
+    """Enumeration of healing status for Bugninja operations."""
+
+    NONE = "none"  # No healing occurred
+    USED = "used"  # Healing was used and successful
+    FAILED = "failed"  # Healing was attempted but failed
+
+
+class BugninjaErrorType(Enum):
+    """Classification of different error types for proper result handling."""
+
+    VALIDATION_ERROR = "validation_error"
+    CONFIGURATION_ERROR = "configuration_error"
+    LLM_ERROR = "llm_error"
+    BROWSER_ERROR = "browser_error"
+    TASK_EXECUTION_ERROR = "task_execution_error"
+    SESSION_REPLAY_ERROR = "session_replay_error"
+    CLEANUP_ERROR = "cleanup_error"
+    UNKNOWN_ERROR = "unknown_error"
 
 
 # TODO!:AGENT we have to have a better name for Tasks, like BugninjaTask
@@ -84,64 +115,107 @@ class Task(BaseModel):
         }
 
 
-# TODO!:AGENT we have to have a better name for TaskResults, like BugninjaTaskResult
-class TaskResult(BaseModel):
-    """Result of a browser automation task.
+class BugninjaTaskResult(BaseModel):
+    """Result of any Bugninja operation (navigation or replay).
 
-    This model represents the outcome of a task execution, including
-    success status, session file location, and execution metadata.
+    This model represents the outcome of any Bugninja operation, including
+    success status, operation type, healing status, and execution metadata.
 
     ## Fields
 
-    1. **success** - Whether the task completed successfully
-    2. **session_file** - Path to the recorded session file
-    3. **error_message** - Error message if task failed
-    4. **steps_completed** - Number of steps completed
-    5. **execution_time** - Execution time in seconds
-    6. **metadata** - Additional execution metadata
-    7. **created_at** - Timestamp when the result was created
-    8. **traversal_file** - Path to the traversal JSON file
-    9. **screenshots_dir** - Directory containing screenshots for this task
+    1. **success** - Whether the operation completed successfully
+    2. **operation_type** - Type of operation (first_traversal or replay)
+    3. **healing_status** - Whether healing was used during the operation
+    4. **execution_time** - Execution time in seconds
+    5. **steps_completed** - Number of steps completed
+    6. **total_steps** - Total number of steps in the operation
+    7. **traversal** - The actual Traversal object (if successful)
+    8. **error** - Error object if operation failed
+    9. **traversal_file** - Path to the traversal JSON file
+    10. **screenshots_dir** - Directory containing screenshots
+    11. **created_at** - Timestamp when the result was created
+    12. **metadata** - Additional execution metadata
     """
 
-    success: bool = Field(description="Whether the task completed successfully")
+    success: bool = Field(description="Whether the operation completed successfully")
 
-    session_file: Optional[Path] = Field(None, description="Path to the recorded session file")
+    operation_type: OperationType = Field(description="Type of operation performed")
 
-    error_message: Optional[str] = Field(None, description="Error message if task failed")
+    healing_status: HealingStatus = Field(
+        default=HealingStatus.NONE, description="Whether healing was used during the operation"
+    )
 
-    steps_completed: int = Field(default=0, ge=0, description="Number of steps completed")
+    execution_time: float = Field(ge=0.0, description="Execution time in seconds")
 
-    execution_time: Optional[float] = Field(None, ge=0.0, description="Execution time in seconds")
+    steps_completed: int = Field(ge=0, description="Number of steps completed")
 
-    metadata: Dict[str, Any] = Field(
-        default_factory=dict, description="Additional execution metadata"
+    total_steps: int = Field(ge=0, description="Total number of steps in the operation")
+
+    traversal: Optional[Traversal] = Field(default=None, description="The actual Traversal object")
+
+    error: Optional["BugninjaTaskError"] = Field(
+        default=None, description="Error object if operation failed"
+    )
+
+    traversal_file: Optional[Path] = Field(
+        default=None, description="Path to the traversal JSON file"
+    )
+
+    screenshots_dir: Optional[Path] = Field(
+        default=None, description="Directory containing screenshots"
     )
 
     created_at: datetime = Field(
         default_factory=datetime.now, description="Timestamp when the result was created"
     )
 
-    traversal_file: Optional[Path] = Field(None, description="Path to the traversal JSON file")
-
-    screenshots_dir: Optional[Path] = Field(
-        None, description="Directory containing screenshots for this task"
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict, description="Additional execution metadata"
     )
 
     class Config:
-        """Pydantic configuration for TaskResult model."""
+        """Pydantic configuration for BugninjaTaskResult model."""
 
         json_schema_extra = {
             "example": {
                 "success": True,
-                "session_file": "/path/to/session.json",
+                "operation_type": "first_traversal",
+                "healing_status": "none",
+                "execution_time": 45.2,
+                "steps_completed": 15,
+                "total_steps": 20,
                 "traversal_file": "/path/to/traversal.json",
                 "screenshots_dir": "/path/to/screenshots/",
-                "steps_completed": 15,
-                "execution_time": 45.2,
                 "metadata": {"screenshots_taken": 5},
             }
         }
+
+
+class BugninjaTaskError(BaseModel):
+    """Enhanced error model for task results."""
+
+    error_type: BugninjaErrorType
+    message: str
+    details: Optional[Dict[str, Any]] = None
+    original_error: Optional[str] = None
+    suggested_action: Optional[str] = None
+
+
+class BulkBugninjaTaskResult(BaseModel):
+    """Result for parallel task execution."""
+
+    overall_success: bool
+    total_tasks: int
+    successful_tasks: int
+    failed_tasks: int
+    total_execution_time: float
+    individual_results: List[BugninjaTaskResult]
+    metadata: Dict[str, Any]
+    error_summary: Optional[Dict[BugninjaErrorType, int]] = None
+
+
+# Backward compatibility alias
+TaskResult = BugninjaTaskResult
 
 
 class BugninjaConfig(BaseModel):
@@ -162,7 +236,6 @@ class BugninjaConfig(BaseModel):
     # LLM Configuration
     llm_provider: str = Field(
         default="azure_openai",
-        pattern="^(azure_openai|openai|anthropic)$",
         description="LLM provider to use",
     )
 

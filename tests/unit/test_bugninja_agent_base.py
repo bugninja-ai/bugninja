@@ -101,9 +101,6 @@ class TestBugninjaAgentBase:
     @pytest.fixture
     def agent(self) -> ConcreteBugninjaAgent:
         """Create a concrete BugninjaAgentBase instance for testing."""
-        from bugninja.agents import BugninjaAgentBase
-
-        BugninjaAgentBase.BYPASS_LLM_VERIFICATION = True
         return ConcreteBugninjaAgent()
 
     @pytest.fixture

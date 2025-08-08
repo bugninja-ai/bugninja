@@ -44,11 +44,6 @@ class TestNavigatorAgent:
         test_task: str = "Some random task to complete"
         llm_to_use = MagicMock(spec=BaseChatModel)
 
-        # Enable LLM verification bypass for testing
-        from bugninja.agents import BugninjaAgentBase
-
-        BugninjaAgentBase.BYPASS_LLM_VERIFICATION = True
-
         agent = NavigatorAgent(task=test_task, llm=llm_to_use)
 
         # Initialize required attributes from parent class

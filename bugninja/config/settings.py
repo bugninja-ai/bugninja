@@ -70,11 +70,6 @@ class BugninjaSettings(BaseSettings):
 
     # Development Configuration
     debug_mode: bool = Field(default=False, alias="DEBUG_MODE", description="Enable debug mode")
-    bypass_llm_verification: bool = Field(
-        default=False,
-        alias="BYPASS_LLM_VERIFICATION",
-        description="Bypass LLM verification for testing",
-    )
     enable_verbose_logging: bool = Field(
         default=False,
         alias="ENABLE_VERBOSE_LOGGING",

@@ -14,11 +14,13 @@ entry point for browser automation operations with a simple, intuitive API.
 """
 
 import asyncio
+import logging
 import time
 from asyncio import Task as AsyncioTask
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from browser_use import (  # type: ignore[import-untyped]
     AgentHistoryList,
@@ -38,16 +40,40 @@ from bugninja.api.exceptions import (
     TaskExecutionError,
     ValidationError,
 )
-from bugninja.api.models import BugninjaConfig, SessionInfo, Task, TaskResult
+from bugninja.api.models import (
+    BugninjaConfig,
+    BugninjaErrorType,
+    BugninjaTaskError,
+    BugninjaTaskResult,
+    BulkBugninjaTaskResult,
+    HealingStatus,
+    OperationType,
+    SessionInfo,
+    Task,
+)
 from bugninja.config import ConfigurationFactory, Environment
 from bugninja.events import EventPublisherManager
 from bugninja.models import azure_openai_model
 from bugninja.replication import ReplicatorRun
+from bugninja.utils.logger_config import set_logger_config
 from bugninja.utils.prompt_string_factories import AUTHENTICATION_HANDLING_EXTRA_PROMPT
+
+
+class ClientOperationType(Enum):
+    """Enumeration of operation types for error handling."""
+
+    TASK_EXECUTION = "task_execution"
+    PARALLEL_TASK_EXECUTION = "parallel_task_execution"
+    SESSION_REPLAY = "session_replay"
+    PARALLEL_SESSION_REPLAY = "parallel_session_replay"
+    LIST_SESSIONS = "list_sessions"
+    CLEANUP = "cleanup"
 
 
 class BugninjaClient:
     """Main entry point for Bugninja browser automation operations.
+
+    _logger = logging.getLogger(__name__)
 
     This class provides a simple, intuitive interface for browser automation
     tasks, session replay, and healing operations. It handles configuration
@@ -56,10 +82,9 @@ class BugninjaClient:
     ## Key Methods
 
     1. **run_task()** - Execute browser automation tasks
-    2. **replay_session()** - Replay recorded sessions
-    3. **heal_session()** - Heal failed sessions
-    4. **list_sessions()** - List available sessions
-    5. **cleanup()** - Clean up resources
+    2. **replay_session()** - Replay recorded sessions (with optional healing)
+    3. **list_sessions()** - List available sessions
+    4. **cleanup()** - Clean up resources
 
     Example:
         ```python
@@ -94,6 +119,7 @@ class BugninjaClient:
         """
         try:
             # Use provided config or create default
+            # BugninjaConfig validation happens automatically during instantiation
             self.config = config or BugninjaConfig()
 
             # Initialize internal configuration
@@ -102,48 +128,315 @@ class BugninjaClient:
             # Store event manager
             self._event_manager = event_manager
 
-            # Validate configuration
-            self._validate_config()
-
             # Initialize session tracking
             self._active_sessions: List[BrowserSession] = []
+
+            # Configure logging with custom format
+            set_logger_config()
+
+            self._logger = logging.getLogger(__name__)
 
         except Exception as e:
             raise ConfigurationError(f"Failed to initialize Bugninja client: {e}", original_error=e)
 
-    # TODO!:AGENT validation of config should be the responsibility of the BugninjaConfig, not the Client!
-    def _validate_config(self) -> None:
-        """Validate client configuration.
+    def _classify_error(self, error: Exception, context: Dict[str, Any]) -> BugninjaErrorType:
+        """Classify errors using clean match-case structure."""
+
+        # First check exception type
+        error_type = type(error)
+
+        if error_type == ValidationError:
+            return BugninjaErrorType.VALIDATION_ERROR
+        elif error_type == ConfigurationError:
+            return BugninjaErrorType.CONFIGURATION_ERROR
+        elif error_type == LLMError:
+            return BugninjaErrorType.LLM_ERROR
+        elif error_type == BrowserError:
+            return BugninjaErrorType.BROWSER_ERROR
+        elif error_type == TaskExecutionError:
+            return BugninjaErrorType.TASK_EXECUTION_ERROR
+        elif error_type == SessionReplayError:
+            return BugninjaErrorType.SESSION_REPLAY_ERROR
+
+        # Then check error message content
+        error_message = str(error).lower()
+
+        # Check for validation errors
+        if any(
+            keyword in error_message for keyword in ["validation", "invalid", "required", "missing"]
+        ):
+            return BugninjaErrorType.VALIDATION_ERROR
+        # Check for LLM errors
+        elif any(
+            keyword in error_message
+            for keyword in ["llm", "openai", "azure", "model", "token", "api"]
+        ):
+            return BugninjaErrorType.LLM_ERROR
+        # Check for browser errors
+        elif any(
+            keyword in error_message
+            for keyword in ["browser", "page", "element", "click", "navigate", "selector"]
+        ):
+            return BugninjaErrorType.BROWSER_ERROR
+        # Check for task execution errors
+        elif any(keyword in error_message for keyword in ["task", "execution", "step", "action"]):
+            return BugninjaErrorType.TASK_EXECUTION_ERROR
+        # Check for session replay errors
+        elif any(
+            keyword in error_message for keyword in ["session", "replay", "traversal", "json"]
+        ):
+            return BugninjaErrorType.SESSION_REPLAY_ERROR
+        # Check for cleanup errors
+        elif any(keyword in error_message for keyword in ["cleanup", "close", "resource"]):
+            return BugninjaErrorType.CLEANUP_ERROR
+        # Default to unknown error
+        else:
+            return BugninjaErrorType.UNKNOWN_ERROR
+
+    def _get_suggested_action(self, error_type: BugninjaErrorType, context: Dict[str, Any]) -> str:
+        """Get suggested action based on error type using match-case."""
+
+        match error_type:
+            case BugninjaErrorType.VALIDATION_ERROR:
+                return "Check input parameters and ensure all required fields are provided"
+            case BugninjaErrorType.CONFIGURATION_ERROR:
+                return "Verify configuration settings and environment variables"
+            case BugninjaErrorType.LLM_ERROR:
+                return "Check LLM provider credentials and API configuration"
+            case BugninjaErrorType.BROWSER_ERROR:
+                return "Verify browser installation and check for element selectors"
+            case BugninjaErrorType.TASK_EXECUTION_ERROR:
+                return "Review task description and check for invalid actions"
+            case BugninjaErrorType.SESSION_REPLAY_ERROR:
+                return "Verify session file format and check for corrupted data"
+            case BugninjaErrorType.CLEANUP_ERROR:
+                return "Check system resources and browser session state"
+            case BugninjaErrorType.UNKNOWN_ERROR:
+                return "Review logs for detailed error information"
+
+    def _create_bulk_error_result(
+        self, error: Exception, task_list: List[Task], execution_time: float
+    ) -> BulkBugninjaTaskResult:
+        """Create bulk error result for parallel task execution failures."""
+
+        error_type = self._classify_error(error, {"operation": "parallel_execution"})
+        suggested_action = self._get_suggested_action(error_type, {})
+
+        return BulkBugninjaTaskResult(
+            overall_success=False,
+            total_tasks=len(task_list),
+            successful_tasks=0,
+            failed_tasks=len(task_list),
+            total_execution_time=execution_time,
+            individual_results=[],
+            error_summary={error_type: len(task_list)},
+            metadata={
+                "error_type": error_type.value,
+                "error_message": str(error),
+                "suggested_action": suggested_action,
+                "operation": "parallel_execution",
+            },
+        )
+
+    def _create_error_result(
+        self,
+        error: Exception,
+        operation_type: OperationType,
+        context: Dict[str, Any],
+        execution_time: float,
+    ) -> BugninjaTaskResult:
+        """Create comprehensive error result with proper error classification."""
+
+        error_type = self._classify_error(error, context)
+        suggested_action = self._get_suggested_action(error_type, context)
+
+        return BugninjaTaskResult(
+            success=False,
+            operation_type=operation_type,
+            healing_status=HealingStatus.NONE,
+            execution_time=execution_time,
+            steps_completed=context.get("steps_completed", 0),
+            total_steps=context.get("total_steps", 0),
+            traversal=None,
+            traversal_file=context.get("traversal_file"),
+            screenshots_dir=context.get("screenshots_dir"),
+            error=BugninjaTaskError(
+                error_type=error_type,
+                message=str(error),
+                details=context,
+                original_error=f"{type(error).__name__}: {str(error)}",
+                suggested_action=suggested_action,
+            ),
+            metadata={
+                "error_context": context,
+                "operation_type": operation_type.value,
+                "error_classification": error_type.value,
+            },
+        )
+
+    def _create_error_summary(
+        self, results: List[BugninjaTaskResult]
+    ) -> Dict[BugninjaErrorType, int]:
+        """Create error summary from individual task results."""
+
+        error_counts: Dict[BugninjaErrorType, int] = {}
+
+        for result in results:
+            if not result.success and result.error:
+                error_type = result.error.error_type
+                error_counts[error_type] = error_counts.get(error_type, 0) + 1
+
+        return error_counts
+
+    def _handle_execution_error(
+        self,
+        error: Exception,
+        operation_type: ClientOperationType,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Centralized error handling for all execution operations.
+
+        This method classifies errors and raises appropriate exceptions with
+        proper context and details for debugging.
+
+        Args:
+            error: The original exception that occurred
+            operation_type: Type of operation that failed
+            context: Optional context information for the error
 
         Raises:
-            ConfigurationError: If configuration is invalid.
+            LLMError: If the error is related to LLM operations
+            BrowserError: If the error is related to browser operations
+            ValidationError: If the error is a validation issue
+            TaskExecutionError: For general task execution failures
+            SessionReplayError: For session replay failures
+        """
+        # Re-raise known exception types
+        if isinstance(
+            error, (LLMError, BrowserError, ValidationError, TaskExecutionError, SessionReplayError)
+        ):
+            raise
+
+        # Classify error based on content and context
+        error_message = str(error).lower()
+
+        # LLM-related errors
+        if any(
+            keyword in error_message
+            for keyword in ["llm", "openai", "azure", "model", "token", "api"]
+        ):
+            raise LLMError(
+                f"LLM operation failed during {operation_type.value}: {error}",
+                llm_provider=self.config.llm_provider,
+                llm_model=self.config.llm_model,
+                original_error=error,
+            )
+
+        # Browser-related errors
+        if any(
+            keyword in error_message
+            for keyword in ["browser", "page", "element", "click", "navigate", "selector"]
+        ):
+            raise BrowserError(
+                f"Browser operation failed during {operation_type.value}: {error}",
+                browser_action=operation_type.value,
+                original_error=error,
+            )
+
+        # Validation errors
+        if any(
+            keyword in error_message for keyword in ["validation", "invalid", "required", "missing"]
+        ):
+            raise ValidationError(
+                f"Validation error during {operation_type.value}: {error}",
+                field_name=context.get("field_name") if context else None,
+                field_value=context.get("field_value") if context else None,
+            )
+
+        # Use match statement for operation-specific error handling
+        match operation_type:
+            case ClientOperationType.TASK_EXECUTION | ClientOperationType.PARALLEL_TASK_EXECUTION:
+                raise TaskExecutionError(
+                    f"Task execution failed: {error}",
+                    task_description=(
+                        context.get("task_description", "Unknown task")
+                        if context
+                        else "Unknown task"
+                    ),
+                    steps_completed=context.get("steps_completed", 0) if context else 0,
+                    original_error=error,
+                )
+            case ClientOperationType.SESSION_REPLAY:
+                raise SessionReplayError(
+                    f"Session {operation_type.value} failed: {error}",
+                    session_file=context.get("session_file") if context else None,
+                    original_error=error,
+                )
+            case ClientOperationType.LIST_SESSIONS | ClientOperationType.CLEANUP:
+                # Generic error for utility operations
+                raise BugninjaError(
+                    f"Operation '{operation_type.value}' failed: {error}",
+                    original_error=error,
+                )
+            case _:
+                # Fallback for any unhandled operation types
+                raise BugninjaError(
+                    f"Operation '{operation_type.value}' failed: {error}",
+                    original_error=error,
+                )
+
+    async def _ensure_cleanup(
+        self,
+        agent: Optional[Any] = None,
+        browser_session: Optional[BrowserSession] = None,
+        replicator: Optional[Any] = None,
+    ) -> None:
+        """Ensure consistent cleanup for all agent types and resources.
+
+        This method provides centralized cleanup logic that handles different
+        types of agents and resources gracefully, preventing resource leaks
+        and ensuring proper cleanup regardless of success or failure.
+
+        Args:
+            agent: NavigatorAgent, HealerAgent, or other agent instance to cleanup
+            browser_session: BrowserSession instance to cleanup
+            replicator: ReplicatorRun instance to cleanup
         """
         try:
-            # Validate LLM configuration
-            if not self.config.llm_provider:
-                raise ValidationError("LLM provider is required", field_name="llm_provider")
+            # Cleanup replicator if provided
+            if replicator:
+                try:
+                    await replicator.cleanup()
+                except Exception as e:
+                    # Log cleanup error but don't raise to avoid masking original errors
+                    self._logger.warning(f"Replicator cleanup failed: {e}")
 
-            # Validate browser configuration
-            if self.config.viewport_width < 800 or self.config.viewport_width > 3840:
-                raise ValidationError(
-                    "Viewport width must be between 800 and 3840",
-                    field_name="viewport_width",
-                    field_value=str(self.config.viewport_width),
-                )
+            # Cleanup agent if provided
+            if agent:
+                try:
+                    if hasattr(agent, "close"):
+                        await agent.close()
+                    elif hasattr(agent, "cleanup"):
+                        await agent.cleanup()
+                except Exception as e:
+                    # Log cleanup error but don't raise to avoid masking original errors
+                    self._logger.warning(f"Agent cleanup failed: {e}")
 
-            if self.config.viewport_height < 600 or self.config.viewport_height > 2160:
-                raise ValidationError(
-                    "Viewport height must be between 600 and 2160",
-                    field_name="viewport_height",
-                    field_value=str(self.config.viewport_height),
-                )
+            # Cleanup browser session if provided
+            if browser_session:
+                try:
+                    if browser_session in self._active_sessions:
+                        await browser_session.close()
+                        self._active_sessions.remove(browser_session)
+                except Exception as e:
+                    # Log cleanup error but don't raise to avoid masking original errors
+                    self._logger.warning(f"Browser session cleanup failed: {e}")
 
-        except ValidationError:
-            raise
         except Exception as e:
-            raise ConfigurationError(f"Configuration validation failed: {e}", original_error=e)
+            # Log any unexpected cleanup errors but don't raise
+            self._logger.warning(f"Unexpected cleanup error: {e}")
 
-    async def run_task(self, task: Task) -> TaskResult:
+    async def run_task(self, task: Task) -> BugninjaTaskResult:
         """Execute a browser automation task.
 
         This method creates a NavigatorAgent and executes the specified task,
@@ -153,7 +446,7 @@ class BugninjaClient:
             task: The task to execute, containing description and parameters.
 
         Returns:
-            TaskResult containing execution status and session file path.
+            BugninjaTaskResult containing execution status and traversal data.
 
         Raises:
             TaskExecutionError: If task execution fails.
@@ -180,6 +473,7 @@ class BugninjaClient:
         """
         start_time = time.time()
         browser_session = None
+        agent: Optional[NavigatorAgent] = None
 
         try:
             # Validate task description
@@ -239,14 +533,16 @@ class BugninjaClient:
                 if traversal_file:
                     screenshots_dir = self.config.screenshots_dir / traversal_file.stem
 
-            return TaskResult(
+            return BugninjaTaskResult(
                 success=True,
-                session_file=traversal_file,  # Use traversal file as session file
-                error_message=None,
+                operation_type=OperationType.FIRST_TRAVERSAL,
+                healing_status=HealingStatus.NONE,  # Navigation doesn't use healing
+                execution_time=execution_time,
                 steps_completed=(
                     len(history.history) if history and hasattr(history, "history") else 0
                 ),
-                execution_time=execution_time,
+                total_steps=task.max_steps or self.config.default_max_steps,
+                traversal=agent._traversal if hasattr(agent, "_traversal") else None,
                 traversal_file=traversal_file,
                 screenshots_dir=screenshots_dir,
                 metadata={
@@ -256,47 +552,35 @@ class BugninjaClient:
                     "allowed_domains": task.allowed_domains,
                     "has_secrets": task.secrets is not None,
                 },
+                error=None,  # No error if success
             )
 
         except Exception as e:
             execution_time = time.time() - start_time
-
-            # Determine error type and create appropriate exception
-            if isinstance(e, (LLMError, BrowserError, ValidationError)):
-                raise
-
-            if "LLM" in str(e) or "OpenAI" in str(e):
-                raise LLMError(
-                    f"LLM operation failed: {e}",
-                    llm_provider=self.config.llm_provider,
-                    llm_model=self.config.llm_model,
-                    original_error=e,
-                )
-
-            if "browser" in str(e).lower() or "page" in str(e).lower():
-                raise BrowserError(
-                    f"Browser operation failed: {e}",
-                    browser_action="task_execution",
-                    original_error=e,
-                )
-
-            raise TaskExecutionError(
-                f"Task execution failed: {e}",
-                task_description=task.description,
-                steps_completed=0,
-                original_error=e,
+            context = {
+                "task_description": task.description,
+                "steps_completed": 0,
+                "total_steps": task.max_steps or self.config.default_max_steps,
+                "browser_headless": self.config.headless,
+                "allowed_domains": task.allowed_domains,
+                "has_secrets": task.secrets is not None,
+            }
+            return self._create_error_result(
+                e, OperationType.FIRST_TRAVERSAL, context, execution_time
             )
 
         finally:
-            # Clean up browser session
-            if browser_session and browser_session in self._active_sessions:
-                # await browser_session.cleanup()
-                self._active_sessions.remove(browser_session)
+            if agent:
+                # Ensure consistent cleanup for both success and failure
+                await self._ensure_cleanup(agent=agent, browser_session=browser_session)
 
     # TODO! has to be completed and additionally the parallel running of existing testcases must be implemented as well
-    async def parallel_run_tasks(self, task_list: List[Task]) -> None:
+    async def parallel_run_tasks(self, task_list: List[Task]) -> BulkBugninjaTaskResult:
 
+        start_time = time.time()
         navigation_agents: List[NavigatorAgent] = []
+        individual_results: List[BugninjaTaskResult] = []
+
         try:
 
             for task in task_list:
@@ -313,7 +597,7 @@ class BugninjaClient:
                         user_dir_path = Path(self.config.user_data_dir)
 
                 # ? unique saving path for each browser user_data_dir
-                # TODO: CUID here should be consistent with the run_id of the agent
+                # Note: CUID generation here is independent of agent run_id for isolation
                 user_data_dir_for_task: Path = user_dir_path / CUID().generate()
 
                 # Create browser session with configured settings
@@ -353,85 +637,75 @@ class BugninjaClient:
                 for nav_agent in navigation_agents:
                     navigation_runs.append(tg.create_task(nav_agent.run()))
 
+            # Execute tasks in parallel and collect results
             for background_task in navigation_runs:
-                # TODO! have to be completed
-                print(background_task.result())
+                try:
+                    history = background_task.result()
+                    # Create individual result for successful task
+                    individual_result = BugninjaTaskResult(
+                        success=True,
+                        operation_type=OperationType.FIRST_TRAVERSAL,
+                        healing_status=HealingStatus.NONE,
+                        execution_time=0.0,  # Individual time not tracked in bulk
+                        steps_completed=(
+                            len(history.history) if history and hasattr(history, "history") else 0
+                        ),
+                        total_steps=0,  # Would need to track from original task
+                        traversal=None,  # Would need to extract from agent
+                        traversal_file=None,
+                        screenshots_dir=None,
+                        metadata={
+                            "operation": "parallel_execution",
+                            "task_index": len(individual_results),
+                        },
+                    )
+                    individual_results.append(individual_result)
+                except Exception as e:
+                    # Create individual result for failed task
+                    individual_result = self._create_error_result(
+                        e,
+                        OperationType.FIRST_TRAVERSAL,
+                        {"task_index": len(individual_results), "operation": "parallel_execution"},
+                        0.0,
+                    )
+                    individual_results.append(individual_result)
 
-            # # Calculate execution time
-            # execution_time = time.time() - start_time
+            # Calculate aggregate metrics
+            total_execution_time = time.time() - start_time
+            successful_tasks = sum(1 for r in individual_results if r.success)
+            failed_tasks = len(individual_results) - successful_tasks
+            error_summary = self._create_error_summary(individual_results)
 
-            # # Determine file paths from most recent files
-            # traversal_file = None
-            # screenshots_dir = None
-
-            # # Find the most recent traversal file
-            # traversal_files = list(self.config.traversals_dir.glob("*.json"))
-            # if traversal_files:
-            #     traversal_file = max(traversal_files, key=lambda f: f.stat().st_mtime)
-
-            #     # Create screenshots directory based on traversal file name
-            #     if traversal_file:
-            #         screenshots_dir = self.config.screenshots_dir / traversal_file.stem
-
-            # return [
-            #     TaskResult(
-            #         success=True,
-            #         session_file=traversal_file,  # Use traversal file as session file
-            #         error_message=None,
-            #         steps_completed=0,  # mock value for now
-            #         execution_time=execution_time,
-            #         traversal_file=traversal_file,
-            #         screenshots_dir=screenshots_dir,
-            #         metadata={
-            #             "task_description": t.description,
-            #             "enable_healing": t.enable_healing,
-            #             "browser_headless": self.config.headless,
-            #             "allowed_domains": task.allowed_domains,
-            #             "has_secrets": task.secrets is not None,
-            #         },
-            #     ) for t in task_list
-            # ]
-
-        # TODO!:AGENT this exception handling should be a different function since this will be used excessively for each execution
-        except Exception as e:
-
-            # Determine error type and create appropriate exception
-            if isinstance(e, (LLMError, BrowserError, ValidationError)):
-                raise
-
-            if "LLM" in str(e) or "OpenAI" in str(e):
-                raise LLMError(
-                    f"LLM operation failed: {e}",
-                    llm_provider=self.config.llm_provider,
-                    llm_model=self.config.llm_model,
-                    original_error=e,
-                )
-
-            if "browser" in str(e).lower() or "page" in str(e).lower():
-                raise BrowserError(
-                    f"Browser operation failed: {e}",
-                    browser_action="task_execution",
-                    original_error=e,
-                )
-
-            raise TaskExecutionError(
-                f"Task execution failed: {e}",
-                task_description="Task execution failed",
-                steps_completed=0,
-                original_error=e,
+            return BulkBugninjaTaskResult(
+                overall_success=all(r.success for r in individual_results),
+                total_tasks=len(task_list),
+                successful_tasks=successful_tasks,
+                failed_tasks=failed_tasks,
+                total_execution_time=total_execution_time,
+                individual_results=individual_results,
+                error_summary=error_summary,
+                metadata={
+                    "operation": "parallel_execution",
+                    "total_tasks": len(task_list),
+                    "successful_tasks": successful_tasks,
+                    "failed_tasks": failed_tasks,
+                },
             )
 
+        except Exception as e:
+            execution_time = time.time() - start_time
+            return self._create_bulk_error_result(e, task_list, execution_time)
+
         finally:
-            # Clean up browser session
-            if navigation_agents:
-                for na in navigation_agents:
-                    await na.close()
+            # Ensure consistent cleanup for all navigation agents
+            for agent in navigation_agents:
+                await self._ensure_cleanup(agent=agent)
 
             await self.cleanup()
 
     async def replay_session(
-        self, session_file: Path, pause_after_each_step: bool = False
-    ) -> TaskResult:
+        self, session_file: Path, pause_after_each_step: bool = False, enable_healing: bool = True
+    ) -> BugninjaTaskResult:
         """Replay a recorded browser session.
 
         This method replays a previously recorded browser session using
@@ -441,9 +715,10 @@ class BugninjaClient:
             session_file: Path to the session file to replay.
             pause_after_each_step: Whether to pause and wait for Enter key after each step.
                                   Defaults to False for automated replay.
+            enable_healing: Whether to enable healing when actions fail (default: True).
 
         Returns:
-            TaskResult containing replay status and metadata.
+            BugninjaTaskResult containing replay status and traversal data.
 
         Raises:
             SessionReplayError: If session replay fails.
@@ -453,11 +728,14 @@ class BugninjaClient:
             ```python
             session_file = Path("./traversals/session_20240115.json")
 
-            # Automated replay (default)
+            # Automated replay with healing (default)
             result = await client.replay_session(session_file)
 
-            # Interactive replay with pauses
+            # Interactive replay with pauses and healing
             result = await client.replay_session(session_file, pause_after_each_step=True)
+
+            # Replay without healing (fails immediately on errors)
+            result = await client.replay_session(session_file, enable_healing=False)
 
             if result.success:
                 print("Session replayed successfully")
@@ -490,141 +768,253 @@ class BugninjaClient:
                 json_path=str(session_file),
                 pause_after_each_step=pause_after_each_step,
                 sleep_after_actions=1.0,  # Default sleep time
+                enable_healing=enable_healing,
             )
 
             # Execute replay and capture result
             try:
                 await replicator.start()
                 success = True
-                error_message = None
+                error = None
             except Exception as e:
                 success = False
-                error_message = str(e)
+                error = e
 
             finally:
-                # TODO!:AGENT cleanup should consistently happen for both success and failure for both replicator agents and navigator runs as well
-                await replicator.cleanup()
+                # Ensure consistent cleanup for both success and failure
+                await self._ensure_cleanup(replicator=replicator)
 
             # Calculate execution time
             execution_time = time.time() - start_time
 
-            # TODO!:AGENT TaskResults has to be refactored
-            #! - success flag, execution started, execution ended, error message, metadata not needed
-            return TaskResult(
+            # Determine healing status
+            healing_status = (
+                HealingStatus.USED if replicator.healing_happened else HealingStatus.NONE
+            )
+
+            # Create proper error object if there was an error
+            error_obj = None
+            if not success and error:
+                context = {
+                    "session_file": str(session_file),
+                    "pause_after_each_step": pause_after_each_step,
+                    "enable_healing": enable_healing,
+                }
+                error_type = self._classify_error(error, context)
+                suggested_action = self._get_suggested_action(error_type, context)
+                error_obj = BugninjaTaskError(
+                    error_type=error_type,
+                    message=str(error),
+                    details=context,
+                    original_error=f"{type(error).__name__}: {str(error)}",
+                    suggested_action=suggested_action,
+                )
+
+            return BugninjaTaskResult(
                 success=success,
-                session_file=session_file,
-                error_message=error_message,
+                operation_type=OperationType.REPLAY,
+                healing_status=healing_status,
                 execution_time=execution_time,
+                steps_completed=getattr(replicator, "actions_completed", 0),
+                total_steps=getattr(replicator, "total_actions", 0),
+                traversal=replicator._traversal if hasattr(replicator, "_traversal") else None,
                 traversal_file=session_file,
                 screenshots_dir=self.config.screenshots_dir / session_file.stem,
+                error=error_obj,
                 metadata={
                     "replay_type": "session_replay",
                     "session_file": str(session_file),
                     "pause_after_each_step": pause_after_each_step,
+                    "healing_enabled": enable_healing,
                 },
             )
 
         except Exception as e:
             execution_time = time.time() - start_time
+            context = {
+                "session_file": str(session_file),
+                "pause_after_each_step": pause_after_each_step,
+                "enable_healing": enable_healing,
+                "file_exists": session_file.exists(),
+                "file_size": session_file.stat().st_size if session_file.exists() else 0,
+            }
+            return self._create_error_result(e, OperationType.REPLAY, context, execution_time)
 
-            # TODO!:AGENT instead of simple exception here, we should have a proper handling of return values
-            # failing runs should produce valid results as well
+    async def parallel_replay_sessions(
+        self,
+        session_files: List[Path],
+        pause_after_each_step: bool = False,
+        enable_healing: bool = True,
+    ) -> BulkBugninjaTaskResult:
+        """Replay multiple recorded browser sessions in parallel.
 
-            raise SessionReplayError(
-                f"Session replay failed: {e}", session_file=str(session_file), original_error=e
-            )
-
-    # TODO!:AGENT control adjustment
-    #! healing is not a thing that can be done separately --> either run_task, replay_session, or replay_session_with_healing
-    async def heal_session(
-        self, session_file: Path, pause_after_each_step: bool = False
-    ) -> TaskResult:
-        """Heal a failed browser session.
-
-        This method attempts to heal a failed session by using the
-        HealerAgent to recover from errors.
+        This method replays multiple previously recorded browser sessions
+        concurrently using the ReplicatorRun functionality.
 
         Args:
-            session_file: Path to the failed session file to heal.
+            session_files: List of paths to session files to replay.
             pause_after_each_step: Whether to pause and wait for Enter key after each step.
-                                  Defaults to False for automated healing.
+                                  Defaults to False for automated replay.
+            enable_healing: Whether to enable healing when actions fail (default: True).
 
         Returns:
-            TaskResult containing healing status and metadata.
+            BulkBugninjaTaskResult containing replay status and metrics for all sessions.
 
         Raises:
-            SessionReplayError: If session healing fails.
-            ValidationError: If session file is invalid.
+            ValidationError: If any session file is invalid.
+            SessionReplayError: If bulk session replay fails.
 
         Example:
             ```python
-            failed_session = Path("./traversals/failed_session.json")
+            session_files = [
+                Path("./traversals/session_1.json"),
+                Path("./traversals/session_2.json"),
+                Path("./traversals/session_3.json")
+            ]
 
-            # Automated healing (default)
-            result = await client.heal_session(failed_session)
+            # Automated parallel replay with healing (default)
+            result = await client.parallel_replay_sessions(session_files)
 
-            # Interactive healing with pauses
-            result = await client.heal_session(failed_session, pause_after_each_step=True)
+            # Interactive parallel replay with pauses and healing
+            result = await client.parallel_replay_sessions(
+                session_files,
+                pause_after_each_step=True
+            )
 
-            if result.success:
-                print("Session healed successfully")
+            # Parallel replay without healing
+            result = await client.parallel_replay_sessions(
+                session_files,
+                enable_healing=False
+            )
+
+            if result.overall_success:
+                print(f"All {result.total_tasks} sessions replayed successfully")
             else:
-                print(f"Session healing failed: {result.error_message}")
+                print(f"{result.failed_tasks} sessions failed out of {result.total_tasks}")
             ```
         """
         start_time = time.time()
+        replicators: List[ReplicatorRun] = []
+        individual_results: List[BugninjaTaskResult] = []
 
         try:
-            # Validate session file exists
-            if not session_file.exists():
-                raise ValidationError(
-                    f"Session file does not exist: {session_file}",
-                    field_name="session_file",
-                    field_value=str(session_file),
+            # Validate all session files
+            for session_file in session_files:
+                if not session_file.exists():
+                    raise ValidationError(
+                        f"Session file does not exist: {session_file}",
+                        field_name="session_file",
+                        field_value=str(session_file),
+                    )
+
+                if not session_file.suffix == ".json":
+                    raise ValidationError(
+                        f"Session file must be a JSON file: {session_file}",
+                        field_name="session_file",
+                        field_value=str(session_file),
+                    )
+
+            # Create replicators for all sessions
+            for session_file in session_files:
+                replicator = ReplicatorRun(
+                    json_path=str(session_file),
+                    pause_after_each_step=pause_after_each_step,
+                    sleep_after_actions=1.0,  # Default sleep time
+                    enable_healing=enable_healing,
                 )
+                replicators.append(replicator)
 
-            # Create replicator with healing enabled
-            replicator = ReplicatorRun(
-                json_path=str(session_file),
-                pause_after_each_step=pause_after_each_step,
-                sleep_after_actions=1.0,  # Default sleep time
-            )
+            # Execute all sessions in parallel
+            async with asyncio.TaskGroup() as tg:
+                replay_tasks: List[AsyncioTask[None]] = []
+                for replicator in replicators:
+                    replay_tasks.append(tg.create_task(replicator.start()))
 
-            # Execute replay with healing
-            try:
-                await replicator.start()
-                success = True
-                error_message = None
-            except Exception as e:
-                success = False
-                error_message = str(e)
+            # Process results from parallel execution
+            for i, background_task in enumerate(replay_tasks):
+                try:
+                    # Wait for task completion
+                    background_task.result()
 
-            # Calculate execution time
-            execution_time = time.time() - start_time
+                    # Get the corresponding replicator and session file
+                    replicator = replicators[i]
+                    session_file = session_files[i]
 
-            return TaskResult(
-                success=success,
-                session_file=session_file,
-                error_message=error_message,
-                execution_time=execution_time,
-                traversal_file=session_file,
-                screenshots_dir=self.config.screenshots_dir / session_file.stem,
+                    # Create individual result for successful session
+                    individual_result = BugninjaTaskResult(
+                        success=True,
+                        operation_type=OperationType.REPLAY,
+                        healing_status=(
+                            HealingStatus.USED
+                            if replicator.healing_happened
+                            else HealingStatus.NONE
+                        ),
+                        execution_time=0.0,  # Individual time not tracked in bulk
+                        steps_completed=getattr(replicator, "actions_completed", 0),
+                        total_steps=getattr(replicator, "total_actions", 0),
+                        traversal=(
+                            replicator._traversal if hasattr(replicator, "_traversal") else None
+                        ),
+                        traversal_file=session_file,
+                        screenshots_dir=self.config.screenshots_dir / session_file.stem,
+                        error=None,
+                        metadata={
+                            "operation": "parallel_replay",
+                            "session_index": i,
+                            "session_file": str(session_file),
+                            "pause_after_each_step": pause_after_each_step,
+                            "healing_enabled": enable_healing,
+                        },
+                    )
+                    individual_results.append(individual_result)
+
+                except Exception as e:
+                    # Create individual result for failed session
+                    session_file = session_files[i]
+                    context = {
+                        "session_file": str(session_file),
+                        "pause_after_each_step": pause_after_each_step,
+                        "enable_healing": enable_healing,
+                        "session_index": i,
+                        "operation": "parallel_replay",
+                    }
+                    individual_result = self._create_error_result(
+                        e, OperationType.REPLAY, context, 0.0
+                    )
+                    individual_results.append(individual_result)
+
+            # Calculate aggregate metrics
+            total_execution_time = time.time() - start_time
+            successful_sessions = sum(1 for r in individual_results if r.success)
+            failed_sessions = len(individual_results) - successful_sessions
+            error_summary = self._create_error_summary(individual_results)
+
+            return BulkBugninjaTaskResult(
+                overall_success=all(r.success for r in individual_results),
+                total_tasks=len(session_files),
+                successful_tasks=successful_sessions,
+                failed_tasks=failed_sessions,
+                total_execution_time=total_execution_time,
+                individual_results=individual_results,
+                error_summary=error_summary,
                 metadata={
-                    "replay_type": "session_healing",
-                    "session_file": str(session_file),
-                    "healing_enabled": True,
+                    "operation": "parallel_replay",
+                    "total_sessions": len(session_files),
+                    "successful_sessions": successful_sessions,
+                    "failed_sessions": failed_sessions,
                     "pause_after_each_step": pause_after_each_step,
+                    "healing_enabled": enable_healing,
                 },
             )
 
-        except ValidationError:
-            raise
         except Exception as e:
             execution_time = time.time() - start_time
+            return self._create_bulk_error_result(e, [], execution_time)
 
-            raise SessionReplayError(
-                f"Session healing failed: {e}", session_file=str(session_file), original_error=e
-            )
+        finally:
+            # Ensure consistent cleanup for all replicators
+            for replicator in replicators:
+                await self._ensure_cleanup(replicator=replicator)
 
     def list_sessions(self) -> List[SessionInfo]:
         """List all available session files.
@@ -643,36 +1033,32 @@ class BugninjaClient:
         """
         sessions: List[SessionInfo] = []
 
-        try:
-            # Find all session files in traversals directory
-            session_files = list(self.config.traversals_dir.glob("*.json"))
+        # Find all session files in traversals directory
+        session_files = list(self.config.traversals_dir.glob("*.json"))
 
-            for file_path in session_files:
-                try:
-                    # Get file stats for metadata
-                    stat = file_path.stat()
+        for file_path in session_files:
+            try:
+                # Get file stats for metadata
+                stat = file_path.stat()
 
-                    # Create session info with basic metadata
-                    session_info = SessionInfo(
-                        file_path=file_path,
-                        created_at=datetime.fromtimestamp(stat.st_mtime),
-                        steps_count=0,  # Would need to parse file to get actual count
-                        success=True,  # Would need to parse file to determine success
-                    )
+                # Create session info with basic metadata
+                session_info = SessionInfo(
+                    file_path=file_path,
+                    created_at=datetime.fromtimestamp(stat.st_mtime),
+                    steps_count=0,  # Would need to parse file to get actual count
+                    success=True,  # Would need to parse file to determine success
+                )
 
-                    sessions.append(session_info)
+                sessions.append(session_info)
 
-                except Exception:
-                    # Skip files that can't be processed
-                    continue
+            except Exception:
+                # Skip files that can't be processed
+                continue
 
-            # Sort by creation time (newest first)
-            sessions.sort(key=lambda s: s.created_at, reverse=True)
+        # Sort by creation time (newest first)
+        sessions.sort(key=lambda s: s.created_at, reverse=True)
 
-            return sessions
-
-        except Exception as e:
-            raise BugninjaError(f"Failed to list sessions: {e}", original_error=e)
+        return sessions
 
     async def cleanup(self) -> None:
         """Clean up client resources.
@@ -699,7 +1085,7 @@ class BugninjaClient:
             self._active_sessions.clear()
 
         except Exception as e:
-            raise BugninjaError(f"Failed to cleanup client resources: {e}", original_error=e)
+            self._handle_execution_error(error=e, operation_type=ClientOperationType.CLEANUP)
 
     def __enter__(self) -> "BugninjaClient":
         """Context manager entry."""

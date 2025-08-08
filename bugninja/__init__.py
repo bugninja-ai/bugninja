@@ -18,7 +18,6 @@ from .config import ConfigurationFactory, BugninjaSettings, Environment
 from .api import (
     BugninjaClient,
     Task,
-    TaskResult,
     BugninjaConfig,
     BugninjaError,
     TaskExecutionError,
@@ -43,7 +42,6 @@ __all__ = [
     # High-level API
     "BugninjaClient",
     "Task",
-    "TaskResult",
     "BugninjaConfig",
     "BugninjaError",
     "TaskExecutionError",

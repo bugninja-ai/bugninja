@@ -38,15 +38,18 @@ class EventPublisherManager:
         with self._lock:
             return [p for p in self.publishers if p.is_available()]
 
-    async def initialize_run(self, run_type: str, metadata: Dict[str, Any]) -> str:
+    async def initialize_run(
+        self, run_type: str, metadata: Dict[str, Any], existing_run_id: Optional[str] = None
+    ) -> str:
         """Initialize a run across all available publishers.
 
         Args:
             run_type: Type of run
             metadata: Run metadata
+            existing_run_id: Optional existing run ID to use instead of generating new one
 
         Returns:
-            Generated run ID
+            Run ID (either existing or generated)
 
         Raises:
             PublisherUnavailableError: If no publishers are available
@@ -56,17 +59,26 @@ class EventPublisherManager:
         if not available_publishers:
             raise PublisherUnavailableError("No event publishers are available")
 
-        # Use first available publisher to generate run ID
-        run_id = await available_publishers[0].initialize_run(run_type, metadata)
+        # Use existing run_id if provided, otherwise generate new one
+        if existing_run_id:
+            run_id = existing_run_id
+        else:
+            run_id = await available_publishers[0].initialize_run(run_type, metadata)
 
         # Initialize run in all available publishers
         with self._lock:
             self._run_publishers[run_id] = available_publishers.copy()
 
-        # Initialize run in all publishers (except the first one which already has it)
-        for publisher in available_publishers[1:]:
+        # Initialize run in all publishers
+        for publisher in available_publishers:
             try:
-                await publisher.initialize_run(run_type, metadata)
+                if existing_run_id:
+                    # Use existing run_id for all publishers
+                    await publisher.initialize_run(run_type, metadata, existing_run_id)
+                else:
+                    # Only first publisher generates run_id, others use it
+                    if publisher != available_publishers[0]:
+                        await publisher.initialize_run(run_type, metadata)
             except Exception:
                 # Remove failed publisher from this run's publishers
                 with self._lock:

@@ -112,5 +112,4 @@ class ConfigurationFactory:
             "debug_mode": settings.debug_mode,
             "log_level": settings.log_level,
             "screenshots_dir": str(settings.screenshot_config["screenshots_dir"]),
-            "bypass_llm_verification": settings.bypass_llm_verification,
         }

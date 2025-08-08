@@ -47,7 +47,9 @@ class RichTerminalPublisher(EventPublisher):
         """Check if rich terminal publisher is available (always True)."""
         return self._available
 
-    async def initialize_run(self, run_type: str, metadata: Dict[str, Any]) -> str:
+    async def initialize_run(
+        self, run_type: str, metadata: Dict[str, Any], existing_run_id: Optional[str] = None
+    ) -> str:
         """Initialize a run with rich terminal output.
 
         Args:

@@ -35,9 +35,6 @@ def hook_missing_error(hook_name: str, class_val: type) -> NotImplementedError:
 
 
 class BugninjaAgentBase(Agent, ABC):
-    # Class-level flag to control LLM verification bypass
-    # TODO!:AGENT no need for this BYPASS_LLM_VERIFICATION flag, have to consistently remove it from all across the library
-    BYPASS_LLM_VERIFICATION = False
 
     def __init__(  # type:ignore
         self, *args, **kwargs  # type:ignore
@@ -47,36 +44,11 @@ class BugninjaAgentBase(Agent, ABC):
         self.current_step_extended_actions: List["BugninjaExtendedAction"] = []
         self._action_to_extended_index: Dict[int, int] = {}
 
-        # TODO!:AGENT run_id should ideally be generated via CUID however I am not sure what kind of functionality would break
-        #! in this case so we have to figure it out first, and only rewrite this part safely if needed
-        #! run_id musn't be Optional!!!
+        # Generate run_id at creation time for consistency across all agents
         self.run_id: str = CUID().generate()
 
         # Initialize event publisher manager (explicitly passed)
         self.event_manager: Optional[EventPublisherManager] = None
-
-    # TODO!:AGENT BYPASS_LLM_VERIFICATION flag removal would make this function redundant and unnecessary
-    def _detect_best_tool_calling_method(self) -> Optional[str]:
-        """
-        Override the parent method to optionally bypass LLM verification for testing.
-
-        This method can bypass the LLM connection verification that occurs during
-        agent initialization. When BYPASS_LLM_VERIFICATION is True, it returns
-        a default method without testing the actual LLM connection.
-
-        Returns:
-            str: The tool calling method to use
-        """
-        if self.BYPASS_LLM_VERIFICATION:
-            # For testing purposes, return 'raw' as the default tool calling method
-            # This bypasses the need to actually test the LLM connection
-            logger.debug(
-                "🔄 Bypassing LLM verification for testing - using 'raw' tool calling method"
-            )
-            return "raw"
-
-        # Call the parent method for normal operation
-        return super()._detect_best_tool_calling_method()  # type: ignore
 
     @staticmethod
     async def get_raw_html_of_playwright_page(page: Page) -> str:

@@ -47,27 +47,23 @@ class EnvironmentSettings:
             Environment.DEVELOPMENT: {
                 "debug_mode": True,
                 "log_level": "DEBUG",
-                "bypass_llm_verification": True,
                 "enable_verbose_logging": True,
                 "enable_rich_logging": True,
             },
             Environment.TESTING: {
                 "debug_mode": True,
                 "log_level": "DEBUG",
-                "bypass_llm_verification": True,
                 "enable_verbose_logging": True,
             },
             Environment.STAGING: {
                 "debug_mode": False,
                 "log_level": "INFO",
-                "bypass_llm_verification": False,
                 "enable_verbose_logging": False,
                 "enable_rich_logging": True,
             },
             Environment.PRODUCTION: {
                 "debug_mode": False,
                 "log_level": "WARNING",
-                "bypass_llm_verification": False,
                 "enable_verbose_logging": False,
                 "enable_rich_logging": False,
             },

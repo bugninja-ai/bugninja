@@ -28,15 +28,18 @@ class EventPublisher(ABC):
         pass
 
     @abstractmethod
-    async def initialize_run(self, run_type: str, metadata: Dict[str, Any]) -> str:
+    async def initialize_run(
+        self, run_type: str, metadata: Dict[str, Any], existing_run_id: Optional[str] = None
+    ) -> str:
         """Initialize a new run and return run_id.
 
         Args:
             run_type: Type of run ("navigation", "replay", "healing")
             metadata: Additional metadata for the run
+            existing_run_id: Optional existing run ID to use instead of generating new one
 
         Returns:
-            Unique run ID
+            Unique run ID (either existing or generated)
 
         Raises:
             PublisherUnavailableError: If publisher is not available

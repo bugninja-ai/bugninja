@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from browser_use.agent.service import logger  # type: ignore
 from browser_use.agent.views import AgentBrain  # type: ignore
@@ -22,10 +22,15 @@ from bugninja.utils.screenshot_manager import ScreenshotManager
 class HealerAgent(BugninjaAgentBase):
 
     def __init__(  # type:ignore
-        self, *args, **kwargs  # type:ignore
+        self, *args, parent_run_id: Optional[str] = None, **kwargs  # type:ignore
     ) -> None:
 
         super().__init__(*args, **kwargs)
+
+        # Use parent's run_id if provided, otherwise keep the generated one
+        if parent_run_id is not None:
+            self.run_id = parent_run_id
+
         self.agent_taken_actions: List[BugninjaExtendedAction] = []
         self.agent_brain_states: Dict[str, AgentBrain] = {}
 
@@ -42,15 +47,15 @@ class HealerAgent(BugninjaAgentBase):
         # Initialize event tracking for healing run (if event_manager is provided)
         if self.event_manager and self.event_manager.has_publishers():
             try:
-                run_id = await self.event_manager.initialize_run(
+                await self.event_manager.initialize_run(
                     run_type="healing",
                     metadata={
                         "task_description": "Healing intervention",
                         "original_task": getattr(self, "task", "Unknown"),
                     },
+                    existing_run_id=self.run_id,  # Use existing run_id instead of generating new one
                 )
-                self.run_id = run_id
-                logger.info(f"🎯 Started healing run: {run_id}")
+                logger.info(f"🎯 Started healing run: {self.run_id}")
             except Exception as e:
                 logger.warning(f"Failed to initialize event tracking: {e}")
 

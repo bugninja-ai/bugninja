@@ -1,53 +1,15 @@
 #!/usr/bin/env python3
 """
-Bugninja CLI entry point.
+Main entry point for Bugninja CLI.
 
-This script provides the command-line interface for the Bugninja
-browser automation framework.
+This module provides the entry point for the spectacular
+Click-based CLI interface accessible via 'uv run bugninja'.
 """
 
-import typer
-from rich.console import Console
+from bugninja_cli.main import cli
 
-from bugninja.cli.commands import heal, list_cmd, replay, run, status
-
-console = Console()
-
-app = typer.Typer(
-    name="bugninja",
-    help="AI-Powered Browser Automation & Self-Healing Framework",
-    add_completion=False,
-    rich_markup_mode="rich",
-)
-
-# Add commands
-app.add_typer(run.app, name="run", help="Execute browser automation tasks")
-app.add_typer(replay.app, name="replay", help="Replay recorded sessions")
-app.add_typer(heal.app, name="heal", help="Heal failed sessions")
-app.add_typer(list_cmd.app, name="list", help="List available sessions")
-app.add_typer(status.app, name="status", help="Monitor run status")
-
-
-@app.callback()
-def main() -> None:
-    """Bugninja - AI-Powered Browser Automation & Self-Healing Framework.
-
-    This CLI provides a comprehensive interface for browser automation tasks.
-    It supports markdown-based task definitions, session replay with healing,
-    and session management capabilities.
-
-    Key Features:
-    - Execute browser automation tasks from markdown files
-    - Replay recorded sessions with automatic healing
-    - Heal failed sessions using AI-powered recovery
-    - List and manage available sessions
-    - Monitor run status and progress (requires Redis)
-    - Environment variable support for secure credential management
-
-    For detailed help on specific commands, use: bugninja <command> --help
-    """
-    pass
-
+# Export the CLI function for the entry point
+__all__ = ["cli"]
 
 if __name__ == "__main__":
-    app()
+    cli()
