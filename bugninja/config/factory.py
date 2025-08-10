@@ -2,13 +2,13 @@
 Configuration factory for managing settings instances.
 
 This module provides a factory pattern for creating and managing configuration
-instances with environment-specific overrides and singleton behavior.
+instances with TOML-based configuration and singleton behavior.
 """
 
 from typing import Any, Dict, Optional
 
-from .environments import Environment, EnvironmentSettings
 from .settings import BugninjaSettings
+from .toml_loader import TOMLConfigLoader
 
 # TODO!:AGENT this current configuration factory here does not support multiple AI models to be utilized, and naming conventions also do not reflect on this
 
@@ -17,57 +17,95 @@ class ConfigurationFactory:
     """Factory for creating and managing configuration instances.
 
     This class provides a singleton pattern for configuration management
-    with environment-specific overrides and validation.
+    with TOML-based configuration and validation.
     """
 
     _instance: Optional[BugninjaSettings] = None
-    _current_environment: Optional[Environment] = None
+    _toml_loader: Optional[TOMLConfigLoader] = None
 
     @classmethod
-    def get_settings(cls, environment: Environment = Environment.DEVELOPMENT) -> BugninjaSettings:
-        """Get or create settings instance with environment overrides.
-
-        Args:
-            environment: The target environment for configuration
+    def get_settings(cls) -> BugninjaSettings:
+        """Get or create settings instance.
 
         Returns:
             Configured settings instance
 
         Raises:
-            ValueError: If environment configuration is invalid
+            ValueError: If configuration is invalid
         """
-        # Check if we need to create a new instance or update existing
-        if cls._instance is None or cls._current_environment != environment:
-            # Get environment overrides
-            overrides = EnvironmentSettings.get_environment_overrides(environment)
+        # Check if we need to create a new instance
+        if cls._instance is None:
+            # Initialize TOML loader if needed
+            if cls._toml_loader is None:
+                cls._toml_loader = TOMLConfigLoader()
 
-            # Create settings with overrides
+            # Try to load TOML configuration first
+            toml_overrides = {}
             try:
-                cls._instance = BugninjaSettings(**overrides)
-                cls._current_environment = environment
+                toml_config = cls._toml_loader.load_config()
+                toml_overrides = cls._convert_toml_to_pydantic(toml_config)
+            except Exception:
+                # If TOML loading fails, continue without TOML overrides
+                # This allows backward compatibility when TOML file is missing
+                pass
+
+            # Create settings with TOML overrides (if any)
+            # BugninjaSettings() will automatically load from environment variables
+            try:
+                cls._instance = BugninjaSettings(**toml_overrides)
             except Exception as e:
-                raise ValueError(f"Failed to create settings for environment {environment}: {e}")
+                # Provide more helpful error message for missing environment variables
+                error_str = str(e).lower()
+                if "azure_openai_endpoint" in error_str or "azure_openai_key" in error_str:
+                    raise ValueError(
+                        f"Missing required environment variables. Please ensure AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_KEY are set in your .env file or environment. "
+                        f"Error: {e}"
+                    )
+                else:
+                    raise ValueError(f"Failed to create settings: {e}")
 
         return cls._instance
 
     @classmethod
-    def get_current_environment(cls) -> Optional[Environment]:
-        """Get the current environment.
+    def _convert_toml_to_pydantic(cls, toml_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert TOML configuration to Pydantic-compatible format.
+
+        Args:
+            toml_config: Flattened TOML configuration
 
         Returns:
-            Current environment or None if no settings have been created
+            Dictionary compatible with Pydantic Settings
         """
-        return cls._current_environment
+        field_mapping = {
+            "project.name": "project_name",
+            "llm.model": "azure_openai_model",
+            "llm.temperature": "azure_openai_temperature",
+            "llm.api_version": "azure_openai_api_version",
+            "logging.level": "log_level",
+            "logging.format": "log_format",
+            "logging.enable_rich_logging": "enable_rich_logging",
+            "development.debug_mode": "debug_mode",
+            "development.enable_verbose_logging": "enable_verbose_logging",
+            "paths.traversals_dir": "traversals_dir",
+            "events.publishers": "event_publishers",
+        }
+
+        pydantic_config = {}
+        for toml_key, field_name in field_mapping.items():
+            if toml_key in toml_config:
+                pydantic_config[field_name] = toml_config[toml_key]
+
+        return pydantic_config
 
     @classmethod
     def reset(cls) -> None:
         """Reset the singleton instance (useful for testing).
 
-        This method clears the cached settings instance, forcing
+        This method clears the cached settings instance and TOML loader, forcing
         a new instance to be created on the next get_settings() call.
         """
         cls._instance = None
-        cls._current_environment = None
+        cls._toml_loader = None
 
     @classmethod
     def validate_settings(cls, settings: BugninjaSettings) -> bool:
@@ -87,21 +125,16 @@ class ConfigurationFactory:
             return False
 
     @classmethod
-    def get_settings_summary(
-        cls, environment: Environment = Environment.DEVELOPMENT
-    ) -> Dict[str, Any]:
-        """Get a summary of current settings for the environment.
-
-        Args:
-            environment: The target environment
+    def get_settings_summary(cls) -> Dict[str, Any]:
+        """Get a summary of current settings.
 
         Returns:
             Dictionary with settings summary
         """
-        settings = cls.get_settings(environment)
+        settings = cls.get_settings()
 
         return {
-            "environment": environment.value,
+            "project_name": settings.project_name,
             "llm_model": settings.azure_openai_model,
             "llm_temperature": settings.azure_openai_temperature,
             "viewport": {

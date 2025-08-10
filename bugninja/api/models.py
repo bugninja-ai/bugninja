@@ -291,9 +291,7 @@ class BugninjaConfig(BaseModel):
         default=Path("./traversals"), description="Directory for storing traversal files"
     )
 
-    logs_dir: Path = Field(default=Path("./logs"), description="Directory for storing log files")
-
-    @field_validator("screenshots_dir", "traversals_dir", "logs_dir", "user_data_dir")
+    @field_validator("screenshots_dir", "traversals_dir", "user_data_dir")
     @classmethod
     def create_directories_if_not_exist(cls, v: Path) -> Path:
         """Create directories if they don't exist."""

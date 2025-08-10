@@ -39,7 +39,9 @@ dependencies = [
     "python-dotenv==1.1.0",
     "redis==5.2.1",
     "rich==14.0.0",
+    "rich-click>=1.8.9",
     "ruff==0.11.13",
+    "tomli>=2.2.1",
     "typer>=0.16.0",
     "types-lxml==2025.3.30",
     "uvloop>=0.21.0",
@@ -79,8 +81,8 @@ disallow_untyped_defs = true
 
 [tool.poe.tasks]
 
-
 #? Development related commands
+
 [tool.poe.tasks.run]
 help   = "Start test traversal agent interaction"
 shell = "uv run python main.py"
@@ -88,7 +90,6 @@ shell = "uv run python main.py"
 [tool.poe.tasks.test]
 help   = "Run tests on the project"
 shell = "uv run pytest tests"
-
 
 [tool.poe.tasks.replay]
 help   = "Replay (and potentially heal if necessary) the last saved traversal"

@@ -51,7 +51,7 @@ from bugninja.api.models import (
     SessionInfo,
     Task,
 )
-from bugninja.config import ConfigurationFactory, Environment
+from bugninja.config import ConfigurationFactory
 from bugninja.events import EventPublisherManager
 from bugninja.models import azure_openai_model
 from bugninja.replication import ReplicatorRun
@@ -123,7 +123,7 @@ class BugninjaClient:
             self.config = config or BugninjaConfig()
 
             # Initialize internal configuration
-            self._settings = ConfigurationFactory.get_settings(Environment.DEVELOPMENT)
+            self._settings = ConfigurationFactory.get_settings()
 
             # Store event manager
             self._event_manager = event_manager
@@ -497,9 +497,7 @@ class BugninjaClient:
             self._active_sessions.append(browser_session)
 
             # Create LLM with configured temperature
-            llm = azure_openai_model(
-                temperature=self.config.llm_temperature, environment=Environment.DEVELOPMENT
-            )
+            llm = azure_openai_model(temperature=self.config.llm_temperature)
 
             # Create and run agent with task parameters
             agent = NavigatorAgent(
@@ -618,9 +616,7 @@ class BugninjaClient:
                 # Create and run agent with task parameters
                 agent = NavigatorAgent(
                     task=task.description,
-                    llm=azure_openai_model(
-                        temperature=self.config.llm_temperature, environment=Environment.DEVELOPMENT
-                    ),
+                    llm=azure_openai_model(temperature=self.config.llm_temperature),
                     browser_session=browser_session,
                     sensitive_data=task.secrets,
                     extend_planner_system_message=AUTHENTICATION_HANDLING_EXTRA_PROMPT,

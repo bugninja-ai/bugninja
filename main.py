@@ -18,7 +18,7 @@ from rich.text import Text
 # Import the new high-level API
 from bugninja.api import BugninjaClient, Task, TaskResult
 from bugninja.api.models import BugninjaConfig
-from bugninja.config import ConfigurationFactory, Environment
+from bugninja.config import ConfigurationFactory
 from bugninja.events import EventPublisherManager
 from bugninja.events.base import EventPublisher
 from bugninja.events.exceptions import PublisherUnavailableError
@@ -31,7 +31,7 @@ fake = Faker()
 load_dotenv()
 
 # Get settings for authentication prompt
-settings = ConfigurationFactory.get_settings(Environment.DEVELOPMENT)
+settings = ConfigurationFactory.get_settings()
 
 
 class RichTerminalPublisher(EventPublisher):

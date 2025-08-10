@@ -12,7 +12,7 @@ from .agents.healer_agent import HealerAgent
 from .replication.replicator_run import ReplicatorRun
 from .schemas.pipeline import Traversal, BugninjaBrowserConfig, BugninjaExtendedAction
 from .models.model_configs import azure_openai_model
-from .config import ConfigurationFactory, BugninjaSettings, Environment
+from .config import ConfigurationFactory, BugninjaSettings
 
 # High-level API
 from .api import (
@@ -38,7 +38,6 @@ __all__ = [
     "azure_openai_model",
     "ConfigurationFactory",
     "BugninjaSettings",
-    "Environment",
     # High-level API
     "BugninjaClient",
     "Task",

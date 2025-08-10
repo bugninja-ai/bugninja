@@ -1,15 +1,28 @@
-#!/usr/bin/env python3
-"""
-Main entry point for Bugninja CLI.
+import rich_click as click
 
-This module provides the entry point for the spectacular
-Click-based CLI interface accessible via 'uv run bugninja'.
-"""
+from bugninja_cli.init import init
+from bugninja_cli.replay import replay
+from bugninja_cli.run import run
+from bugninja_cli.stats import stats
+from bugninja_cli.utils.style import MARKDOWN_CONFIG, display_logo
 
-from bugninja_cli.main import cli
 
-# Export the CLI function for the entry point
-__all__ = ["cli"]
+@click.group(invoke_without_command=True)
+@click.rich_config(help_config=MARKDOWN_CONFIG)
+@click.pass_context
+def bugninja(ctx):
+    # Display logo for all invocations
+    display_logo()
+
+    # If no command is specified, show help
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
+
+bugninja.add_command(init)
+bugninja.add_command(run)
+bugninja.add_command(replay)
+bugninja.add_command(stats)
 
 if __name__ == "__main__":
-    cli()
+    bugninja()

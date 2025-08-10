@@ -273,5 +273,8 @@ traversals
 screenshots
 data_dir
 user_data_dir
+tasks
+logs
+bugninja.toml
 
 .scannerwork

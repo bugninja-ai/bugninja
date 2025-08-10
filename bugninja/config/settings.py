@@ -1,8 +1,9 @@
 """
 Core configuration settings for Bugninja using Pydantic Settings.
 
-This module provides type-safe configuration management with environment variable
-support, validation, and default values for all Bugninja components.
+This module provides type-safe configuration management with TOML file support
+for project settings and environment variables for sensitive data, validation,
+and default values for all Bugninja components.
 """
 
 from pathlib import Path
@@ -19,71 +20,67 @@ class BugninjaSettings(BaseSettings):
 
     This class provides centralized configuration management with:
     - Type-safe configuration with validation
-    - Environment variable support for LLM and logging settings
-    - Code-based defaults for browser, agent, and replicator settings
+    - TOML file support for project settings
+    - Environment variable support for sensitive data (API keys, passwords)
+    - Code-based defaults for missing values
     - Nested configuration support
     """
 
-    # LLM Configuration
+    # LLM Configuration (Sensitive - from .env)
     azure_openai_endpoint: str = Field(
         ..., alias="AZURE_OPENAI_ENDPOINT", description="Azure OpenAI endpoint URL"
     )
     azure_openai_key: SecretStr = Field(
         ..., alias="AZURE_OPENAI_KEY", description="Azure OpenAI API key"
     )
-    azure_openai_model: str = Field(
-        default="gpt-4.1", alias="AZURE_OPENAI_MODEL", description="Azure OpenAI model name"
-    )
+
+    # LLM Configuration (Non-sensitive - from TOML)
+    azure_openai_model: str = Field(default="gpt-4.1", description="Azure OpenAI model name")
     azure_openai_temperature: float = Field(
         default=0.001,
-        alias="AZURE_OPENAI_TEMPERATURE",
         ge=0.0,
         le=2.0,
         description="Temperature for LLM responses",
     )
     azure_openai_api_version: str = Field(
         default="2024-02-15-preview",
-        alias="AZURE_OPENAI_API_VERSION",
         description="Azure OpenAI API version",
     )
 
-    # Event Publisher Configuration
+    # Event Publisher Configuration (from TOML)
     event_publishers: List[EventPublisherType] = Field(
         default=[EventPublisherType.NULL], description="List of event publisher types to use"
     )
 
-    # Logging Configuration
+    # Logging Configuration (from TOML)
     log_level: str = Field(
         default="INFO",
-        alias="LOG_LEVEL",
         pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$",
         description="Logging level",
     )
     log_format: str = Field(
         default="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        alias="LOG_FORMAT",
         description="Logging format string",
     )
-    enable_rich_logging: bool = Field(
-        default=True, alias="ENABLE_RICH_LOGGING", description="Enable rich console logging"
-    )
+    enable_rich_logging: bool = Field(default=True, description="Enable rich console logging")
 
-    # Development Configuration
-    debug_mode: bool = Field(default=False, alias="DEBUG_MODE", description="Enable debug mode")
+    # Development Configuration (from TOML)
+    debug_mode: bool = Field(default=False, description="Enable debug mode")
     enable_verbose_logging: bool = Field(
         default=False,
-        alias="ENABLE_VERBOSE_LOGGING",
         description="Enable verbose logging for debugging",
     )
 
-    # File Paths Configuration
+    # Project Configuration (from TOML)
+    project_name: str = Field(
+        default="bugninja",
+        description="Project name for identification and logging",
+    )
+
+    # File Paths Configuration (from TOML)
     traversals_dir: Path = Field(
         default=Path("./traversals"),
-        alias="TRAVERSALS_DIR",
         description="Directory for storing traversal files",
-    )
-    logs_dir: Path = Field(
-        default=Path("./logs"), alias="LOGS_DIR", description="Directory for storing log files"
     )
 
     # Code-based Browser Configuration (not from environment)
@@ -131,7 +128,7 @@ class BugninjaSettings(BaseSettings):
             "screenshot_format": "png",
         }
 
-    @field_validator("traversals_dir", "logs_dir")
+    @field_validator("traversals_dir")
     @classmethod
     def create_directories_if_not_exist(cls, v: Path) -> Path:
         """Create directories if they don't exist."""

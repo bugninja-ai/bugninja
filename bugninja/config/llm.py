@@ -9,16 +9,12 @@ from typing import Any, Dict
 
 from langchain_openai import AzureChatOpenAI
 
-from .environments import Environment
 from .factory import ConfigurationFactory
 
 
 # TODO!:AGENT current setup does not reflect on the utilization possibility of multiple LLM models
-def create_llm_config(environment: Environment = Environment.DEVELOPMENT) -> Dict[str, Any]:
+def create_llm_config() -> Dict[str, Any]:
     """Create LLM configuration from settings.
-
-    Args:
-        environment: The target environment for configuration
 
     Returns:
         Dictionary with LLM configuration parameters
@@ -26,7 +22,7 @@ def create_llm_config(environment: Environment = Environment.DEVELOPMENT) -> Dic
     Raises:
         ValueError: If LLM configuration is invalid
     """
-    settings = ConfigurationFactory.get_settings(environment)
+    settings = ConfigurationFactory.get_settings()
 
     return {
         "model": settings.azure_openai_model,
@@ -37,13 +33,8 @@ def create_llm_config(environment: Environment = Environment.DEVELOPMENT) -> Dic
     }
 
 
-def create_azure_openai_model(
-    environment: Environment = Environment.DEVELOPMENT,
-) -> AzureChatOpenAI:
+def create_azure_openai_model() -> AzureChatOpenAI:
     """Create Azure OpenAI model with configuration.
-
-    Args:
-        environment: The target environment for configuration
 
     Returns:
         Configured AzureChatOpenAI instance
@@ -51,7 +42,7 @@ def create_azure_openai_model(
     Raises:
         ValueError: If LLM configuration is invalid
     """
-    config = create_llm_config(environment)
+    config = create_llm_config()
 
     try:
         return AzureChatOpenAI(**config)
