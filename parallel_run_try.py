@@ -200,7 +200,7 @@ async def main() -> None:
         #     print(f"   Traversal file: {result.traversal_file}")
         #     print(f"   Screenshots dir: {result.screenshots_dir}")
         # else:
-        #     print(f"❌ Task failed: {result.error_message}")
+        #     print(f"❌ Task failed: {result.error}")
 
     except Exception as e:
         print(f"❌ Task execution error: {e}")

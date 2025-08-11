@@ -119,9 +119,7 @@ class ReplicatorNavigator(ABC):
 
         self.browser_session = BrowserSession(
             browser_profile=BrowserProfile(
-                # TODO!: the comment below is complete an utter nonsense, have to make it comply with user_data_dir
                 # ? these None settings are necessary in order for every new run to be perfectly independent and clean
-                user_data_dir=None,
                 storage_state=None,
                 # Apply browser configuration if available
                 **self.replay_traversal.browser_config.model_dump(exclude_none=True),

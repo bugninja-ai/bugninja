@@ -16,7 +16,7 @@ from rich.console import Console
 from rich.text import Text
 
 # Import the new high-level API
-from bugninja.api import BugninjaClient, Task, TaskResult
+from bugninja.api import BugninjaClient, BugninjaTaskResult, Task
 from bugninja.api.models import BugninjaConfig
 from bugninja.config import ConfigurationFactory
 from bugninja.events import EventPublisherManager
@@ -163,7 +163,7 @@ async def run_task_with_client(
     allowed_domains: List[str],
     secrets: Optional[Dict[str, Any]] = None,
     max_steps: int = 100,
-) -> TaskResult:
+) -> BugninjaTaskResult:
     """Run a browser automation task using the high-level API.
 
     Args:
@@ -173,7 +173,7 @@ async def run_task_with_client(
         max_steps: Maximum number of steps to execute
 
     Returns:
-        TaskResult containing execution status and metadata
+        BugninjaTaskResult containing execution status and metadata
     """
     # Create rich terminal publisher
     rich_publisher = RichTerminalPublisher()
@@ -202,7 +202,7 @@ async def run_task_with_client(
             print(f"   Traversal file: {result.traversal_file}")
             print(f"   Screenshots dir: {result.screenshots_dir}")
         else:
-            print(f"❌ Task failed: {result.error_message}")
+            print(f"❌ Task failed: {result.error}")
 
         return result
 
@@ -221,7 +221,7 @@ If successful log out and close the browser.
 """.strip()
 
 
-async def bacprep_navigation_1() -> TaskResult:
+async def bacprep_navigation_1() -> BugninjaTaskResult:
     """Execute BACPREP navigation task."""
     print("🚀 Starting BACPREP navigation task...")
 
@@ -237,7 +237,7 @@ async def bacprep_navigation_1() -> TaskResult:
     )
 
 
-async def bacprep_navigation_2() -> TaskResult:
+async def bacprep_navigation_2() -> BugninjaTaskResult:
     """Execute BACPREP navigation task."""
     print("🚀 Starting BACPREP navigation task...")
 
@@ -262,7 +262,7 @@ ERSTE_NAVIGATION_PROMPT = """
 """.strip()
 
 
-async def erste_navigation() -> TaskResult:
+async def erste_navigation() -> BugninjaTaskResult:
     """Execute ERSTE navigation task."""
     print("🚀 Starting ERSTE navigation task...")
 
@@ -296,7 +296,7 @@ async def main() -> None:
             print(f"   Traversal saved to: {result.traversal_file}")
             print(f"   Screenshots saved to: {result.screenshots_dir}")
         else:
-            print(f"\n❌ BACPREP task failed: {result.error_message}")
+            print(f"\n❌ BACPREP task failed: {result.error}")
 
     except Exception as e:
         print(f"\n❌ Task execution failed: {e}")

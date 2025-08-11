@@ -7,7 +7,7 @@ results, and configuration using Pydantic for comprehensive validation.
 ## Models
 
 1. **Task** - Defines browser automation tasks with validation
-2. **TaskResult** - Represents task execution outcomes
+2. **BugninjaTaskResult** - Represents task execution outcomes
 3. **BugninjaConfig** - Client configuration with environment variable support
 4. **SessionInfo** - Metadata about recorded browser sessions
 """
@@ -215,7 +215,7 @@ class BulkBugninjaTaskResult(BaseModel):
 
 
 # Backward compatibility alias
-TaskResult = BugninjaTaskResult
+BugninjaTaskResult = BugninjaTaskResult
 
 
 class BugninjaConfig(BaseModel):

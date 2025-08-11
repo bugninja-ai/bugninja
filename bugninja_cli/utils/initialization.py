@@ -229,7 +229,7 @@ def _dict_to_toml(data: Dict[str, Any]) -> str:
     Returns:
         TOML formatted string
     """
-    lines = []
+    lines: List[str] = []
 
     for section_name, section_data in data.items():
         # Add blank line before sections (except the first one)

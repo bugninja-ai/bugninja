@@ -1,6 +1,5 @@
 import logging
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from browser_use.agent.views import AgentBrain  # type: ignore
 from browser_use.browser import BrowserProfile  # type: ignore
@@ -55,7 +54,9 @@ class BugninjaBrowserConfig(BaseModel):
         description="Viewport dimensions for browser automation",
     )
     channel: BrowserChannel
-    user_data_dir: Optional[Union[Path, str]] = Field(default=BROWSERUSE_PROFILES_DIR / "default")
+    user_data_dir: Optional[str] = Field(
+        default_factory=lambda: (BROWSERUSE_PROFILES_DIR / "default").as_posix(),
+    )
 
     user_agent: Optional[str] = Field(default=None)
     device_scale_factor: Optional[NonNegativeFloat] = Field(default=None)
@@ -88,9 +89,18 @@ class BugninjaBrowserConfig(BaseModel):
             BugninjaBrowserConfig instance with converted settings.
         """
 
+        user_data_dir_str: Optional[str] = None
+
+        if browser_profile.user_data_dir:
+            user_data_dir_str = (
+                browser_profile.user_data_dir
+                if isinstance(browser_profile.user_data_dir, str)
+                else browser_profile.user_data_dir.as_posix()
+            )
+
         return BugninjaBrowserConfig(
             channel=browser_profile.channel,
-            user_data_dir=browser_profile.user_data_dir,
+            user_data_dir=user_data_dir_str,
             user_agent=browser_profile.user_agent,
             viewport=browser_profile.viewport or ViewportSize(width=1280, height=960),
             device_scale_factor=browser_profile.device_scale_factor,

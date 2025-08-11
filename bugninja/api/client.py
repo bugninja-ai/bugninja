@@ -98,7 +98,7 @@ class BugninjaClient:
         if result.success:
             print(f"Task completed in {result.steps_completed} steps")
         else:
-            print(f"Task failed: {result.error_message}")
+            print(f"Task failed: {result.error}")
         ```
     """
 
@@ -468,7 +468,7 @@ class BugninjaClient:
                 print(f"Task completed in {result.steps_completed} steps")
                 print(f"Session saved to: {result.session_file}")
             else:
-                print(f"Task failed: {result.error_message}")
+                print(f"Task failed: {result.error}")
             ```
         """
         start_time = time.time()
@@ -736,7 +736,7 @@ class BugninjaClient:
             if result.success:
                 print("Session replayed successfully")
             else:
-                print(f"Session replay failed: {result.error_message}")
+                print(f"Session replay failed: {result.error}")
             ```
         """
         start_time = time.time()

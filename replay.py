@@ -11,14 +11,14 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from bugninja.api import BugninjaClient, TaskResult
+from bugninja.api import BugninjaClient, BugninjaTaskResult
 
 
-async def replay_latest_session() -> TaskResult:
+async def replay_latest_session() -> BugninjaTaskResult:
     """Replay the most recent recorded session.
 
     Returns:
-        TaskResult containing replay status and metadata
+        BugninjaTaskResult containing replay status and metadata
     """
     # Create client with default configuration
     client = BugninjaClient()
@@ -45,7 +45,7 @@ async def replay_latest_session() -> TaskResult:
             print(f"   Execution time: {result.execution_time:.2f} seconds")
             print(f"   Screenshots dir: {result.screenshots_dir}")
         else:
-            print(f"❌ Session replay failed: {result.error_message}")
+            print(f"❌ Session replay failed: {result.error}")
 
         return result
 
@@ -56,11 +56,11 @@ async def replay_latest_session() -> TaskResult:
         await client.cleanup()
 
 
-async def heal_latest_session() -> TaskResult:
+async def heal_latest_session() -> BugninjaTaskResult:
     """Heal the most recent recorded session.
 
     Returns:
-        TaskResult containing healing status and metadata
+        BugninjaTaskResult containing healing status and metadata
     """
     # Create client with default configuration
     client = BugninjaClient()
@@ -87,7 +87,7 @@ async def heal_latest_session() -> TaskResult:
             print(f"   Execution time: {result.execution_time:.2f} seconds")
             print(f"   Screenshots dir: {result.screenshots_dir}")
         else:
-            print(f"❌ Session healing failed: {result.error_message}")
+            print(f"❌ Session healing failed: {result.error}")
 
         return result
 
@@ -145,7 +145,7 @@ async def main() -> None:
             print(f"   Traversal file: {result.traversal_file}")
             print(f"   Screenshots dir: {result.screenshots_dir}")
         else:
-            print(f"\n❌ Session replay failed: {result.error_message}")
+            print(f"\n❌ Session replay failed: {result.error}")
 
     except Exception as e:
         print(f"\n❌ Session replay failed: {e}")
