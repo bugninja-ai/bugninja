@@ -7,7 +7,7 @@ with comprehensive type safety and validation using Pydantic models.
 ## Key Components
 
 1. **BugninjaClient** - Main entry point for browser automation operations
-2. **Task** - Pydantic model for defining browser automation tasks
+2. **BugninjaTask** - Pydantic model for defining browser automation tasks
 3. **BugninjaTaskResult** - Pydantic model for task execution results
 4. **BugninjaConfig** - Pydantic model for client configuration
 5. **Exception Hierarchy** - Comprehensive error handling with specific exception types
@@ -15,7 +15,7 @@ with comprehensive type safety and validation using Pydantic models.
 
 from bugninja.api.client import BugninjaClient
 from bugninja.api.models import (
-    Task,
+    BugninjaTask,
     BugninjaTaskResult,
     BulkBugninjaTaskResult,
     BugninjaTaskError,
@@ -36,7 +36,7 @@ from bugninja.api.exceptions import (
 __version__ = "0.1.0"
 __all__ = [
     "BugninjaClient",
-    "Task",
+    "BugninjaTask",
     "BugninjaTaskResult",
     "BulkBugninjaTaskResult",
     "BugninjaTaskError",

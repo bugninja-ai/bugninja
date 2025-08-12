@@ -6,7 +6,7 @@ entry point for browser automation operations with a simple, intuitive API.
 
 ## Key Features
 
-1. **Task Execution** - Run browser automation tasks with `run_task()`
+1. **BugninjaTask Execution** - Run browser automation tasks with `run_task()`
 2. **Session Management** - Replay and heal recorded sessions
 3. **Configuration** - Environment-aware configuration with validation
 4. **Error Handling** - Comprehensive exception hierarchy
@@ -43,13 +43,13 @@ from bugninja.api.exceptions import (
 from bugninja.api.models import (
     BugninjaConfig,
     BugninjaErrorType,
+    BugninjaTask,
     BugninjaTaskError,
     BugninjaTaskResult,
     BulkBugninjaTaskResult,
     HealingStatus,
     OperationType,
     SessionInfo,
-    Task,
 )
 from bugninja.config import ConfigurationFactory
 from bugninja.events import EventPublisherManager
@@ -92,13 +92,13 @@ class BugninjaClient:
         client = BugninjaClient()
 
         # Execute a simple task
-        task = Task(description="Navigate to example.com and click login")
+        task = BugninjaTask(description="Navigate to example.com and click login")
         result = await client.run_task(task)
 
         if result.success:
-            print(f"Task completed in {result.steps_completed} steps")
+            print(f"BugninjaTask completed in {result.steps_completed} steps")
         else:
-            print(f"Task failed: {result.error}")
+            print(f"BugninjaTask failed: {result.error}")
         ```
     """
 
@@ -215,7 +215,7 @@ class BugninjaClient:
                 return "Review logs for detailed error information"
 
     def _create_bulk_error_result(
-        self, error: Exception, task_list: List[Task], execution_time: float
+        self, error: Exception, task_list: List[BugninjaTask], execution_time: float
     ) -> BulkBugninjaTaskResult:
         """Create bulk error result for parallel task execution failures."""
 
@@ -357,7 +357,7 @@ class BugninjaClient:
         match operation_type:
             case ClientOperationType.TASK_EXECUTION | ClientOperationType.PARALLEL_TASK_EXECUTION:
                 raise TaskExecutionError(
-                    f"Task execution failed: {error}",
+                    f"BugninjaTask execution failed: {error}",
                     task_description=(
                         context.get("task_description", "Unknown task")
                         if context
@@ -436,7 +436,7 @@ class BugninjaClient:
             # Log any unexpected cleanup errors but don't raise
             self._logger.warning(f"Unexpected cleanup error: {e}")
 
-    async def run_task(self, task: Task) -> BugninjaTaskResult:
+    async def run_task(self, task: BugninjaTask) -> BugninjaTaskResult:
         """Execute a browser automation task.
 
         This method creates a NavigatorAgent and executes the specified task,
@@ -456,7 +456,7 @@ class BugninjaClient:
 
         Example:
             ```python
-            task = Task(
+            task = BugninjaTask(
                 description="Navigate to example.com and click the login button",
                 max_steps=50,
                 allowed_domains=["example.com"],
@@ -465,10 +465,10 @@ class BugninjaClient:
             result = await client.run_task(task)
 
             if result.success:
-                print(f"Task completed in {result.steps_completed} steps")
+                print(f"BugninjaTask completed in {result.steps_completed} steps")
                 print(f"Session saved to: {result.session_file}")
             else:
-                print(f"Task failed: {result.error}")
+                print(f"BugninjaTask failed: {result.error}")
             ```
         """
         start_time = time.time()
@@ -478,7 +478,9 @@ class BugninjaClient:
         try:
             # Validate task description
             if not task.description.strip():
-                raise ValidationError("Task description cannot be empty", field_name="description")
+                raise ValidationError(
+                    "BugninjaTask description cannot be empty", field_name="description"
+                )
 
             # Create browser session with configured settings
             browser_profile = BrowserProfile(
@@ -573,7 +575,7 @@ class BugninjaClient:
                 await self._ensure_cleanup(agent=agent, browser_session=browser_session)
 
     # TODO! has to be completed and additionally the parallel running of existing testcases must be implemented as well
-    async def parallel_run_tasks(self, task_list: List[Task]) -> BulkBugninjaTaskResult:
+    async def parallel_run_tasks(self, task_list: List[BugninjaTask]) -> BulkBugninjaTaskResult:
 
         start_time = time.time()
         navigation_agents: List[NavigatorAgent] = []
@@ -585,7 +587,7 @@ class BugninjaClient:
                 # Validate task description
                 if not task.description.strip():
                     raise ValidationError(
-                        "Task description cannot be empty", field_name="description"
+                        "BugninjaTask description cannot be empty", field_name="description"
                     )
 
                 user_dir_path: Path = Path("./data_dir")

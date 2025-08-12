@@ -6,7 +6,7 @@ results, and configuration using Pydantic for comprehensive validation.
 
 ## Models
 
-1. **Task** - Defines browser automation tasks with validation
+1. **BugninjaTask** - Defines browser automation tasks with validation
 2. **BugninjaTaskResult** - Represents task execution outcomes
 3. **BugninjaConfig** - Client configuration with environment variable support
 4. **SessionInfo** - Metadata about recorded browser sessions
@@ -52,7 +52,7 @@ class BugninjaErrorType(Enum):
 
 
 # TODO!:AGENT we have to have a better name for Tasks, like BugninjaTask
-class Task(BaseModel):
+class BugninjaTask(BaseModel):
     """Represents a browser automation task.
 
     This model defines a task to be executed by the Bugninja automation engine.
@@ -79,7 +79,10 @@ class Task(BaseModel):
         default=100, ge=1, le=1000, description="Maximum number of steps to execute"
     )
 
-    enable_healing: bool = Field(default=True, description="Enable self-healing capabilities")
+    enable_healing: bool = Field(
+        default=True,
+        description="Enable self-healing capabilities. Only holds meaning for replay tasks",
+    )
 
     custom_config: Optional[Dict[str, Any]] = Field(
         default=None, description="Custom configuration overrides"
@@ -98,11 +101,11 @@ class Task(BaseModel):
     def validate_description(cls, v: str) -> str:
         """Validate task description is not empty or whitespace-only."""
         if not v.strip():
-            raise ValueError("Task description cannot be empty or whitespace-only")
+            raise ValueError("BugninjaTask description cannot be empty or whitespace-only")
         return v.strip()
 
     class Config:
-        """Pydantic configuration for Task model."""
+        """Pydantic configuration for BugninjaTask model."""
 
         json_schema_extra = {
             "example": {
@@ -228,7 +231,7 @@ class BugninjaConfig(BaseModel):
 
     1. **LLM Configuration** - Language model settings
     2. **Browser Configuration** - Browser automation settings
-    3. **Task Configuration** - Default task parameters
+    3. **BugninjaTask Configuration** - Default task parameters
     4. **Development Configuration** - Debug and logging settings
     5. **File Paths** - Directory configurations
     """
@@ -268,7 +271,7 @@ class BugninjaConfig(BaseModel):
         description="Directory for browser user data (cookies, cache, etc.)",
     )
 
-    # Task Configuration
+    # BugninjaTask Configuration
     default_max_steps: int = Field(
         default=100, ge=1, le=1000, description="Default maximum steps for tasks"
     )

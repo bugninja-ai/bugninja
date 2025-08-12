@@ -327,7 +327,7 @@ This is a Bugninja browser automation project.
 - `.env` - Sensitive configuration (API keys, etc.)
 - `traversals/` - Recorded browser sessions
 - `screenshots/` - Screenshots from automation runs
-- `tasks/` - Task definitions and descriptions
+- `tasks/` - BugninjaTask definitions and descriptions
 
 ## Getting Started
 

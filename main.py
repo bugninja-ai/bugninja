@@ -16,7 +16,7 @@ from rich.console import Console
 from rich.text import Text
 
 # Import the new high-level API
-from bugninja.api import BugninjaClient, BugninjaTaskResult, Task
+from bugninja.api import BugninjaClient, BugninjaTask, BugninjaTaskResult
 from bugninja.api.models import BugninjaConfig
 from bugninja.config import ConfigurationFactory
 from bugninja.events import EventPublisherManager
@@ -73,7 +73,9 @@ class RichTerminalPublisher(EventPublisher):
 
         # Print metadata if available
         if metadata.get("task_description"):
-            task_msg = Text(f"📋 Task: {metadata['task_description'][:100]}...", style=self.style)
+            task_msg = Text(
+                f"📋 BugninjaTask: {metadata['task_description'][:100]}...", style=self.style
+            )
             self.console.print(task_msg)
 
         return run_id
@@ -184,7 +186,7 @@ async def run_task_with_client(
 
     try:
         # Create task with all necessary parameters
-        task = Task(
+        task = BugninjaTask(
             description=task_description,
             max_steps=max_steps,
             enable_healing=True,

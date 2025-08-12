@@ -82,7 +82,7 @@ def run(
                     "❌ No task specified.\n\nUse one of:\n  -a, --all: Run all tasks\n  -t, --task <id>: Run specific task\n  -mt, --multiple <id1> <id2>: Run multiple tasks",
                     style="red",
                 ),
-                title="No Task Specified",
+                title="No BugninjaTask Specified",
                 border_style="red",
             )
         )

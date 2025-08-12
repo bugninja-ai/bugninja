@@ -16,7 +16,7 @@ from rich.console import Console
 from rich.text import Text
 
 # Import the new high-level API
-from bugninja.api import BugninjaClient, Task
+from bugninja.api import BugninjaClient, BugninjaTask
 from bugninja.api.models import BugninjaConfig
 from bugninja.config import ConfigurationFactory
 from bugninja.events import EventPublisherManager
@@ -178,7 +178,7 @@ async def main() -> None:
 
     try:
         # Create task with all necessary parameters
-        task = Task(
+        task = BugninjaTask(
             description=BACPREP_NAVIGATION_PROMPT,
             max_steps=150,
             enable_healing=True,
@@ -193,17 +193,8 @@ async def main() -> None:
         # Execute the task
         await client.parallel_run_tasks(task_list=[task, task])
 
-        # if result.success:
-        #     print("✅ Task completed successfully!")
-        #     print(f"   Steps completed: {result.steps_completed}")
-        #     print(f"   Execution time: {result.execution_time:.2f} seconds")
-        #     print(f"   Traversal file: {result.traversal_file}")
-        #     print(f"   Screenshots dir: {result.screenshots_dir}")
-        # else:
-        #     print(f"❌ Task failed: {result.error}")
-
     except Exception as e:
-        print(f"❌ Task execution error: {e}")
+        print(f"❌ BugninjaTask execution error: {e}")
         raise
     finally:
         await client.cleanup()

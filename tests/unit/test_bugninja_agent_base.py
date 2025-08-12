@@ -320,7 +320,9 @@ class TestBugninjaAgentBase:
         agent.get_next_action = AsyncMock(return_value=mock_agent_output)  # type: ignore[method-assign]
         agent.multi_act = AsyncMock(return_value=[ActionResult(extracted_content="Success")])  # type: ignore[method-assign]
         mock_action = MagicMock()
-        mock_action.model_dump.return_value = {"done": {"success": True, "text": "Task completed"}}
+        mock_action.model_dump.return_value = {
+            "done": {"success": True, "text": "BugninjaTask completed"}
+        }
         mock_agent_output.action = [mock_action]
         await agent.step(step_info)
         agent._message_manager._add_message_with_tokens.assert_called(), "Should add a message with tokens for last step warning"
