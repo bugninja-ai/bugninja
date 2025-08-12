@@ -54,7 +54,7 @@ include = ["bugninja*", "bugninja_cli*"]
 exclude = ["tests*", "logs*", "data_dir*", "screenshots*"]
 
 [tool.setuptools.package-data]
-"bugninja" = ["*.md"]
+"bugninja" = ["prompts/*.md"]
 
 [tool.ruff]
 line-length = 100
