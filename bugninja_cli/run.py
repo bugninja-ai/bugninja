@@ -55,8 +55,43 @@ def run(
     info: bool,
     project_root: Path,
 ) -> None:
-    """Run one or multiple `traversals`"""
+    """Execute browser automation tasks with AI-powered navigation.
 
+    This command provides **task execution capabilities** for browser automation
+    using AI-powered agents. It supports single task execution, multiple task
+    execution, and bulk execution of all available tasks.
+
+    Args:
+        all_flag (bool): Whether to run all available tasks
+        task (str): ID of specific task to run
+        multiple (List[str]): List of task IDs to run
+        info (bool): Whether to show project information before running
+        project_root (Path): Root directory of the Bugninja project
+
+    Raises:
+        click.Abort: If not in a valid Bugninja project or no task specified
+
+    Example:
+        ```bash
+        # Run all available tasks
+        bugninja run --all
+
+        # Run specific task
+        bugninja run --task login-flow
+
+        # Run multiple tasks
+        bugninja run --multiple task1 task2 task3
+
+        # Show project info before running
+        bugninja run --task login-flow --info
+        ```
+
+    Notes:
+        - Requires a valid Bugninja project (use `bugninja init` to create one)
+        - Task definitions must exist in the `tasks/` directory
+        - Tasks are executed using AI-powered navigation agents
+        - Each task creates a traversal that can be replayed later
+    """
     if info:
         display_project_info(project_root)
 

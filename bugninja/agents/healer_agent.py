@@ -20,11 +20,61 @@ from bugninja.utils.screenshot_manager import ScreenshotManager
 
 
 class HealerAgent(BugninjaAgentBase):
+    """Self-healing agent for browser automation intervention and recovery.
+
+    This agent is specifically designed for **healing interventions** when replay
+    operations fail. It extends the base agent functionality with specialized
+    capabilities for:
+    - automatic error detection and recovery
+    - screenshot capture for debugging
+    - extended action tracking for healing operations
+    - event publishing for healing session monitoring
+
+    The HealerAgent inherits all hooks from `BugninjaAgentBase` and provides
+    specialized implementations for healing scenarios.
+
+    Attributes:
+        agent_taken_actions (List[BugninjaExtendedAction]): All actions taken during healing
+        agent_brain_states (Dict[str, AgentBrain]): Brain states throughout the healing session
+        screenshot_manager (ScreenshotManager): Manager for capturing debugging screenshots
+
+    ### Key Methods
+
+    1. *async* **_before_run_hook()** -> `None`: - Initialize healing session and event tracking
+    2. *async* **_after_run_hook()** -> `None`: - Complete healing session and event tracking
+    3. *async* **_before_step_hook()** -> `None`: - Process actions and create extended actions
+    4. *async* **_after_action_hook()** -> `None`: - Capture screenshots after each action
+    5. *async* **run()** -> `Optional[AgentHistoryList]`: - Execute healing intervention
+
+    Example:
+        ```python
+        from bugninja.agents.healer_agent import HealerAgent
+        from bugninja.events import EventPublisherManager
+
+        # Create healer agent with event tracking
+        healer = HealerAgent(
+            task="Fix the broken login flow",
+            llm=azure_openai_model(),
+            browser_session=browser_session,
+            event_manager=event_manager,
+            parent_run_id="original_run_id"
+        )
+
+        # Execute healing intervention
+        result = await healer.run(max_steps=50)
+        ```
+    """
 
     def __init__(  # type:ignore
         self, *args, parent_run_id: Optional[str] = None, **kwargs  # type:ignore
     ) -> None:
+        """Initialize HealerAgent with healing-specific functionality.
 
+        Args:
+            *args: Arguments passed to the parent BugninjaAgentBase class
+            parent_run_id (Optional[str]): ID of the parent run for event tracking continuity
+            **kwargs: Keyword arguments passed to the parent BugninjaAgentBase class
+        """
         super().__init__(*args, **kwargs)
 
         # Use parent's run_id if provided, otherwise keep the generated one
@@ -35,6 +85,14 @@ class HealerAgent(BugninjaAgentBase):
         self.agent_brain_states: Dict[str, AgentBrain] = {}
 
     async def _before_run_hook(self) -> None:
+        """Initialize healing session with event tracking and screenshot management.
+
+        This hook sets up the healing environment by:
+        - overriding the default controller with BugninjaController
+        - initializing screenshot manager for debugging
+        - setting up event tracking for healing operations
+        - logging the start of the healing intervention
+        """
         logger.info(msg="🏁 BEFORE-Run hook called")
 
         #! we override the default controller with our own
@@ -65,6 +123,11 @@ class HealerAgent(BugninjaAgentBase):
 
         This hook finalizes the event tracking for healing interventions,
         marking the run as completed or failed based on the final result.
+
+        The hook:
+        - checks for successful completion of healing operations
+        - publishes final run status to event managers
+        - logs completion status for monitoring
         """
         # Complete event tracking for healing run
         if self.event_manager and self.run_id:
@@ -86,7 +149,18 @@ class HealerAgent(BugninjaAgentBase):
         browser_state_summary: BrowserStateSummary,
         model_output: AgentOutput,
     ) -> None:
+        """Process actions and create extended actions for healing operations.
 
+        This hook is called before each step in the healing process and:
+        - creates brain state tracking for the current step
+        - generates extended actions with DOM element information
+        - associates actions with their extended versions
+        - stores actions for later analysis and debugging
+
+        Args:
+            browser_state_summary (BrowserStateSummary): Current browser state information
+            model_output (AgentOutput): Model output containing actions to be executed
+        """
         logger.info(msg="🪝 BEFORE-Step hook called")
 
         # ? we create the brain state here since a single thought can belong to multiple actions
@@ -116,13 +190,36 @@ class HealerAgent(BugninjaAgentBase):
     async def _after_step_hook(
         self, browser_state_summary: BrowserStateSummary, model_output: AgentOutput
     ) -> None:
+        """Clean up action mapping after step completion.
+
+        This hook clears the action mapping to prevent memory accumulation
+        and ensure clean state for the next step.
+
+        Args:
+            browser_state_summary (BrowserStateSummary): Browser state after step completion
+            model_output (AgentOutput): Model output from the completed step
+        """
         # Clear action mapping to prevent memory accumulation
         self._clear_action_mapping()
 
-    async def _before_action_hook(self, action: ActionModel) -> None: ...
+    async def _before_action_hook(self, action: ActionModel) -> None:
+        """Hook called before each action (no-op implementation).
+
+        Args:
+            action (ActionModel): The action about to be executed
+        """
+        ...
 
     async def _after_action_hook(self, action: ActionModel) -> None:
-        """Take screenshot after action execution"""
+        """Capture screenshot after action execution for debugging.
+
+        This hook takes a screenshot after each action is completed,
+        highlighting the element that was interacted with for debugging
+        and analysis purposes.
+
+        Args:
+            action (ActionModel): The action that was just executed
+        """
         await self.browser_session.remove_highlights()
 
         current_page = await self.browser_session.get_current_page()

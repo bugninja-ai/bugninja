@@ -1,8 +1,8 @@
 """
 Main client interface for Bugninja browser automation.
 
-This module provides the BugninjaClient class, which serves as the primary
-entry point for browser automation operations with a simple, intuitive API.
+This module provides the `BugninjaClient` class, which serves as the **primary
+entry point** for browser automation operations with a simple, intuitive API.
 
 ## Key Features
 
@@ -73,32 +73,66 @@ class ClientOperationType(Enum):
 class BugninjaClient:
     """Main entry point for Bugninja browser automation operations.
 
-    _logger = logging.getLogger(__name__)
+    This class provides a **simple, intuitive interface** for:
+    - browser automation tasks
+    - session replay with healing
+    - parallel task execution
+    - comprehensive error handling
 
-    This class provides a simple, intuitive interface for browser automation
-    tasks, session replay, and healing operations. It handles configuration
-    management, error handling, and provides comprehensive logging.
+    It also handles:
+    - configuration management with environment variable support
+    - event tracking and monitoring
+    - resource cleanup and management
+    - type-safe task and result models
 
-    ## Key Methods
+    Attributes:
+        config (BugninjaConfig): Configuration object for browser automation settings
+        _settings: Internal configuration settings from ConfigurationFactory
+        _event_manager (Optional[EventPublisherManager]): Event publisher manager for tracking operations
+        _active_sessions (List[BrowserSession]): List of active browser sessions for cleanup
+        _logger: Logger instance for client operations
 
-    1. **run_task()** - Execute browser automation tasks
-    2. **replay_session()** - Replay recorded sessions (with optional healing)
-    3. **list_sessions()** - List available sessions
-    4. **cleanup()** - Clean up resources
+    ### Key Methods
+
+    1. *async* **run_task()** -> `BugninjaTaskResult`: - Execute single browser automation task
+    2. *async* **parallel_run_tasks()** -> `BulkBugninjaTaskResult`: - Execute multiple tasks in parallel
+    3. *async* **replay_session()** -> `BugninjaTaskResult`: - Replay recorded session with healing
+    4. *async* **parallel_replay_sessions()** -> `BulkBugninjaTaskResult`: - Replay multiple sessions in parallel
+    5. **list_sessions()** -> `List[SessionInfo]`: - List available session files
+    6. *async* **cleanup()** -> `None`: - Clean up all resources
 
     Example:
         ```python
+        from bugninja.api.client import BugninjaClient
+        from bugninja.api.models import BugninjaTask
+        from pathlib import Path
+
         # Create client with default configuration
         client = BugninjaClient()
 
         # Execute a simple task
-        task = BugninjaTask(description="Navigate to example.com and click login")
+        task = BugninjaTask(
+            description="Navigate to example.com and click login",
+            max_steps=50,
+            allowed_domains=["example.com"]
+        )
         result = await client.run_task(task)
 
         if result.success:
-            print(f"BugninjaTask completed in {result.steps_completed} steps")
+            print(f"Task completed in {result.steps_completed} steps")
+            print(f"Traversal saved to: {result.traversal_file}")
         else:
-            print(f"BugninjaTask failed: {result.error}")
+            print(f"Task failed: {result.error}")
+
+        # Replay a recorded session
+        session_file = Path("./traversals/session.json")
+        replay_result = await client.replay_session(
+            session_file,
+            enable_healing=True
+        )
+
+        # Clean up resources
+        await client.cleanup()
         ```
     """
 
@@ -110,12 +144,12 @@ class BugninjaClient:
         """Initialize Bugninja client with optional configuration.
 
         Args:
-            config: Optional configuration object. If not provided, uses
-                   default configuration with environment variable support.
-            event_manager: Optional event publisher manager for tracking.
+            config (Optional[BugninjaConfig]): Optional configuration object. If not provided, uses
+                   default configuration with environment variable support
+            event_manager (Optional[EventPublisherManager]): Optional event publisher manager for tracking
 
         Raises:
-            ConfigurationError: If configuration is invalid.
+            ConfigurationError: If configuration is invalid or initialization fails
         """
         try:
             # Use provided config or create default
@@ -140,8 +174,15 @@ class BugninjaClient:
             raise ConfigurationError(f"Failed to initialize Bugninja client: {e}", original_error=e)
 
     def _classify_error(self, error: Exception, context: Dict[str, Any]) -> BugninjaErrorType:
-        """Classify errors using clean match-case structure."""
+        """Classify errors using clean match-case structure.
 
+        Args:
+            error (Exception): The error to classify
+            context (Dict[str, Any]): Context information for error classification
+
+        Returns:
+            BugninjaErrorType: The classified error type
+        """
         # First check exception type
         error_type = type(error)
 
@@ -194,8 +235,15 @@ class BugninjaClient:
             return BugninjaErrorType.UNKNOWN_ERROR
 
     def _get_suggested_action(self, error_type: BugninjaErrorType, context: Dict[str, Any]) -> str:
-        """Get suggested action based on error type using match-case."""
+        """Get suggested action based on error type using match-case.
 
+        Args:
+            error_type (BugninjaErrorType): The classified error type
+            context (Dict[str, Any]): Context information for the error
+
+        Returns:
+            str: Suggested action to resolve the error
+        """
         match error_type:
             case BugninjaErrorType.VALIDATION_ERROR:
                 return "Check input parameters and ensure all required fields are provided"
@@ -217,8 +265,16 @@ class BugninjaClient:
     def _create_bulk_error_result(
         self, error: Exception, task_list: List[BugninjaTask], execution_time: float
     ) -> BulkBugninjaTaskResult:
-        """Create bulk error result for parallel task execution failures."""
+        """Create bulk error result for parallel task execution failures.
 
+        Args:
+            error (Exception): The error that caused the bulk operation to fail
+            task_list (List[BugninjaTask]): List of tasks that were being executed
+            execution_time (float): Time spent before the error occurred
+
+        Returns:
+            BulkBugninjaTaskResult: Bulk result indicating complete failure
+        """
         error_type = self._classify_error(error, {"operation": "parallel_execution"})
         suggested_action = self._get_suggested_action(error_type, {})
 
@@ -245,8 +301,17 @@ class BugninjaClient:
         context: Dict[str, Any],
         execution_time: float,
     ) -> BugninjaTaskResult:
-        """Create comprehensive error result with proper error classification."""
+        """Create comprehensive error result with proper error classification.
 
+        Args:
+            error (Exception): The error that occurred
+            operation_type (OperationType): Type of operation that failed
+            context (Dict[str, Any]): Context information for the error
+            execution_time (float): Time spent before the error occurred
+
+        Returns:
+            BugninjaTaskResult: Comprehensive error result with classification and suggestions
+        """
         error_type = self._classify_error(error, context)
         suggested_action = self._get_suggested_action(error_type, context)
 
@@ -277,8 +342,14 @@ class BugninjaClient:
     def _create_error_summary(
         self, results: List[BugninjaTaskResult]
     ) -> Dict[BugninjaErrorType, int]:
-        """Create error summary from individual task results."""
+        """Create error summary from individual task results.
 
+        Args:
+            results (List[BugninjaTaskResult]): List of individual task results
+
+        Returns:
+            Dict[BugninjaErrorType, int]: Summary of error types and their counts
+        """
         error_counts: Dict[BugninjaErrorType, int] = {}
 
         for result in results:
@@ -300,9 +371,9 @@ class BugninjaClient:
         proper context and details for debugging.
 
         Args:
-            error: The original exception that occurred
-            operation_type: Type of operation that failed
-            context: Optional context information for the error
+            error (Exception): The original exception that occurred
+            operation_type (ClientOperationType): Type of operation that failed
+            context (Optional[Dict[str, Any]]): Optional context information for the error
 
         Raises:
             LLMError: If the error is related to LLM operations
@@ -398,9 +469,9 @@ class BugninjaClient:
         and ensuring proper cleanup regardless of success or failure.
 
         Args:
-            agent: NavigatorAgent, HealerAgent, or other agent instance to cleanup
-            browser_session: BrowserSession instance to cleanup
-            replicator: ReplicatorRun instance to cleanup
+            agent (Optional[Any]): NavigatorAgent, HealerAgent, or other agent instance to cleanup
+            browser_session (Optional[BrowserSession]): BrowserSession instance to cleanup
+            replicator (Optional[Any]): ReplicatorRun instance to cleanup
         """
         try:
             # Cleanup replicator if provided
@@ -439,20 +510,21 @@ class BugninjaClient:
     async def run_task(self, task: BugninjaTask) -> BugninjaTaskResult:
         """Execute a browser automation task.
 
-        This method creates a NavigatorAgent and executes the specified task,
+        This method creates a `NavigatorAgent` and executes the specified task,
         recording the session and providing detailed results.
 
         Args:
-            task: The task to execute, containing description and parameters.
+            task (BugninjaTask): The task to execute, containing description and parameters
 
         Returns:
-            BugninjaTaskResult containing execution status and traversal data.
+            BugninjaTaskResult: Result containing execution status and traversal data
 
         Raises:
-            TaskExecutionError: If task execution fails.
-            ConfigurationError: If configuration is invalid.
-            LLMError: If LLM operations fail.
-            BrowserError: If browser operations fail.
+            TaskExecutionError: If task execution fails
+            ConfigurationError: If configuration is invalid
+            LLMError: If LLM operations fail
+            BrowserError: If browser operations fail
+            ValidationError: If task validation fails
 
         Example:
             ```python
@@ -465,10 +537,10 @@ class BugninjaClient:
             result = await client.run_task(task)
 
             if result.success:
-                print(f"BugninjaTask completed in {result.steps_completed} steps")
-                print(f"Session saved to: {result.session_file}")
+                print(f"Task completed in {result.steps_completed} steps")
+                print(f"Session saved to: {result.traversal_file}")
             else:
-                print(f"BugninjaTask failed: {result.error}")
+                print(f"Task failed: {result.error}")
             ```
         """
         start_time = time.time()
@@ -576,7 +648,37 @@ class BugninjaClient:
 
     # TODO! has to be completed and additionally the parallel running of existing testcases must be implemented as well
     async def parallel_run_tasks(self, task_list: List[BugninjaTask]) -> BulkBugninjaTaskResult:
+        """Execute multiple browser automation tasks in parallel.
 
+        This method creates multiple `NavigatorAgent` instances and executes
+        them concurrently, providing aggregate results and error summaries.
+
+        Args:
+            task_list (List[BugninjaTask]): List of tasks to execute in parallel
+
+        Returns:
+            BulkBugninjaTaskResult: Aggregate result containing individual task results and summaries
+
+        Raises:
+            ValidationError: If any task validation fails
+            TaskExecutionError: If bulk task execution fails
+
+        Example:
+            ```python
+            tasks = [
+                BugninjaTask(description="Task 1: Login to app"),
+                BugninjaTask(description="Task 2: Navigate to dashboard"),
+                BugninjaTask(description="Task 3: Check notifications")
+            ]
+
+            result = await client.parallel_run_tasks(tasks)
+
+            if result.overall_success:
+                print(f"All {result.total_tasks} tasks completed successfully")
+            else:
+                print(f"{result.failed_tasks} tasks failed out of {result.total_tasks}")
+            ```
+        """
         start_time = time.time()
         navigation_agents: List[NavigatorAgent] = []
         individual_results: List[BugninjaTaskResult] = []
@@ -707,20 +809,20 @@ class BugninjaClient:
         """Replay a recorded browser session.
 
         This method replays a previously recorded browser session using
-        the ReplicatorRun functionality.
+        the `ReplicatorRun` functionality with optional healing capabilities.
 
         Args:
-            session_file: Path to the session file to replay.
-            pause_after_each_step: Whether to pause and wait for Enter key after each step.
-                                  Defaults to False for automated replay.
-            enable_healing: Whether to enable healing when actions fail (default: True).
+            session_file (Path): Path to the session file to replay
+            pause_after_each_step (bool): Whether to pause and wait for Enter key after each step.
+                                          Defaults to False for automated replay
+            enable_healing (bool): Whether to enable healing when actions fail (default: True)
 
         Returns:
-            BugninjaTaskResult containing replay status and traversal data.
+            BugninjaTaskResult: Result containing replay status and traversal data
 
         Raises:
-            SessionReplayError: If session replay fails.
-            ValidationError: If session file is invalid.
+            SessionReplayError: If session replay fails
+            ValidationError: If session file is invalid or doesn't exist
 
         Example:
             ```python
@@ -847,20 +949,20 @@ class BugninjaClient:
         """Replay multiple recorded browser sessions in parallel.
 
         This method replays multiple previously recorded browser sessions
-        concurrently using the ReplicatorRun functionality.
+        concurrently using the `ReplicatorRun` functionality.
 
         Args:
-            session_files: List of paths to session files to replay.
-            pause_after_each_step: Whether to pause and wait for Enter key after each step.
-                                  Defaults to False for automated replay.
-            enable_healing: Whether to enable healing when actions fail (default: True).
+            session_files (List[Path]): List of paths to session files to replay
+            pause_after_each_step (bool): Whether to pause and wait for Enter key after each step.
+                                          Defaults to False for automated replay
+            enable_healing (bool): Whether to enable healing when actions fail (default: True)
 
         Returns:
-            BulkBugninjaTaskResult containing replay status and metrics for all sessions.
+            BulkBugninjaTaskResult: Result containing replay status and metrics for all sessions
 
         Raises:
-            ValidationError: If any session file is invalid.
-            SessionReplayError: If bulk session replay fails.
+            ValidationError: If any session file is invalid
+            SessionReplayError: If bulk session replay fails
 
         Example:
             ```python
@@ -1017,8 +1119,11 @@ class BugninjaClient:
     def list_sessions(self) -> List[SessionInfo]:
         """List all available session files.
 
+        This method scans the configured traversals directory and returns
+        metadata about all available session files for replay operations.
+
         Returns:
-            List of SessionInfo objects containing session metadata.
+            List[SessionInfo]: List of session information objects containing metadata
 
         Example:
             ```python

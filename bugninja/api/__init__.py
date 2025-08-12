@@ -1,7 +1,7 @@
 """
 Bugninja API - High-level public interface for browser automation.
 
-This module provides a simple, intuitive API for browser automation tasks
+This module provides a **simple, intuitive API** for browser automation tasks
 with comprehensive type safety and validation using Pydantic models.
 
 ## Key Components
@@ -11,6 +11,21 @@ with comprehensive type safety and validation using Pydantic models.
 3. **BugninjaTaskResult** - Pydantic model for task execution results
 4. **BugninjaConfig** - Pydantic model for client configuration
 5. **Exception Hierarchy** - Comprehensive error handling with specific exception types
+
+## Usage Examples
+
+```python
+from bugninja.api import BugninjaClient, BugninjaTask
+
+# Create client and execute task
+client = BugninjaClient()
+task = BugninjaTask(description="Navigate to example.com and click login")
+result = await client.run_task(task)
+
+# Replay recorded session
+session_file = Path("./traversals/session.json")
+result = await client.replay_session(session_file, enable_healing=True)
+```
 """
 
 from bugninja.api.client import BugninjaClient

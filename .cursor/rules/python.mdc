@@ -75,9 +75,94 @@ globs: **/*.py, src/**/*.py, tests/**/*.py
 - Use proper error messages
 
 ## Documentation
-- Use Google-style docstrings
+- Use Google-style docstrings with a little bit of twist
 - Document all public APIs
 - Use proper inline comments that are reflective to the context and hold meaningful information about the 
 - If a variable name, a function name or a class name is mentioned in the documentation it should be wrapped in `...` quotations following Markdown standards
 - Instead of writing boring flowing text descriptions for function documentation, write it an easy to understand, straight to the point manner
 - You are also allowed to use Markdown compatible enumerations in the function or class documentations for easier understanding
+
+A potential good example for the documentation of a `function`:
+
+```python
+async def initialize_run(
+    self, run_type: str, metadata: Dict[str, Any], existing_run_id: Optional[str] = None
+) -> str:
+    """Initialize a run with **rich** terminal output.
+
+    Args:
+        run_type (str): The type of run that we will use
+        metadata (Dict[str, Any]): Dictionary containing relevant metadata to the actual run
+        existing_run_id (Optional[str]): Existing run ID for compatibility reasons, but not used in any way
+
+    Returns:
+        str: ID of the run that will be generated
+
+    Raises:
+        PublisherUnavailableError: If publisher is not available for any reason
+    """
+    ...
+```
+
+Notice that in the example:
+- The important parts or words of the textual section of the documentation are **highlighted** following Markdown formatting
+- References to other classes are distinguished with `Class` notation
+- Every argument is properly typed and is given proper, explanatory description of its role for the function
+- Args, Returns, and Raises sections must be provided for each and every function, exception being if there are either no arguments for the function, or it might not raise any error
+
+A potential good example for the documentation of a `class`:
+
+```python
+class BugninjaClient:
+    """Main entry point for Bugninja browser automation operations.
+
+    This class provides a simple, intuitive interface for:
+    - browser automation tasks
+    - session replay
+    - healing operations.
+
+    It also handles:
+    - configuration management
+    - error handling
+    - comprehensive logging
+
+    Attributes:
+        config (Optional[BugninjaConfig]): Optional configuration object for the upcoming tasks for this client.
+        This will be the **default configuration** for every `BugninjaTask` executed with this client, if there is **no other configuration specified** in a `BugninjaTask`.
+        event_manager (Optional[EventPublisherManager]): Optional event publisher manager for tracking each and every operation happening in each `BugninjaTask`.
+
+    ### Key Methods
+
+    1. *async* **run_task()** -> `BugninjaTaskResult`: - Execute browser automation tasks
+    2. *async* **replay_session()** -> `BugninjaTaskResult`: - Replay recorded sessions (with optional healing)
+    3. **list_sessions()** -> `List[SessionInfo]`: - List available sessions
+    4. *async* **cleanup()**: -> `None` - Clean up resources
+
+    Example:
+        /`/`/`python
+        from bugninja.api.client import BugninjaClient
+        from bugninja.api.models import BugninjaTask
+
+        # Create client with default configuration
+        client = BugninjaClient()
+
+        # Execute a simple task
+        task = BugninjaTask(description="Navigate to example.com and click login")
+        result = await client.run_task(task)
+
+        if result.success:
+            print(f"BugninjaTask completed in {result.steps_completed} steps")
+        else:
+            print(f"BugninjaTask failed: {result.error}")
+        /`/`/`
+    """
+```
+Notice that in the example:
+- The important parts or words of the textual section of the documentation are **highlighted** following Markdown formatting
+- References to other classes are distinguished with `Class` notation
+- There is a clear, easy to understand description about the functionality of the class
+- If enumerations are present in a description, they are formatted using Markdown formatting
+- Both the attributes and the key methods are present in the documentation with proper type annotations 
+- The key methods are formatted in a unique and spectacular way
+- Every class documentation must have an example included with all the necessary imports as well
+- The examples must be syntactically correct and reflect on a potential real usage of the class

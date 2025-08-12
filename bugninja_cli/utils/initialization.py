@@ -1,10 +1,43 @@
 """
 Bugninja project initialization utilities.
 
-This module provides utilities for:
-- Project detection and validation
-- Directory management and creation
-- Configuration file generation and validation
+This module provides **comprehensive utilities** for:
+- project detection and validation
+- directory management and creation
+- configuration file generation and validation
+- environment template creation
+- project structure setup
+
+## Key Functions
+
+1. **is_bugninja_project()** - Check if directory is a valid Bugninja project
+2. **get_project_root()** - Find the root directory of current project
+3. **create_project_directories()** - Create all required project directories
+4. **get_default_config_template()** - Generate default configuration
+5. **write_config_file()** - Write configuration to TOML file
+6. **create_env_template()** - Create environment template file
+7. **create_readme_template()** - Create README documentation
+
+## Usage Examples
+
+```python
+from bugninja_cli.utils.initialization import (
+    is_bugninja_project,
+    get_project_root,
+    create_project_directories
+)
+
+# Check if current directory is a Bugninja project
+if is_bugninja_project():
+    print("Valid project found")
+
+# Get project root
+project_root = get_project_root()
+
+# Create project directories
+config = {"paths": {"traversals_dir": "./traversals"}}
+create_project_directories(config)
+```
 """
 
 from pathlib import Path
@@ -20,11 +53,27 @@ console = Console()
 def is_bugninja_project(directory: Optional[Path] = None) -> bool:
     """Check if the given directory is a Bugninja project.
 
+    This function validates that a directory contains a valid `bugninja.toml`
+    configuration file, which is the primary indicator of a Bugninja project.
+
     Args:
-        directory: Directory to check. Defaults to current directory.
+        directory (Optional[Path]): Directory to check. Defaults to current directory
 
     Returns:
-        True if directory contains a valid bugninja.toml file
+        bool: True if directory contains a valid bugninja.toml file
+
+    Example:
+        ```python
+        from bugninja_cli.utils.initialization import is_bugninja_project
+
+        # Check current directory
+        if is_bugninja_project():
+            print("Current directory is a Bugninja project")
+
+        # Check specific directory
+        if is_bugninja_project(Path("./my-project")):
+            print("my-project is a Bugninja project")
+        ```
     """
     if directory is None:
         directory = Path.cwd()
@@ -36,10 +85,22 @@ def is_bugninja_project(directory: Optional[Path] = None) -> bool:
 def get_project_root() -> Optional[Path]:
     """Find the root directory of the current Bugninja project.
 
-    Searches upward from current directory to find bugninja.toml.
+    This function searches upward from the current directory through parent
+    directories to find a valid Bugninja project (containing `bugninja.toml`).
 
     Returns:
-        Path to project root if found, None otherwise
+        Optional[Path]: Path to project root if found, None otherwise
+
+    Example:
+        ```python
+        from bugninja_cli.utils.initialization import get_project_root
+
+        project_root = get_project_root()
+        if project_root:
+            print(f"Found project at: {project_root}")
+        else:
+            print("No Bugninja project found in current directory tree")
+        ```
     """
     current = Path.cwd()
 
@@ -55,11 +116,28 @@ def get_project_root() -> Optional[Path]:
 def validate_project_structure(project_root: Path) -> bool:
     """Validate that a Bugninja project has the required structure.
 
+    This function checks that the project root contains a valid `bugninja.toml`
+    configuration file that can be parsed as valid TOML.
+
     Args:
-        project_root: Root directory of the project
+        project_root (Path): Root directory of the project
 
     Returns:
-        True if project structure is valid
+        bool: True if project structure is valid
+
+    Raises:
+        Exception: If TOML parsing fails
+
+    Example:
+        ```python
+        from bugninja_cli.utils.initialization import validate_project_structure
+
+        project_root = Path("./my-project")
+        if validate_project_structure(project_root):
+            print("Project structure is valid")
+        else:
+            print("Project structure is invalid or corrupted")
+        ```
     """
     if not is_bugninja_project(project_root):
         return False
@@ -78,8 +156,29 @@ def validate_project_structure(project_root: Path) -> bool:
 def create_project_directories(project_config: Dict[str, Any]) -> None:
     """Create all required project directories.
 
+    This function creates the necessary directory structure for a Bugninja project
+    based on the configuration settings. It creates directories for traversals,
+    screenshots, and tasks.
+
     Args:
-        project_config: Configuration dictionary with path information
+        project_config (Dict[str, Any]): Configuration dictionary with path information
+
+    Raises:
+        Exception: If directory creation fails
+
+    Example:
+        ```python
+        from bugninja_cli.utils.initialization import create_project_directories
+
+        config = {
+            "paths": {
+                "traversals_dir": "./traversals",
+                "screenshots_dir": "./screenshots",
+                "tasks_dir": "./tasks"
+            }
+        }
+        create_project_directories(config)
+        ```
     """
     directories = []
 
@@ -100,8 +199,26 @@ def create_project_directories(project_config: Dict[str, Any]) -> None:
 def ensure_directories_exist(directories: List[Path]) -> None:
     """Ensure all specified directories exist, creating them if necessary.
 
+    This function creates directories with progress indication and error handling.
+    It uses Rich progress bars to show the creation process.
+
     Args:
-        directories: List of directory paths to create
+        directories (List[Path]): List of directory paths to create
+
+    Raises:
+        Exception: If any directory creation fails
+
+    Example:
+        ```python
+        from bugninja_cli.utils.initialization import ensure_directories_exist
+
+        directories = [
+            Path("./traversals"),
+            Path("./screenshots"),
+            Path("./tasks")
+        ]
+        ensure_directories_exist(directories)
+        ```
     """
     with Progress(
         SpinnerColumn(),
@@ -122,11 +239,24 @@ def ensure_directories_exist(directories: List[Path]) -> None:
 def validate_directory_permissions(directory: Path) -> bool:
     """Validate that we have write permissions for a directory.
 
+    This function tests write permissions by attempting to create and delete
+    a temporary file in the specified directory.
+
     Args:
-        directory: Directory to check
+        directory (Path): Directory to check
 
     Returns:
-        True if we have write permissions
+        bool: True if we have write permissions
+
+    Example:
+        ```python
+        from bugninja_cli.utils.initialization import validate_directory_permissions
+
+        if validate_directory_permissions(Path("./my-dir")):
+            print("Directory is writable")
+        else:
+            print("Directory is not writable")
+        ```
     """
     try:
         # Try to create a temporary file to test write permissions
@@ -142,12 +272,30 @@ def validate_directory_permissions(directory: Path) -> bool:
 def get_default_config_template(project_name: str, **overrides: Dict[str, Any]) -> Dict[str, Any]:
     """Generate default configuration template.
 
+    This function creates a comprehensive default configuration for a new
+    Bugninja project, including all necessary settings for LLM, browser,
+    logging, and project paths.
+
     Args:
-        project_name: Name of the project
-        **overrides: Configuration overrides
+        project_name (str): Name of the project
+        **overrides (Dict[str, Any]): Configuration overrides to apply
 
     Returns:
-        Configuration dictionary
+        Dict[str, Any]: Complete configuration dictionary
+
+    Example:
+        ```python
+        from bugninja_cli.utils.initialization import get_default_config_template
+
+        # Basic configuration
+        config = get_default_config_template("my-project")
+
+        # Configuration with overrides
+        config = get_default_config_template(
+            "my-project",
+            paths={"traversals_dir": "./custom-traversals"}
+        )
+        ```
     """
     config = {
         "project": {"name": project_name},
@@ -202,9 +350,20 @@ def get_default_config_template(project_name: str, **overrides: Dict[str, Any]) 
 def write_config_file(config: Dict[str, Any], path: Path) -> None:
     """Write configuration to TOML file.
 
+    This function writes a configuration dictionary to a TOML file with
+    proper formatting and a header comment explaining the file's purpose.
+
     Args:
-        config: Configuration dictionary
-        path: Path to write the configuration file
+        config (Dict[str, Any]): Configuration dictionary to write
+        path (Path): Path to write the configuration file
+
+    Example:
+        ```python
+        from bugninja_cli.utils.initialization import write_config_file
+
+        config = {"project": {"name": "my-project"}}
+        write_config_file(config, Path("./bugninja.toml"))
+        ```
     """
     # Add header comment
     header = """# Bugninja Configuration
@@ -223,11 +382,23 @@ def write_config_file(config: Dict[str, Any], path: Path) -> None:
 def _dict_to_toml(data: Dict[str, Any]) -> str:
     """Convert dictionary to TOML format with proper formatting.
 
+    This function converts a Python dictionary to TOML format with proper
+    section headers, value formatting, and list handling.
+
     Args:
-        data: Dictionary to convert
+        data (Dict[str, Any]): Dictionary to convert
 
     Returns:
-        TOML formatted string
+        str: TOML formatted string
+
+    Example:
+        ```python
+        from bugninja_cli.utils.initialization import _dict_to_toml
+
+        data = {"project": {"name": "test"}, "llm": {"model": "gpt-4"}}
+        toml_str = _dict_to_toml(data)
+        print(toml_str)
+        ```
     """
     lines: List[str] = []
 
@@ -264,11 +435,23 @@ def _dict_to_toml(data: Dict[str, Any]) -> str:
 def validate_config_file(path: Path) -> bool:
     """Validate that a configuration file is valid TOML.
 
+    This function attempts to parse a file as TOML to validate its format.
+
     Args:
-        path: Path to configuration file
+        path (Path): Path to configuration file
 
     Returns:
-        True if file is valid TOML
+        bool: True if file is valid TOML
+
+    Example:
+        ```python
+        from bugninja_cli.utils.initialization import validate_config_file
+
+        if validate_config_file(Path("./bugninja.toml")):
+            print("Configuration file is valid")
+        else:
+            print("Configuration file is invalid")
+        ```
     """
     try:
         with open(path, "rb") as f:
@@ -281,8 +464,18 @@ def validate_config_file(path: Path) -> bool:
 def create_env_template(path: Path) -> None:
     """Create a template .env file.
 
+    This function creates a template `.env.example` file with placeholders
+    for sensitive configuration data like API keys.
+
     Args:
-        path: Path to create the .env file
+        path (Path): Path to create the .env file
+
+    Example:
+        ```python
+        from bugninja_cli.utils.initialization import create_env_template
+
+        create_env_template(Path("./.env.example"))
+        ```
     """
     env_content = """# Bugninja Sensitive Configuration
 # Copy this file to .env and fill in your secret values
@@ -313,9 +506,19 @@ AZURE_OPENAI_KEY=your-api-key-here
 def create_readme_template(path: Path, project_name: str) -> None:
     """Create a README template for the project.
 
+    This function creates a comprehensive README.md file with project
+    documentation, setup instructions, and usage examples.
+
     Args:
-        path: Path to create the README file
-        project_name: Name of the project
+        path (Path): Path to create the README file
+        project_name (str): Name of the project
+
+    Example:
+        ```python
+        from bugninja_cli.utils.initialization import create_readme_template
+
+        create_readme_template(Path("./README.md"), "my-automation-project")
+        ```
     """
     readme_content = f"""# {project_name}
 

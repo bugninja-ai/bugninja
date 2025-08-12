@@ -55,8 +55,42 @@ def replay(
     info: bool,
     project_root: Path,
 ) -> None:
-    """Run `replay` on one or multiple traversals"""
+    """Replay recorded browser sessions with optional healing.
 
+    This command provides **session replay capabilities** for previously recorded
+    browser automation sessions. It supports single traversal replay, multiple
+    traversal replay, and bulk replay of all available sessions.
+
+    Args:
+        all_flag (bool): Whether to replay all available traversals
+        traversal (str): ID of specific traversal to replay
+        multiple (List[str]): List of traversal IDs to replay
+        info (bool): Whether to show project information before replaying
+        project_root (Path): Root directory of the Bugninja project
+
+    Raises:
+        click.Abort: If not in a valid Bugninja project or no traversal specified
+
+    Example:
+        ```bash
+        # Replay all available traversals
+        bugninja replay --all
+
+        # Replay specific traversal
+        bugninja replay --traversal session_20240115_123456
+
+        # Replay multiple traversals
+        bugninja replay --multiple session_1 session_2 session_3
+
+        # Show project info before replaying
+        bugninja replay --traversal session_123 --info
+        ```
+
+    Notes:
+        - Requires a valid Bugninja project (use `bugninja init` to create one)
+        - Traversal files must exist in the `traversals/` directory
+        - Replay includes automatic healing capabilities for failed actions
+    """
     if info:
         display_project_info(project_root)
 

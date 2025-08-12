@@ -25,8 +25,66 @@ from bugninja.utils.screenshot_manager import ScreenshotManager
 
 
 class NavigatorAgent(BugninjaAgentBase):
+    """Primary browser automation agent for task execution and traversal recording.
+
+    This agent is the **main entry point** for browser automation tasks. It extends
+    the base agent functionality with specialized capabilities for:
+    - natural language task interpretation and execution
+    - comprehensive action tracking and recording
+    - screenshot capture for debugging and analysis
+    - traversal data serialization for replay scenarios
+    - event publishing for operation monitoring
+
+    The NavigatorAgent creates complete traversal records that can be replayed
+    later with self-healing capabilities.
+
+    Attributes:
+        agent_taken_actions (List[BugninjaExtendedAction]): All actions taken during navigation
+        agent_brain_states (Dict[str, AgentBrain]): Brain states throughout the navigation session
+        _traversal (Optional[Traversal]): The completed traversal object after successful run
+        screenshot_manager (ScreenshotManager): Manager for capturing navigation screenshots
+
+    ### Key Methods
+
+    1. *async* **_before_run_hook()** -> `None`: - Initialize navigation session and event tracking
+    2. *async* **_after_run_hook()** -> `None`: - Complete navigation and save traversal data
+    3. *async* **_before_step_hook()** -> `None`: - Process actions and create extended actions
+    4. *async* **_after_action_hook()** -> `None`: - Capture screenshots after each action
+    5. **save_agent_actions()** -> `Traversal`: - Serialize complete session data to JSON
+    6. *async* **run()** -> `Optional[AgentHistoryList]`: - Execute navigation task
+
+    Example:
+        ```python
+        from bugninja.agents.navigator_agent import NavigatorAgent
+        from bugninja.events import EventPublisherManager
+
+        # Create navigator agent with event tracking
+        navigator = NavigatorAgent(
+            task="Navigate to example.com and click the login button",
+            llm=azure_openai_model(),
+            browser_session=browser_session,
+            event_manager=event_manager
+        )
+
+        # Execute navigation task
+        result = await navigator.run(max_steps=50)
+
+        # Access the created traversal
+        if navigator._traversal:
+            print(f"Traversal saved with {len(navigator._traversal.actions)} actions")
+        ```
+    """
 
     async def _before_run_hook(self) -> None:
+        """Initialize navigation session with event tracking and screenshot management.
+
+        This hook sets up the navigation environment by:
+        - initializing action and brain state tracking
+        - overriding the default controller with BugninjaController
+        - setting up screenshot manager for navigation recording
+        - initializing event tracking for navigation operations
+        - logging the start of the navigation session
+        """
         logger.info(msg="🏁 BEFORE-Run hook called")
 
         self.agent_taken_actions: List[BugninjaExtendedAction] = []
@@ -55,10 +113,16 @@ class NavigatorAgent(BugninjaAgentBase):
                 logger.warning(f"Failed to initialize event tracking: {e}")
 
     async def _after_run_hook(self) -> None:
-        """Complete event tracking for navigation run.
+        """Complete navigation session and save traversal data.
 
-        This hook finalizes the event tracking for navigation runs,
-        marking the run as completed or failed based on the final result.
+        This hook finalizes the navigation session by:
+        - saving all agent actions and brain states
+        - creating a complete traversal object
+        - completing event tracking for navigation operations
+        - logging completion status for monitoring
+
+        The hook ensures that all navigation data is properly serialized
+        for later replay and analysis.
         """
         logger.info(msg="✅ AFTER-Run hook called")
         # Save agent actions and store traversal
@@ -82,7 +146,18 @@ class NavigatorAgent(BugninjaAgentBase):
         browser_state_summary: BrowserStateSummary,
         model_output: AgentOutput,
     ) -> None:
+        """Process actions and create extended actions for navigation operations.
 
+        This hook is called before each step in the navigation process and:
+        - creates brain state tracking for the current step
+        - generates extended actions with DOM element information
+        - associates actions with their extended versions
+        - stores actions for later serialization and analysis
+
+        Args:
+            browser_state_summary (BrowserStateSummary): Current browser state information
+            model_output (AgentOutput): Model output containing actions to be executed
+        """
         logger.info(msg="🪝 BEFORE-Step hook called")
 
         # ? we create the brain state here since a single thought can belong to multiple actions
@@ -112,14 +187,36 @@ class NavigatorAgent(BugninjaAgentBase):
     async def _after_step_hook(
         self, browser_state_summary: BrowserStateSummary, model_output: AgentOutput
     ) -> None:
+        """Clean up action mapping after step completion.
+
+        This hook clears the action mapping to prevent memory accumulation
+        and ensure clean state for the next step.
+
+        Args:
+            browser_state_summary (BrowserStateSummary): Browser state after step completion
+            model_output (AgentOutput): Model output from the completed step
+        """
         # Clear action mapping to prevent memory accumulation
         self._clear_action_mapping()
 
-    async def _before_action_hook(self, action: ActionModel) -> None: ...
+    async def _before_action_hook(self, action: ActionModel) -> None:
+        """Hook called before each action (no-op implementation).
+
+        Args:
+            action (ActionModel): The action about to be executed
+        """
+        ...
 
     async def _after_action_hook(self, action: ActionModel) -> None:
-        """Take screenshot after action execution"""
+        """Capture screenshot after action execution for navigation recording.
 
+        This hook takes a screenshot after each action is completed,
+        highlighting the element that was interacted with for navigation
+        recording and analysis purposes.
+
+        Args:
+            action (ActionModel): The action that was just executed
+        """
         await self.browser_session.remove_highlights()
 
         current_page = await self.browser_session.get_current_page()
@@ -137,8 +234,7 @@ class NavigatorAgent(BugninjaAgentBase):
             logger.info(f"📸 Stored screenshot filename: {screenshot_filename}")
 
     def save_agent_actions(self, verbose: bool = False) -> Traversal:
-        """
-        Saves the agent's traversal data to a JSON file for analysis and replay purposes.
+        """Save the agent's traversal data to a JSON file for analysis and replay.
 
         This function serializes the complete agent session data including all taken actions,
         brain states, browser configuration, and test case information into a structured
@@ -146,11 +242,10 @@ class NavigatorAgent(BugninjaAgentBase):
         for easy identification and organization.
 
         Args:
-            **verbose** (bool, optional): If True, logs detailed information about each action
-                during the saving process. Defaults to False.
+            verbose (bool): If True, logs detailed information about each action during the saving process
 
         Returns:
-            Traversal: The created traversal object
+            Traversal: The created traversal object containing all session data
 
         Notes:
             - Creates a 'traversals' directory if it doesn't exist
@@ -168,7 +263,6 @@ class NavigatorAgent(BugninjaAgentBase):
             - Uses pretty-printed JSON with 4-space indentation for readability
             - Handles Unicode characters properly with ensure_ascii=False
         """
-
         traversal_dir = Path("./traversals")
 
         # Create traversals directory if it doesn't exist

@@ -31,17 +31,34 @@ DOM_ELEMENT_DATA_KEY: str = "dom_element_data"
 
 
 class UserInputTypeEnum(str, Enum):
+    """Enumeration of user input types for authentication handling."""
+
     TEXT = "TEXT"
     EMPTY = "EMPTY"
 
 
 class UserInputResponse(BaseModel):
+    """Response model for user input during authentication flows.
+
+    Attributes:
+        user_input (Optional[str]): The user's input text, if any
+        user_input_type (UserInputTypeEnum): Type of input provided
+    """
+
     user_input: Optional[str]
     user_input_type: UserInputTypeEnum
 
 
 async def get_user_input_async() -> UserInputResponse:
+    """Get user input asynchronously for authentication flows.
 
+    This function prompts the user for input and waits for their response.
+    It's used during third-party authentication flows where manual intervention
+    is required.
+
+    Returns:
+        UserInputResponse: The user's input response with type classification
+    """
     user_input = input("▶️ Waiting for user to signal completion of the task:\n")
 
     if user_input == "":
@@ -56,8 +73,7 @@ async def extend_agent_action_with_info(
     model_output: AgentOutput,
     browser_state_summary: BrowserStateSummary,
 ) -> List["BugninjaExtendedAction"]:
-    """
-    Extends agent actions with additional DOM element information and alternative selectors.
+    """Extend agent actions with additional DOM element information and alternative selectors.
 
     This function processes agent actions and enriches them with detailed DOM element data,
     including XPath selectors and alternative relative XPath selectors for selector-oriented
@@ -65,26 +81,19 @@ async def extend_agent_action_with_info(
     comprehensive element identification information.
 
     Args:
-        **brain_state_id** (str): Unique identifier for the current brain state/agent session.
-        **current_page** (Page): Playwright page object representing the current browser page.
-        **model_output** (AgentOutput, optional): The output from the agent model containing
-            actions to be processed. Defaults to None.
-        **browser_state_summary** (BrowserStateSummary, optional): Summary of the current
-            browser state including selector mappings. Defaults to None.
+        brain_state_id (str): Unique identifier for the current brain state/agent session
+        current_page (Page): Playwright page object representing the current browser page
+        model_output (AgentOutput): The output from the agent model containing actions to be processed
+        browser_state_summary (BrowserStateSummary): Summary of the current browser state including selector mappings
 
     Returns:
-        **List[BugninjaExtendedAction]**: List of extended actions with enriched DOM element data.
-            Each action contains:
-            - brain_state_id: The session identifier
-            - action: The original action data
-            - dom_element_data: Enhanced DOM element information (if applicable)
+        List[BugninjaExtendedAction]: List of extended actions with enriched DOM element data
 
     Raises:
-        Exception: Propagates any exceptions from SelectorFactory operations.
+        Exception: Propagates any exceptions from SelectorFactory operations
 
     Notes:
-        - Only selector-oriented actions (defined in SELECTOR_ORIENTED_ACTIONS) are enriched
-          with DOM element data
+        - Only selector-oriented actions (defined in SELECTOR_ORIENTED_ACTIONS) are enriched with DOM element data
         - For selector-oriented actions, the function:
           1. Extracts the element index from the action
           2. Retrieves the corresponding DOM element from browser_state_summary
@@ -92,10 +101,8 @@ async def extend_agent_action_with_info(
           4. Generates alternative relative XPath selectors using SelectorFactory
           5. Adds all this data to the action dictionary
         - Non-selector-oriented actions are included in the result but without DOM element data
-        - The function handles exceptions during selector generation gracefully, setting
-          alternative selectors to None if generation fails
+        - The function handles exceptions during selector generation gracefully, setting alternative selectors to None if generation fails
     """
-
     currently_taken_actions: List["BugninjaExtendedAction"] = []
 
     for action in model_output.action:
@@ -147,6 +154,24 @@ async def extend_agent_action_with_info(
 
 
 class BugninjaController(Controller):
+    """Extended controller with additional browser automation actions.
+
+    This controller extends the base `Controller` class with additional actions
+    specifically designed for Bugninja automation scenarios, including:
+    - scrolling operations (up/down)
+    - waiting mechanisms
+    - third-party authentication handling
+
+    Attributes:
+        verbose (bool): Whether to enable verbose logging for controller operations
+
+    ### Key Methods
+
+    1. **scroll_down()** -> `ActionResult`: - Scroll down the page by specified amount
+    2. **scroll_up()** -> `ActionResult`: - Scroll up the page by specified amount
+    3. **wait()** -> `ActionResult`: - Wait for specified number of seconds
+    4. **third_party_authentication_wait()** -> `ActionResult`: - Wait for user authentication completion
+    """
 
     def __init__(
         self,
@@ -154,6 +179,13 @@ class BugninjaController(Controller):
         output_model: type[BaseModel] | None = None,
         verbose: bool = False,
     ):
+        """Initialize BugninjaController with extended functionality.
+
+        Args:
+            exclude_actions (list[str]): List of action names to exclude from the controller
+            output_model (type[BaseModel] | None): Optional output model for action results
+            verbose (bool): Whether to enable verbose logging
+        """
         super().__init__(exclude_actions=exclude_actions, output_model=output_model)
         self.verbose = verbose
 
@@ -162,6 +194,16 @@ class BugninjaController(Controller):
             browser_session: BrowserSession,
             type: Literal["up", "down"],
         ) -> ActionResult:
+            """Handle scrolling operations with consistent behavior.
+
+            Args:
+                scroll_action (ScrollAction): The scroll action configuration
+                browser_session (BrowserSession): The browser session to perform scrolling on
+                type (Literal["up", "down"]): Direction of scrolling
+
+            Returns:
+                ActionResult: Result of the scrolling operation
+            """
             page = await browser_session.get_current_page()
             page_height = await page.evaluate("() => window.innerHeight")
             dy = scroll_action.amount or page_height
@@ -192,6 +234,15 @@ class BugninjaController(Controller):
         async def scroll_down(
             params: ScrollAction, browser_session: BrowserSession
         ) -> ActionResult:
+            """Scroll down the page by specified amount.
+
+            Args:
+                params (ScrollAction): Scroll parameters including amount
+                browser_session (BrowserSession): Browser session to perform scrolling on
+
+            Returns:
+                ActionResult: Result of the scrolling operation
+            """
             return await handle_scroll(params, browser_session, "down")
 
         @self.registry.action(
@@ -199,10 +250,27 @@ class BugninjaController(Controller):
             param_model=ScrollAction,
         )
         async def scroll_up(params: ScrollAction, browser_session: BrowserSession) -> ActionResult:
+            """Scroll up the page by specified amount.
+
+            Args:
+                params (ScrollAction): Scroll parameters including amount
+                browser_session (BrowserSession): Browser session to perform scrolling on
+
+            Returns:
+                ActionResult: Result of the scrolling operation
+            """
             return await handle_scroll(params, browser_session, "up")
 
         @self.registry.action("Wait for x seconds default 3")
         async def wait(seconds: int = 3) -> ActionResult:
+            """Wait for specified number of seconds.
+
+            Args:
+                seconds (int): Number of seconds to wait (default: 3)
+
+            Returns:
+                ActionResult: Result of the waiting operation
+            """
             msg = f"🕒  Waiting for {seconds} seconds"
             logger.info(msg)
             await asyncio.sleep(seconds)
@@ -212,6 +280,14 @@ class BugninjaController(Controller):
             "Wait until a third party service/app/user finishes the authentication task for the flow to proceed",
         )
         async def third_party_authentication_wait() -> ActionResult:
+            """Wait for third-party authentication completion.
+
+            This action prompts the user to complete authentication tasks and waits
+            for their signal that the authentication is complete.
+
+            Returns:
+                ActionResult: Result indicating authentication completion status
+            """
             user_input: UserInputResponse = await get_user_input_async()
 
             if user_input.user_input_type == UserInputTypeEnum.EMPTY:

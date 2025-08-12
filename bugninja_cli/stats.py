@@ -42,8 +42,41 @@ def stats(
     info: bool,
     project_root: Path,
 ) -> None:
-    """Show `statistics` about specific runs"""
+    """Display statistics and information about automation runs.
 
+    This command provides **comprehensive statistics and reporting** for
+    browser automation runs, including run history, success rates, and
+    detailed information about specific runs.
+
+    Args:
+        list_flag (bool): Whether to list all available runs
+        run_id (str): ID of specific run to show statistics for
+        info (bool): Whether to show project information
+        project_root (Path): Root directory of the Bugninja project
+
+    Raises:
+        click.Abort: If not in a valid Bugninja project
+
+    Example:
+        ```bash
+        # List all available runs
+        bugninja stats --list
+
+        # Show statistics for specific run
+        bugninja stats --id run_20240115_123456
+
+        # Show project information
+        bugninja stats --info
+
+        # Show both project info and run list
+        bugninja stats --list --info
+        ```
+
+    Notes:
+        - Requires a valid Bugninja project (use `bugninja init` to create one)
+        - Statistics are generated from traversal files in the `traversals/` directory
+        - Run information includes execution time, success status, and step counts
+    """
     if info:
         display_project_info(project_root)
 

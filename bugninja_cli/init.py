@@ -61,8 +61,35 @@ def init(
     tasks_dir: str,
     traversals_dir: str,
 ) -> None:
-    """Initialize a new Bugninja project in the current directory."""
+    """Initialize a new Bugninja project in the current directory.
 
+    This command creates a **complete Bugninja project structure** including:
+    - project configuration file (bugninja.toml)
+    - environment template (.env.example)
+    - project directories (traversals, screenshots, tasks)
+    - README documentation
+
+    Args:
+        project_name (str): Name of the project to initialize
+        screenshots_dir (str): Path to the screenshots directory (default: "./screenshots")
+        tasks_dir (str): Path to the tasks directory (default: "./tasks")
+        traversals_dir (str): Path to the traversals directory (default: "./traversals")
+
+    Raises:
+        click.Abort: If project already exists or initialization fails
+
+    Example:
+        ```bash
+        # Basic initialization
+        bugninja init --name my-automation-project
+
+        # Custom directory paths
+        bugninja init --name my-project \
+            --screenshots-dir ./custom-screenshots \
+            --tasks-dir ./custom-tasks \
+            --traversals-dir ./custom-traversals
+        ```
+    """
     current_dir = Path.cwd()
 
     # Check if project already exists

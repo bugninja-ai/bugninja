@@ -31,14 +31,78 @@ if TYPE_CHECKING:
 
 
 def hook_missing_error(hook_name: str, class_val: type) -> NotImplementedError:
+    """Generate a standardized error for missing hook implementations.
+
+    Args:
+        hook_name (str): Name of the missing hook method
+        class_val (type): Class that is missing the hook implementation
+
+    Returns:
+        NotImplementedError: Standardized error message for missing hooks
+    """
     return NotImplementedError(f"The '{hook_name}' is not implemented for '{class_val.__name__}'!")
 
 
 class BugninjaAgentBase(Agent, ABC):
+    """Base class for all Bugninja agents with extended functionality.
+
+    This class provides **common functionality** for all Bugninja agents including:
+    - extended action tracking and management
+    - event publishing capabilities
+    - screenshot management
+    - comprehensive hook system for customization
+
+    It extends the base `Agent` class with Bugninja-specific features while maintaining
+    compatibility with the underlying browser-use framework.
+
+    Attributes:
+        current_step_extended_actions (List[BugninjaExtendedAction]): Extended actions for the current step
+        _action_to_extended_index (Dict[int, int]): Mapping between actions and their extended indices
+        run_id (str): Unique identifier for the current run
+        event_manager (Optional[EventPublisherManager]): Event publisher manager for tracking operations
+
+    ### Key Methods
+
+    1. *async* **run()** -> `Optional[AgentHistoryList]`: - Execute the agent with maximum steps
+    2. *async* **step()** -> `None`: - Execute one step of the task
+    3. *async* **multi_act()** -> `List[ActionResult]`: - Execute multiple actions
+    4. *abstract* **_before_step_hook()** -> `None`: - Hook called before each step
+    5. *abstract* **_after_step_hook()** -> `None`: - Hook called after each step
+    6. *abstract* **_before_run_hook()** -> `None`: - Hook called before run starts
+    7. *abstract* **_after_run_hook()** -> `None`: - Hook called after run completes
+    8. *abstract* **_before_action_hook()** -> `None`: - Hook called before each action
+    9. *abstract* **_after_action_hook()** -> `None`: - Hook called after each action
+
+    Example:
+        ```python
+        from bugninja.agents.bugninja_agent_base import BugninjaAgentBase
+        from browser_use.agent.views import AgentOutput
+        from browser_use.browser.views import BrowserStateSummary
+
+        class CustomAgent(BugninjaAgentBase):
+            async def _before_step_hook(self, browser_state_summary: BrowserStateSummary,
+                                      model_output: AgentOutput) -> None:
+                # Custom logic before each step
+                pass
+
+            async def _after_step_hook(self, browser_state_summary: BrowserStateSummary,
+                                     model_output: AgentOutput) -> None:
+                # Custom logic after each step
+                pass
+
+            # Implement other abstract methods...
+        ```
+    """
 
     def __init__(  # type:ignore
         self, *args, **kwargs  # type:ignore
     ) -> None:
+        """Initialize BugninjaAgentBase with extended functionality.
+
+        Args:
+            *args: Arguments passed to the parent Agent class
+            **kwargs: Keyword arguments passed to the parent Agent class
+        """
         super().__init__(*args, **kwargs)
         # Initialize extended actions storage
         self.current_step_extended_actions: List["BugninjaExtendedAction"] = []
@@ -52,7 +116,14 @@ class BugninjaAgentBase(Agent, ABC):
 
     @staticmethod
     async def get_raw_html_of_playwright_page(page: Page) -> str:
-        # current_page: Page = await self.browser_session.get_current_page()
+        """Get the raw HTML content of a Playwright page.
+
+        Args:
+            page (Page): Playwright page object
+
+        Returns:
+            str: Raw HTML content of the page
+        """
         await page.wait_for_load_state("domcontentloaded")
         await page.wait_for_load_state("load")
         html_content_of_page: str = await page.content()
@@ -62,7 +133,7 @@ class BugninjaAgentBase(Agent, ABC):
         """Get the current URL for event publishing.
 
         Returns:
-            The current page URL as a string, or "unknown" if not available.
+            str: The current page URL as a string, or "unknown" if not available
         """
         try:
             if hasattr(self, "browser_session") and self.browser_session:
@@ -78,8 +149,8 @@ class BugninjaAgentBase(Agent, ABC):
         """Publish event to all available publishers.
 
         Args:
-            event_type: Type of event to publish
-            data: Event data
+            event_type (str): Type of event to publish
+            data (Dict[str, Any]): Event data to publish
         """
         if not self.event_manager or not self.run_id:
             return
@@ -96,18 +167,20 @@ class BugninjaAgentBase(Agent, ABC):
         browser_state_summary: BrowserStateSummary,
         model_output: AgentOutput,
     ) -> None:
-        """A hook that is called BEFORE a step is taken, but the agent already has model output regarding the actions to be taken!
-        A step is representing a specific element of the workflow; a single step represents a workflow element regarding achievement of the goal of the agent.
-        What is considered a step is up to the agent to decide.
+        """Hook called BEFORE a step is taken, but after model output is generated.
+
+        A step represents a specific element of the workflow; a single step represents
+        a workflow element regarding achievement of the goal of the agent. What is
+        considered a step is up to the agent to decide.
 
         **KEEP IN MIND**: A single step can have multiple actions
 
         Args:
-            browser_state_summary (BrowserStateSummary): The BrowserStateSummary of the current step
+            browser_state_summary (BrowserStateSummary): The browser state summary of the current step
             model_output (AgentOutput): The output of the agent representing the actions to be taken
 
         Raises:
-            NotImplementedError: This method is not implemented
+            NotImplementedError: This method must be implemented by subclasses
         """
         raise hook_missing_error("_before_step_hook", self.__class__)
 
@@ -117,79 +190,106 @@ class BugninjaAgentBase(Agent, ABC):
         browser_state_summary: BrowserStateSummary,
         model_output: AgentOutput,
     ) -> None:
-        """A hook that is called AFTER a step is taken with all of it's actions!
-        A step is representing a specific element of the workflow; a single step represents a workflow element regarding achievement of the goal of the agent.
-        What is considered a step is up to the agent to decide.
+        """Hook called AFTER a step is taken with all of its actions.
+
+        A step represents a specific element of the workflow; a single step represents
+        a workflow element regarding achievement of the goal of the agent. What is
+        considered a step is up to the agent to decide.
 
         **KEEP IN MIND**: A single step can have multiple actions
 
         Args:
-            browser_state_summary (BrowserStateSummary): The BrowserStateSummary of the current step
-            model_output (AgentOutput): The output of the agent representing the actions to be taken
+            browser_state_summary (BrowserStateSummary): The browser state summary of the current step
+            model_output (AgentOutput): The output of the agent representing the actions taken
 
         Raises:
-            NotImplementedError: This method is not implemented
+            NotImplementedError: This method must be implemented by subclasses
         """
         raise hook_missing_error("_after_step_hook", self.__class__)
 
     @abstractmethod
     async def _before_run_hook(self) -> None:
-        """A hook that is called BEFORE a run is started!
+        """Hook called BEFORE a run is started.
+
+        This hook is called at the beginning of the agent execution, before any
+        steps or actions are taken.
 
         Raises:
-            NotImplementedError: This method is not implemented
+            NotImplementedError: This method must be implemented by subclasses
         """
         raise hook_missing_error("_before_run_hook", self.__class__)
 
     @abstractmethod
     async def _after_run_hook(self) -> None:
-        """A hook that is called AFTER a run is finished!
+        """Hook called AFTER a run is finished.
+
+        This hook is called at the end of the agent execution, after all steps
+        and actions have been completed.
 
         Raises:
-            NotImplementedError: This method is not implemented
+            NotImplementedError: This method must be implemented by subclasses
         """
         raise hook_missing_error("_after_run_hook", self.__class__)
 
     @abstractmethod
     async def _before_action_hook(self, action: ActionModel) -> None:
-        """A hook that is called BEFORE an action is taken!
+        """Hook called BEFORE an action is taken.
 
         Args:
             action (ActionModel): The action that is about to be taken
 
         Raises:
-            NotImplementedError: This method is not implemented
+            NotImplementedError: This method must be implemented by subclasses
         """
         raise hook_missing_error("_before_action_hook", self.__class__)
 
     @abstractmethod
     async def _after_action_hook(self, action: ActionModel) -> None:
-        """A hook that is called AFTER an action is taken!
+        """Hook called AFTER an action is taken.
 
         Args:
             action (ActionModel): The action that was just taken
 
         Raises:
-            NotImplementedError: This method is not implemented
+            NotImplementedError: This method must be implemented by subclasses
         """
         raise hook_missing_error("_after_action_hook", self.__class__)
 
     def _find_matching_extended_action(self, action: ActionModel) -> "BugninjaExtendedAction":
-        """Find the matching extended action for a given action."""
+        """Find the matching extended action for a given action.
+
+        Args:
+            action (ActionModel): The action to find the extended version for
+
+        Returns:
+            BugninjaExtendedAction: The matching extended action
+        """
         action_index: int = self._action_to_extended_index.get(id(action), None)  # type: ignore
         return self.current_step_extended_actions[action_index]
 
     def _associate_action_with_extended_action(self, action: ActionModel, index: int) -> None:
-        """Associate an action with its extended action index."""
+        """Associate an action with its extended action index.
+
+        Args:
+            action (ActionModel): The action to associate
+            index (int): The index of the extended action
+        """
         self._action_to_extended_index[id(action)] = index
 
     def _clear_action_mapping(self) -> None:
-        """Clear the action mapping."""
+        """Clear the action mapping to prevent memory accumulation."""
         self._action_to_extended_index.clear()
 
     @time_execution_async("--run (agent)")
     async def run(self, max_steps: int = 100) -> Optional[AgentHistoryList]:
-        """Execute the task with maximum number of steps"""
+        """Execute the task with maximum number of steps.
+
+        Args:
+            max_steps (int): Maximum number of steps to execute
+
+        Returns:
+            Optional[AgentHistoryList]: The execution history, or None if execution fails
+        """
         await self._before_run_hook()
         results = await super().run(max_steps=max_steps, on_step_start=None, on_step_end=None)
         await self._after_run_hook()
@@ -197,7 +297,18 @@ class BugninjaAgentBase(Agent, ABC):
 
     @time_execution_async("--step (agent)")
     async def step(self, step_info: AgentStepInfo | None = None) -> None:
-        """Execute one step of the task"""
+        """Execute one step of the task.
+
+        This method orchestrates the execution of a single step, including:
+        - browser state analysis
+        - model output generation
+        - action execution
+        - event publishing
+        - hook management
+
+        Args:
+            step_info (AgentStepInfo | None): Information about the current step
+        """
         browser_state_summary = None
         model_output = None
         result: List[ActionResult] = []
@@ -400,7 +511,22 @@ class BugninjaAgentBase(Agent, ABC):
         actions: list[ActionModel],
         check_for_new_elements: bool = True,
     ) -> list[ActionResult]:
-        """Execute multiple actions."""
+        """Execute multiple actions with comprehensive error handling.
+
+        This method executes a sequence of actions while handling:
+        - element index changes after page modifications
+        - new element detection
+        - action cancellation
+        - event publishing
+        - extended action tracking
+
+        Args:
+            actions (list[ActionModel]): List of actions to execute
+            check_for_new_elements (bool): Whether to check for new elements between actions
+
+        Returns:
+            list[ActionResult]: Results of all executed actions
+        """
         results: list[ActionResult] = []
 
         cached_selector_map = await self.browser_session.get_selector_map()

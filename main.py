@@ -53,14 +53,15 @@ class RichTerminalPublisher(EventPublisher):
         """Initialize a run with rich terminal output.
 
         Args:
-            run_type: Type of run
-            metadata: Run metadata
+            run_type (str): Type of run
+            metadata (Dict[str, Any]): Run metadata
+            existing_run_id (Optional[str]): Existing run ID for compatibility reasons, but not used in any way
 
         Returns:
-            Generated run ID
+            str: Generated run ID
 
         Raises:
-            PublisherUnavailableError: If publisher is not available
+            PublisherUnavailableError: If publisher is not available for any reason
         """
         if not self.is_available():
             raise PublisherUnavailableError("Rich terminal publisher is not available")

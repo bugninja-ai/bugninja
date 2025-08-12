@@ -1,7 +1,7 @@
 """
 Pydantic models for Bugninja API.
 
-This module provides type-safe, validated models for browser automation tasks,
+This module provides **type-safe, validated models** for browser automation tasks,
 results, and configuration using Pydantic for comprehensive validation.
 
 ## Models
@@ -10,6 +10,25 @@ results, and configuration using Pydantic for comprehensive validation.
 2. **BugninjaTaskResult** - Represents task execution outcomes
 3. **BugninjaConfig** - Client configuration with environment variable support
 4. **SessionInfo** - Metadata about recorded browser sessions
+
+## Usage Examples
+
+```python
+from bugninja.api.models import BugninjaTask, BugninjaConfig
+
+# Create a task with validation
+task = BugninjaTask(
+    description="Navigate to example.com and click login",
+    max_steps=50,
+    allowed_domains=["example.com"]
+)
+
+# Create configuration with defaults
+config = BugninjaConfig(
+    headless=True,
+    llm_temperature=0.1
+)
+```
 """
 
 from datetime import datetime
@@ -53,19 +72,41 @@ class BugninjaErrorType(Enum):
 
 # TODO!:AGENT we have to have a better name for Tasks, like BugninjaTask
 class BugninjaTask(BaseModel):
-    """Represents a browser automation task.
+    """Represents a browser automation task with comprehensive validation.
 
     This model defines a task to be executed by the Bugninja automation engine.
-    It includes validation for all fields and provides comprehensive documentation.
+    It includes **validation for all fields** and provides comprehensive documentation
+    for task configuration and execution parameters.
 
-    ## Fields
+    Attributes:
+        description (str): Human-readable description of the task to perform (1-1000 chars)
+        max_steps (int): Maximum number of steps to execute (1-1000, default: 100)
+        enable_healing (bool): Enable self-healing capabilities for replay tasks (default: True)
+        custom_config (Optional[Dict[str, Any]]): Custom configuration overrides
+        allowed_domains (Optional[List[str]]): List of allowed domains for navigation
+        secrets (Optional[Dict[str, Any]]): Sensitive data for authentication
 
-    1. **description** - Human-readable task description (required)
-    3. **max_steps** - Maximum number of steps to execute (1-1000)
-    4. **enable_healing** - Enable self-healing capabilities
-    5. **custom_config** - Custom configuration overrides
-    6. **allowed_domains** - List of allowed domains for navigation
-    7. **secrets** - Sensitive data for authentication
+    Example:
+        ```python
+        from bugninja.api.models import BugninjaTask
+
+        # Basic task
+        task = BugninjaTask(
+            description="Navigate to example.com and click login"
+        )
+
+        # Advanced task with all options
+        task = BugninjaTask(
+            description="Complete user registration flow",
+            max_steps=75,
+            enable_healing=True,
+            allowed_domains=["example.com", "api.example.com"],
+            secrets={
+                "username": "test@example.com",
+                "password": "secure_password"
+            }
+        )
+        ```
     """
 
     description: str = Field(
@@ -99,7 +140,17 @@ class BugninjaTask(BaseModel):
     @field_validator("description")
     @classmethod
     def validate_description(cls, v: str) -> str:
-        """Validate task description is not empty or whitespace-only."""
+        """Validate task description is not empty or whitespace-only.
+
+        Args:
+            v (str): The description value to validate
+
+        Returns:
+            str: The validated and stripped description
+
+        Raises:
+            ValueError: If description is empty or whitespace-only
+        """
         if not v.strip():
             raise ValueError("BugninjaTask description cannot be empty or whitespace-only")
         return v.strip()
@@ -121,23 +172,56 @@ class BugninjaTask(BaseModel):
 class BugninjaTaskResult(BaseModel):
     """Result of any Bugninja operation (navigation or replay).
 
-    This model represents the outcome of any Bugninja operation, including
+    This model represents the **outcome of any Bugninja operation**, including
     success status, operation type, healing status, and execution metadata.
+    It provides comprehensive information about the operation's execution
+    and results for analysis and debugging.
 
-    ## Fields
+    Attributes:
+        success (bool): Whether the operation completed successfully
+        operation_type (OperationType): Type of operation (first_traversal or replay)
+        healing_status (HealingStatus): Whether healing was used during the operation
+        execution_time (float): Execution time in seconds (>= 0.0)
+        steps_completed (int): Number of steps completed (>= 0)
+        total_steps (int): Total number of steps in the operation (>= 0)
+        traversal (Optional[Traversal]): The actual Traversal object (if successful)
+        error (Optional[BugninjaTaskError]): Error object if operation failed
+        traversal_file (Optional[Path]): Path to the traversal JSON file
+        screenshots_dir (Optional[Path]): Directory containing screenshots
+        created_at (datetime): Timestamp when the result was created
+        metadata (Dict[str, Any]): Additional execution metadata
 
-    1. **success** - Whether the operation completed successfully
-    2. **operation_type** - Type of operation (first_traversal or replay)
-    3. **healing_status** - Whether healing was used during the operation
-    4. **execution_time** - Execution time in seconds
-    5. **steps_completed** - Number of steps completed
-    6. **total_steps** - Total number of steps in the operation
-    7. **traversal** - The actual Traversal object (if successful)
-    8. **error** - Error object if operation failed
-    9. **traversal_file** - Path to the traversal JSON file
-    10. **screenshots_dir** - Directory containing screenshots
-    11. **created_at** - Timestamp when the result was created
-    12. **metadata** - Additional execution metadata
+    Example:
+        ```python
+        from bugninja.api.models import BugninjaTaskResult, OperationType, HealingStatus
+
+        # Successful result
+        result = BugninjaTaskResult(
+            success=True,
+            operation_type=OperationType.FIRST_TRAVERSAL,
+            healing_status=HealingStatus.NONE,
+            execution_time=45.2,
+            steps_completed=15,
+            total_steps=20,
+            traversal_file=Path("./traversals/session.json"),
+            metadata={"screenshots_taken": 5}
+        )
+
+        # Failed result with error
+        result = BugninjaTaskResult(
+            success=False,
+            operation_type=OperationType.REPLAY,
+            healing_status=HealingStatus.FAILED,
+            execution_time=12.5,
+            steps_completed=3,
+            total_steps=20,
+            error=BugninjaTaskError(
+                error_type=BugninjaErrorType.BROWSER_ERROR,
+                message="Element not found",
+                suggested_action="Check if element still exists on page"
+            )
+        )
+        ```
     """
 
     success: bool = Field(description="Whether the operation completed successfully")
@@ -195,7 +279,31 @@ class BugninjaTaskResult(BaseModel):
 
 
 class BugninjaTaskError(BaseModel):
-    """Enhanced error model for task results."""
+    """Enhanced error model for task results with classification and suggestions.
+
+    This model provides **comprehensive error information** including error type
+    classification, detailed error messages, and suggested actions for resolution.
+
+    Attributes:
+        error_type (BugninjaErrorType): Classification of the error type
+        message (str): Human-readable error message
+        details (Optional[Dict[str, Any]]): Additional error details for debugging
+        original_error (Optional[str]): Original exception information
+        suggested_action (Optional[str]): Suggested action to resolve the error
+
+    Example:
+        ```python
+        from bugninja.api.models import BugninjaTaskError, BugninjaErrorType
+
+        error = BugninjaTaskError(
+            error_type=BugninjaErrorType.BROWSER_ERROR,
+            message="Element 'login-button' not found on page",
+            details={"page_url": "https://example.com", "selector": "#login-button"},
+            original_error="ElementNotFoundError: Element not found",
+            suggested_action="Check if the login button still exists and has the correct selector"
+        )
+        ```
+    """
 
     error_type: BugninjaErrorType
     message: str
@@ -205,7 +313,41 @@ class BugninjaTaskError(BaseModel):
 
 
 class BulkBugninjaTaskResult(BaseModel):
-    """Result for parallel task execution."""
+    """Result for parallel task execution with aggregate metrics.
+
+    This model represents the **aggregate result** of executing multiple tasks
+    in parallel, providing comprehensive metrics and individual task results
+    for analysis and monitoring.
+
+    Attributes:
+        overall_success (bool): Whether all tasks completed successfully
+        total_tasks (int): Total number of tasks executed
+        successful_tasks (int): Number of tasks that completed successfully
+        failed_tasks (int): Number of tasks that failed
+        total_execution_time (float): Total time spent executing all tasks
+        individual_results (List[BugninjaTaskResult]): Results for each individual task
+        metadata (Dict[str, Any]): Additional metadata about the bulk operation
+        error_summary (Optional[Dict[BugninjaErrorType, int]]): Summary of error types and counts
+
+    Example:
+        ```python
+        from bugninja.api.models import BulkBugninjaTaskResult
+
+        bulk_result = BulkBugninjaTaskResult(
+            overall_success=False,
+            total_tasks=5,
+            successful_tasks=3,
+            failed_tasks=2,
+            total_execution_time=120.5,
+            individual_results=[task_result_1, task_result_2, ...],
+            error_summary={
+                BugninjaErrorType.BROWSER_ERROR: 1,
+                BugninjaErrorType.LLM_ERROR: 1
+            },
+            metadata={"operation": "parallel_execution"}
+        )
+        ```
+    """
 
     overall_success: bool
     total_tasks: int
@@ -222,18 +364,49 @@ BugninjaTaskResult = BugninjaTaskResult
 
 
 class BugninjaConfig(BaseModel):
-    """Configuration for Bugninja client.
+    """Configuration for Bugninja client with comprehensive validation.
 
-    This model provides comprehensive configuration options for the Bugninja
-    automation engine with validation and direct configuration support.
+    This model provides **comprehensive configuration options** for the Bugninja
+    automation engine with validation and direct configuration support. It includes
+    settings for LLM, browser, task execution, and development environments.
 
-    ## Configuration Sections
+    Attributes:
+        llm_provider (str): LLM provider to use (default: "azure_openai")
+        llm_model (str): LLM model to use (default: "gpt-4.1")
+        llm_temperature (float): Temperature for LLM responses (0.0-2.0, default: 0.001)
+        headless (bool): Run browser in headless mode (default: False)
+        viewport_width (int): Browser viewport width (800-3840, default: 1280)
+        viewport_height (int): Browser viewport height (600-2160, default: 960)
+        user_agent (Optional[str]): Browser user agent string
+        strict_selectors (bool): Use strict selectors for element identification (default: True)
+        user_data_dir (Optional[Union[Path, str]]): Directory for browser user data
+        default_max_steps (int): Default maximum steps for tasks (1-1000, default: 100)
+        enable_screenshots (bool): Enable screenshot capture (default: True)
+        enable_healing (bool): Enable self-healing capabilities (default: True)
+        debug_mode (bool): Enable debug mode (default: False)
+        verbose_logging (bool): Enable verbose logging (default: False)
+        screenshots_dir (Path): Directory for storing screenshots (default: "./screenshots")
+        traversals_dir (Path): Directory for storing traversal files (default: "./traversals")
 
-    1. **LLM Configuration** - Language model settings
-    2. **Browser Configuration** - Browser automation settings
-    3. **BugninjaTask Configuration** - Default task parameters
-    4. **Development Configuration** - Debug and logging settings
-    5. **File Paths** - Directory configurations
+    Example:
+        ```python
+        from bugninja.api.models import BugninjaConfig
+
+        # Basic configuration with defaults
+        config = BugninjaConfig()
+
+        # Advanced configuration
+        config = BugninjaConfig(
+            llm_temperature=0.1,
+            headless=True,
+            viewport_width=1920,
+            viewport_height=1080,
+            enable_healing=True,
+            debug_mode=True,
+            screenshots_dir=Path("./custom_screenshots"),
+            traversals_dir=Path("./custom_traversals")
+        )
+        ```
     """
 
     # LLM Configuration
@@ -297,7 +470,14 @@ class BugninjaConfig(BaseModel):
     @field_validator("screenshots_dir", "traversals_dir", "user_data_dir")
     @classmethod
     def create_directories_if_not_exist(cls, v: Path) -> Path:
-        """Create directories if they don't exist."""
+        """Create directories if they don't exist.
+
+        Args:
+            v (Path): The path to validate and create if needed
+
+        Returns:
+            Path: The validated path with directories created
+        """
         if v is not None:
             v.mkdir(parents=True, exist_ok=True)
         return v
@@ -321,16 +501,31 @@ class BugninjaConfig(BaseModel):
 class SessionInfo(BaseModel):
     """Information about a recorded browser session.
 
-    This model provides metadata about a recorded session including
-    file path, creation time, and session statistics.
+    This model provides **metadata about a recorded session** including
+    file path, creation time, and session statistics for session management
+    and replay operations.
 
-    ## Fields
+    Attributes:
+        file_path (Path): Path to the session file
+        created_at (datetime): When the session was created
+        steps_count (int): Number of steps in the session (>= 0)
+        success (bool): Whether the session completed successfully
+        metadata (Dict[str, Any]): Additional session metadata
 
-    1. **file_path** - Path to the session file
-    2. **created_at** - When the session was created
-    3. **steps_count** - Number of steps in the session
-    5. **success** - Whether the session completed successfully
-    6. **metadata** - Additional session metadata
+    Example:
+        ```python
+        from bugninja.api.models import SessionInfo
+        from pathlib import Path
+        from datetime import datetime
+
+        session_info = SessionInfo(
+            file_path=Path("./traversals/session_20240115.json"),
+            created_at=datetime(2024, 1, 15, 10, 30, 0),
+            steps_count=25,
+            success=True,
+            metadata={"browser_version": "120.0.0", "task_type": "login_flow"}
+        )
+        ```
     """
 
     file_path: Path = Field(description="Path to the session file")
