@@ -3,19 +3,18 @@ name = "bugninja"
 version = "0.1.0"
 description = "AI-Powered Browser Automation"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 authors = [
-    {name = "Bugninja Team", email = "akos.jakub@bugninja.ai"}
+    {name = "Ákos Jakub", email = "akos.jakub@bugninja.ai"},
+    {name = "Tamás Imets", email = "tamas.imets@bugninja.ai"}
 ]
-license = {text = "MIT"}
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.11",
 ]
-keywords = ["browser", "automation", "ai", "testing", "web"]
+keywords = ["browser", "automation", "ai", "testing", "web", "e2e testing", "bugninja"]
 dependencies = [
     "black==25.1.0",
     "browser-use[memory]==0.2.5",
