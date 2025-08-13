@@ -17,10 +17,19 @@ This module provides **session replay capabilities** with:
 
 ```python
 from bugninja.replication import ReplicatorRun
+from bugninja.schemas.pipeline import Traversal
 
-# Create replicator for session replay
+# Create replicator for session replay from file
 replicator = ReplicatorRun(
-    json_path="./traversals/session.json",
+    traversal_source="./traversals/session.json",
+    enable_healing=True,
+    pause_after_each_step=False
+)
+
+# Create replicator for session replay from Traversal object
+traversal = Traversal(...)  # Some traversal object
+replicator = ReplicatorRun(
+    traversal_source=traversal,
     enable_healing=True,
     pause_after_each_step=False
 )

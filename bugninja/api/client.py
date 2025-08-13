@@ -20,7 +20,7 @@ from asyncio import Task as AsyncioTask
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from browser_use import (  # type: ignore[import-untyped]
     AgentHistoryList,
@@ -55,6 +55,7 @@ from bugninja.config import ConfigurationFactory
 from bugninja.events import EventPublisherManager
 from bugninja.models import azure_openai_model
 from bugninja.replication import ReplicatorRun
+from bugninja.schemas.pipeline import Traversal
 from bugninja.utils.logger_config import set_logger_config
 from bugninja.utils.prompt_string_factories import AUTHENTICATION_HANDLING_EXTRA_PROMPT
 
@@ -124,10 +125,17 @@ class BugninjaClient:
         else:
             print(f"Task failed: {result.error}")
 
-        # Replay a recorded session
+        # Replay a recorded session from file
         session_file = Path("./traversals/session.json")
         replay_result = await client.replay_session(
             session_file,
+            enable_healing=True
+        )
+
+        # Replay a recorded session from Traversal object
+        traversal = Traversal(...)  # Some traversal object
+        replay_result = await client.replay_session(
+            traversal,
             enable_healing=True
         )
 
@@ -804,7 +812,10 @@ class BugninjaClient:
             await self.cleanup()
 
     async def replay_session(
-        self, session_file: Path, pause_after_each_step: bool = False, enable_healing: bool = True
+        self,
+        session: Union[Path, Traversal],
+        pause_after_each_step: bool = False,
+        enable_healing: bool = True,
     ) -> BugninjaTaskResult:
         """Replay a recorded browser session.
 
@@ -812,7 +823,7 @@ class BugninjaClient:
         the `ReplicatorRun` functionality with optional healing capabilities.
 
         Args:
-            session_file (Path): Path to the session file to replay
+            session (Union[Path, Traversal]): Path to the session file or a Traversal object to replay
             pause_after_each_step (bool): Whether to pause and wait for Enter key after each step.
                                           Defaults to False for automated replay
             enable_healing (bool): Whether to enable healing when actions fail (default: True)
@@ -826,10 +837,13 @@ class BugninjaClient:
 
         Example:
             ```python
+            # Replay from file path
             session_file = Path("./traversals/session_20240115.json")
-
-            # Automated replay with healing (default)
             result = await client.replay_session(session_file)
+
+            # Replay from Traversal object
+            traversal = Traversal(...)  # Some traversal object
+            result = await client.replay_session(traversal)
 
             # Interactive replay with pauses and healing
             result = await client.replay_session(session_file, pause_after_each_step=True)
@@ -845,27 +859,36 @@ class BugninjaClient:
         """
         start_time = time.time()
 
-        # Validate session file exists
-        if not session_file.exists():
-            raise ValidationError(
-                f"Session file does not exist: {session_file}",
-                field_name="session_file",
-                field_value=str(session_file),
-            )
+        # Validate session input
+        if isinstance(session, Path):
+            if not session.exists():
+                raise ValidationError(
+                    f"Session file does not exist: {session}",
+                    field_name="session",
+                    field_value=str(session),
+                )
 
-        # Validate session file is JSON
-        if not session_file.suffix == ".json":
+            # Validate session file is JSON
+            if not session.suffix == ".json":
+                raise ValidationError(
+                    f"Session file must be a JSON file: {session}",
+                    field_name="session",
+                    field_value=str(session),
+                )
+        elif not isinstance(session, Traversal):
             raise ValidationError(
-                f"Session file must be a JSON file: {session_file}",
-                field_name="session_file",
-                field_value=str(session_file),
+                f"Invalid session type: {type(session)}. Expected Path or Traversal.",
+                field_name="session",
+                field_value=str(session),
             )
 
         try:
 
             # Create replicator with configured settings
+            # Convert Path to string for ReplicatorRun
+            traversal_source = str(session) if isinstance(session, Path) else session
             replicator = ReplicatorRun(
-                json_path=str(session_file),
+                traversal_source=traversal_source,
                 pause_after_each_step=pause_after_each_step,
                 sleep_after_actions=1.0,  # Default sleep time
                 enable_healing=enable_healing,
@@ -896,7 +919,7 @@ class BugninjaClient:
             error_obj = None
             if not success and error:
                 context = {
-                    "session_file": str(session_file),
+                    "session": str(session) if isinstance(session, Path) else "traversal_object",
                     "pause_after_each_step": pause_after_each_step,
                     "enable_healing": enable_healing,
                 }
@@ -910,6 +933,15 @@ class BugninjaClient:
                     suggested_action=suggested_action,
                 )
 
+            # Determine traversal file and screenshots directory
+            if isinstance(session, Path):
+                traversal_file = session
+                screenshots_dir = self.config.screenshots_dir / session.stem
+            else:
+                # For Traversal objects, we don't have a file path
+                traversal_file = None
+                screenshots_dir = self.config.screenshots_dir / f"traversal_{replicator.run_id}"
+
             return BugninjaTaskResult(
                 success=success,
                 operation_type=OperationType.REPLAY,
@@ -918,12 +950,12 @@ class BugninjaClient:
                 steps_completed=getattr(replicator, "actions_completed", 0),
                 total_steps=getattr(replicator, "total_actions", 0),
                 traversal=replicator._traversal if hasattr(replicator, "_traversal") else None,
-                traversal_file=session_file,
-                screenshots_dir=self.config.screenshots_dir / session_file.stem,
+                traversal_file=traversal_file,
+                screenshots_dir=screenshots_dir,
                 error=error_obj,
                 metadata={
                     "replay_type": "session_replay",
-                    "session_file": str(session_file),
+                    "session": str(session) if isinstance(session, Path) else "traversal_object",
                     "pause_after_each_step": pause_after_each_step,
                     "healing_enabled": enable_healing,
                 },
@@ -932,17 +964,21 @@ class BugninjaClient:
         except Exception as e:
             execution_time = time.time() - start_time
             context = {
-                "session_file": str(session_file),
+                "session": str(session) if isinstance(session, Path) else "traversal_object",
                 "pause_after_each_step": pause_after_each_step,
                 "enable_healing": enable_healing,
-                "file_exists": session_file.exists(),
-                "file_size": session_file.stat().st_size if session_file.exists() else 0,
+                "file_exists": isinstance(session, Path) and session.exists(),
+                "file_size": (
+                    isinstance(session, Path) and session.stat().st_size
+                    if isinstance(session, Path) and session.exists()
+                    else 0
+                ),
             }
             return self._create_error_result(e, OperationType.REPLAY, context, execution_time)
 
     async def parallel_replay_sessions(
         self,
-        session_files: List[Path],
+        sessions: List[Union[Path, Traversal]],
         pause_after_each_step: bool = False,
         enable_healing: bool = True,
     ) -> BulkBugninjaTaskResult:
@@ -952,7 +988,7 @@ class BugninjaClient:
         concurrently using the `ReplicatorRun` functionality.
 
         Args:
-            session_files (List[Path]): List of paths to session files to replay
+            sessions (List[Union[Path, Traversal]]): List of paths to session files or Traversal objects to replay
             pause_after_each_step (bool): Whether to pause and wait for Enter key after each step.
                                           Defaults to False for automated replay
             enable_healing (bool): Whether to enable healing when actions fail (default: True)
@@ -966,24 +1002,33 @@ class BugninjaClient:
 
         Example:
             ```python
+            # Replay multiple files
             session_files = [
                 Path("./traversals/session_1.json"),
                 Path("./traversals/session_2.json"),
                 Path("./traversals/session_3.json")
             ]
 
+            # Replay mixed list of files and Traversal objects
+            sessions = [
+                Path("./traversals/session_1.json"),
+                traversal_object_1,
+                Path("./traversals/session_2.json"),
+                traversal_object_2
+            ]
+
             # Automated parallel replay with healing (default)
-            result = await client.parallel_replay_sessions(session_files)
+            result = await client.parallel_replay_sessions(sessions)
 
             # Interactive parallel replay with pauses and healing
             result = await client.parallel_replay_sessions(
-                session_files,
+                sessions,
                 pause_after_each_step=True
             )
 
             # Parallel replay without healing
             result = await client.parallel_replay_sessions(
-                session_files,
+                sessions,
                 enable_healing=False
             )
 
@@ -998,26 +1043,35 @@ class BugninjaClient:
         individual_results: List[BugninjaTaskResult] = []
 
         try:
-            # Validate all session files
-            for session_file in session_files:
-                if not session_file.exists():
-                    raise ValidationError(
-                        f"Session file does not exist: {session_file}",
-                        field_name="session_file",
-                        field_value=str(session_file),
-                    )
+            # Validate all sessions
+            for session in sessions:
+                if isinstance(session, Path):
+                    if not session.exists():
+                        raise ValidationError(
+                            f"Session file does not exist: {session}",
+                            field_name="session",
+                            field_value=str(session),
+                        )
 
-                if not session_file.suffix == ".json":
+                    if not session.suffix == ".json":
+                        raise ValidationError(
+                            f"Session file must be a JSON file: {session}",
+                            field_name="session",
+                            field_value=str(session),
+                        )
+                elif not isinstance(session, Traversal):
                     raise ValidationError(
-                        f"Session file must be a JSON file: {session_file}",
-                        field_name="session_file",
-                        field_value=str(session_file),
+                        f"Invalid session type: {type(session)}. Expected Path or Traversal.",
+                        field_name="session",
+                        field_value=str(session),
                     )
 
             # Create replicators for all sessions
-            for session_file in session_files:
+            for session in sessions:
+                # Convert Path to string for ReplicatorRun
+                traversal_source = str(session) if isinstance(session, Path) else session
                 replicator = ReplicatorRun(
-                    json_path=str(session_file),
+                    traversal_source=traversal_source,
                     pause_after_each_step=pause_after_each_step,
                     sleep_after_actions=1.0,  # Default sleep time
                     enable_healing=enable_healing,
@@ -1036,9 +1090,20 @@ class BugninjaClient:
                     # Wait for task completion
                     background_task.result()
 
-                    # Get the corresponding replicator and session file
+                    # Get the corresponding replicator and session
                     replicator = replicators[i]
-                    session_file = session_files[i]
+                    session = sessions[i]
+
+                    # Determine traversal file and screenshots directory
+                    if isinstance(session, Path):
+                        traversal_file = session
+                        screenshots_dir = self.config.screenshots_dir / session.stem
+                    else:
+                        # For Traversal objects, we don't have a file path
+                        traversal_file = None
+                        screenshots_dir = (
+                            self.config.screenshots_dir / f"traversal_{replicator.run_id}"
+                        )
 
                     # Create individual result for successful session
                     individual_result = BugninjaTaskResult(
@@ -1055,13 +1120,15 @@ class BugninjaClient:
                         traversal=(
                             replicator._traversal if hasattr(replicator, "_traversal") else None
                         ),
-                        traversal_file=session_file,
-                        screenshots_dir=self.config.screenshots_dir / session_file.stem,
+                        traversal_file=traversal_file,
+                        screenshots_dir=screenshots_dir,
                         error=None,
                         metadata={
                             "operation": "parallel_replay",
                             "session_index": i,
-                            "session_file": str(session_file),
+                            "session": (
+                                str(session) if isinstance(session, Path) else "traversal_object"
+                            ),
                             "pause_after_each_step": pause_after_each_step,
                             "healing_enabled": enable_healing,
                         },
@@ -1070,9 +1137,11 @@ class BugninjaClient:
 
                 except Exception as e:
                     # Create individual result for failed session
-                    session_file = session_files[i]
+                    session = sessions[i]
                     context = {
-                        "session_file": str(session_file),
+                        "session": (
+                            str(session) if isinstance(session, Path) else "traversal_object"
+                        ),
                         "pause_after_each_step": pause_after_each_step,
                         "enable_healing": enable_healing,
                         "session_index": i,
@@ -1091,7 +1160,7 @@ class BugninjaClient:
 
             return BulkBugninjaTaskResult(
                 overall_success=all(r.success for r in individual_results),
-                total_tasks=len(session_files),
+                total_tasks=len(sessions),
                 successful_tasks=successful_sessions,
                 failed_tasks=failed_sessions,
                 total_execution_time=total_execution_time,
@@ -1099,7 +1168,7 @@ class BugninjaClient:
                 error_summary=error_summary,
                 metadata={
                     "operation": "parallel_replay",
-                    "total_sessions": len(session_files),
+                    "total_sessions": len(sessions),
                     "successful_sessions": successful_sessions,
                     "failed_sessions": failed_sessions,
                     "pause_after_each_step": pause_after_each_step,

@@ -70,7 +70,6 @@ class BugninjaErrorType(Enum):
     UNKNOWN_ERROR = "unknown_error"
 
 
-# TODO!:AGENT we have to have a better name for Tasks, like BugninjaTask
 class BugninjaTask(BaseModel):
     """Represents a browser automation task with comprehensive validation.
 

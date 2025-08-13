@@ -20,7 +20,7 @@ boundaries.
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from cuid2 import Cuid as CUID
 from rich import print as rich_print
@@ -65,7 +65,7 @@ class ReplicatorRun(ReplicatorNavigator):
 
     def __init__(
         self,
-        json_path: str,
+        traversal_source: Union[str, Traversal],
         fail_on_unimplemented_action: bool = False,
         sleep_after_actions: float = 1.0,
         pause_after_each_step: bool = True,
@@ -73,10 +73,10 @@ class ReplicatorRun(ReplicatorNavigator):
         event_manager: Optional[EventPublisherManager] = None,
     ):
         """
-        Initialize the ReplicatorRun with a JSON file path.
+        Initialize the ReplicatorRun with a JSON file path or Traversal object.
 
         Args:
-            json_path: Path to the JSON file containing interaction steps
+            traversal_source: Path to the JSON file containing interaction steps or Traversal object
             fail_on_unimplemented_action: Whether to fail on unimplemented actions
             sleep_after_actions: Time to sleep after each action
             pause_after_each_step: Whether to pause and wait for Enter key after each step
@@ -85,12 +85,22 @@ class ReplicatorRun(ReplicatorNavigator):
         """
 
         super().__init__(
-            traversal_path=json_path,
+            traversal_source=traversal_source,
             fail_on_unimplemented_action=fail_on_unimplemented_action,
             sleep_after_actions=sleep_after_actions,
         )
 
-        self.traversal_path = json_path
+        # Store the original source for metadata and error reporting
+        self.traversal_source = traversal_source
+
+        # Determine the traversal path for file-based operations
+        if isinstance(traversal_source, str):
+            self.traversal_path = traversal_source
+        else:
+            # For Traversal objects, we don't have a file path, so we'll use a placeholder
+            # This is mainly used for error reporting and metadata
+            self.traversal_path = "traversal_object"
+
         self.max_retries = 2
         self.retry_delay = 0.5
 
@@ -184,9 +194,13 @@ class ReplicatorRun(ReplicatorNavigator):
 
         return agent
 
-    def _save_corrected_traversal(self, output_path: str) -> Traversal:
+    def _save_corrected_traversal(self, output_path: Optional[str] = None) -> Traversal:
         """
         Save the corrected traversal containing successful actions and healer replacements.
+
+        Args:
+            output_path: Optional path to save the corrected traversal. If None and source is a file,
+                        will append "_corrected" to the original filename.
 
         Returns:
             Traversal: The corrected traversal object
@@ -201,18 +215,31 @@ class ReplicatorRun(ReplicatorNavigator):
             f"action_{i}": e for i, e in enumerate(self.replay_state_machine.passed_actions)
         }
 
-        with open(output_path, "w") as f:
-            json.dump(
-                self.replay_traversal.model_dump(),
-                f,
-                indent=4,
-                ensure_ascii=False,
-            )
+        # Determine output path
+        if output_path is None:
+            if isinstance(self.traversal_source, str):
+                # For file-based sources, append "_corrected" to the original filename
+                output_path = self.traversal_source.replace(".json", "_corrected.json")
+            else:
+                # For Traversal objects, use a default path
+                output_path = f"traversal_corrected_{self.run_id}.json"
+
+        # Save to file if we have a valid path
+        if output_path and output_path != "traversal_object":
+            with open(output_path, "w") as f:
+                json.dump(
+                    self.replay_traversal.model_dump(),
+                    f,
+                    indent=4,
+                    ensure_ascii=False,
+                )
+            logger.info(f"💾 Corrected traversal saved to: {output_path}")
+        else:
+            logger.info("💾 Corrected traversal built (not saved to file)")
 
         # Store the traversal object for later access
         self._traversal = self.replay_traversal
 
-        logger.info(f"💾 Corrected traversal saved to: {output_path}")
         return self.replay_traversal
 
     async def _run(self) -> Tuple[bool, Optional[str]]:
@@ -412,9 +439,8 @@ class ReplicatorRun(ReplicatorNavigator):
 
         # Save corrected traversal if healing happened (regardless of final status)
         if self.healing_happened:
-            output_path = self.traversal_path.replace(".json", "_corrected.json")
-            logger.info(f"💾 Saving corrected traversal to: {output_path}")
-            self._save_corrected_traversal(output_path)
+            logger.info("💾 Saving corrected traversal...")
+            self._save_corrected_traversal()
         else:
             # Store the original traversal if no healing occurred
             self._traversal = self.replay_traversal

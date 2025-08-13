@@ -4,7 +4,7 @@ import json
 import logging
 import sys
 from abc import ABC
-from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple, Union
 
 from browser_use import BrowserProfile, BrowserSession  # type: ignore
 from browser_use.agent.views import AgentBrain  # type: ignore
@@ -105,13 +105,40 @@ class ReplicatorNavigator(ABC):
             logger.error(f"❌ Failed to load JSON file: {str(e)}")
             raise ReplicatorError(f"Failed to load JSON file: {str(e)}")
 
+    @staticmethod
+    def _load_traversal_from_source(traversal_source: Union[str, Traversal]) -> Traversal:
+        """
+        Load traversal from either a JSON file path or a Traversal object.
+
+        Args:
+            traversal_source: Either a JSON file path (str) or a Traversal object
+
+        Returns:
+            Traversal: The loaded or provided traversal object
+
+        Raises:
+            ReplicatorError: If loading fails or source is invalid
+        """
+        if isinstance(traversal_source, str):
+            # Load from JSON file
+            return ReplicatorNavigator._load_traversal_from_json(traversal_source)
+        elif isinstance(traversal_source, Traversal):
+            # Use provided Traversal object directly
+            logger.info("📄 Using provided Traversal object")
+            return traversal_source
+        else:
+            raise ReplicatorError(
+                f"Invalid traversal source type: {type(traversal_source)}. "
+                "Expected str (file path) or Traversal object."
+            )
+
     def __init__(
         self,
-        traversal_path: str,
+        traversal_source: Union[str, Traversal],
         fail_on_unimplemented_action: bool = True,
         sleep_after_actions: float = 1.0,
     ):
-        self.replay_traversal = self._load_traversal_from_json(traversal_path)
+        self.replay_traversal = self._load_traversal_from_source(traversal_source)
         self.brain_states: Dict[str, AgentBrain] = self.replay_traversal.brain_states
         self.fail_on_unimplemented_action = fail_on_unimplemented_action
         self.sleep_after_actions = sleep_after_actions
