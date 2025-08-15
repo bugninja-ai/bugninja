@@ -4,10 +4,12 @@ import json
 import logging
 import sys
 from abc import ABC
+from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple, Union
 
 from browser_use import BrowserProfile, BrowserSession  # type: ignore
 from browser_use.agent.views import AgentBrain  # type: ignore
+from cuid2 import Cuid as CUID
 from patchright.async_api import BrowserContext as PatchrightBrowserContext
 from patchright.async_api import Page
 
@@ -99,11 +101,26 @@ class ReplicatorNavigator(ABC):
                 data: Dict[str, Any] = json.load(f)  # type:ignore
                 if "actions" not in data:
                     raise ReplicatorError("JSON file must contain an 'actions' key")
-                logger.info(f"📄 Successfully loaded JSON file: {json_path}")
                 return Traversal.model_validate(data)
         except Exception as e:
-            logger.error(f"❌ Failed to load JSON file: {str(e)}")
             raise ReplicatorError(f"Failed to load JSON file: {str(e)}")
+
+    def _log_if_not_background(self, level: str, message: str) -> None:
+        """Log message only if not in background mode.
+
+        Args:
+            level (str): Log level ('info', 'warning', 'error', 'debug')
+            message (str): Message to log
+        """
+        if not self.background:
+            if level == "info":
+                logger.info(message)
+            elif level == "warning":
+                logger.warning(message)
+            elif level == "error":
+                logger.error(message)
+            elif level == "debug":
+                logger.debug(message)
 
     @staticmethod
     def _load_traversal_from_source(traversal_source: Union[str, Traversal]) -> Traversal:
@@ -124,7 +141,6 @@ class ReplicatorNavigator(ABC):
             return ReplicatorNavigator._load_traversal_from_json(traversal_source)
         elif isinstance(traversal_source, Traversal):
             # Use provided Traversal object directly
-            logger.info("📄 Using provided Traversal object")
             return traversal_source
         else:
             raise ReplicatorError(
@@ -137,21 +153,36 @@ class ReplicatorNavigator(ABC):
         traversal_source: Union[str, Traversal],
         fail_on_unimplemented_action: bool = True,
         sleep_after_actions: float = 1.0,
+        background: bool = False,
     ):
         self.replay_traversal = self._load_traversal_from_source(traversal_source)
         self.brain_states: Dict[str, AgentBrain] = self.replay_traversal.brain_states
         self.fail_on_unimplemented_action = fail_on_unimplemented_action
         self.sleep_after_actions = sleep_after_actions
         self.brain_states_passed: List[str] = []
+        self.background = background
 
-        self.browser_session = BrowserSession(
-            browser_profile=BrowserProfile(
-                # ? these None settings are necessary in order for every new run to be perfectly independent and clean
-                storage_state=None,
-                # Apply browser configuration if available
-                **self.replay_traversal.browser_config.model_dump(exclude_none=True),
-            )
+        # Generate run_id for browser isolation
+        self.run_id = CUID().generate()
+
+        # Create browser session with isolation
+        browser_profile = BrowserProfile(
+            # ? these None settings are necessary in order for every new run to be perfectly independent and clean
+            storage_state=None,
+            # Apply browser configuration if available
+            **self.replay_traversal.browser_config.model_dump(exclude_none=True),
         )
+
+        # Override user_data_dir with run_id for browser isolation
+        base_dir = browser_profile.user_data_dir or Path("./data_dir")
+        if isinstance(base_dir, str):
+            base_dir = Path(base_dir)
+        isolated_dir = base_dir / f"run_{self.run_id}"
+        browser_profile.user_data_dir = isolated_dir
+
+        self.browser_session = BrowserSession(browser_profile=browser_profile)
+
+        self._log_if_not_background("info", f"🔒 Using isolated browser directory: {isolated_dir}")
 
     async def _handle_go_to_url(self, action: Dict[str, Any]) -> None:
         """Handle navigation to a URL."""

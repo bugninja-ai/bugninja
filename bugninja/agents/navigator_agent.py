@@ -4,7 +4,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from browser_use.agent.service import logger  # type: ignore
 from browser_use.agent.views import (  # type: ignore
     AgentBrain,
     AgentOutput,
@@ -84,8 +83,21 @@ class NavigatorAgent(BugninjaAgentBase):
         - setting up screenshot manager for navigation recording
         - initializing event tracking for navigation operations
         - logging the start of the navigation session
+        - setting up browser isolation using run_id
         """
-        logger.info(msg="🏁 BEFORE-Run hook called")
+        self._log_if_not_background("info", "🏁 BEFORE-Run hook called")
+
+        # Override user_data_dir with run_id for browser isolation
+        if hasattr(self, "browser_session") and self.browser_session:
+            base_dir = self.browser_session.browser_profile.user_data_dir or Path("./data_dir")
+            if isinstance(base_dir, str):
+                base_dir = Path(base_dir)
+            isolated_dir = base_dir / f"run_{self.run_id}"
+            self.browser_session.browser_profile.user_data_dir = isolated_dir
+
+            self._log_if_not_background(
+                "info", f"🔒 Using isolated browser directory: {isolated_dir}"
+            )
 
         self.agent_taken_actions: List[BugninjaExtendedAction] = []
         self.agent_brain_states: Dict[str, AgentBrain] = {}
@@ -108,9 +120,9 @@ class NavigatorAgent(BugninjaAgentBase):
                     },
                     existing_run_id=self.run_id,  # Use existing run_id instead of generating new one
                 )
-                logger.info(f"🎯 Started navigation run: {self.run_id}")
+                self._log_if_not_background("info", f"🎯 Started navigation run: {self.run_id}")
             except Exception as e:
-                logger.warning(f"Failed to initialize event tracking: {e}")
+                self._log_if_not_background("warning", f"Failed to initialize event tracking: {e}")
 
     async def _after_run_hook(self) -> None:
         """Complete navigation session and save traversal data.
@@ -124,7 +136,7 @@ class NavigatorAgent(BugninjaAgentBase):
         The hook ensures that all navigation data is properly serialized
         for later replay and analysis.
         """
-        logger.info(msg="✅ AFTER-Run hook called")
+        self._log_if_not_background("info", "✅ AFTER-Run hook called")
         # Save agent actions and store traversal
         self._traversal = self.save_agent_actions()
 
@@ -137,9 +149,9 @@ class NavigatorAgent(BugninjaAgentBase):
                     result.error for result in self.state.last_result if hasattr(result, "error")
                 )
                 await self.event_manager.complete_run(self.run_id, success)
-                logger.info(f"✅ Completed navigation run: {self.run_id}")
+                self._log_if_not_background("info", f"✅ Completed navigation run: {self.run_id}")
             except Exception as e:
-                logger.warning(f"Failed to complete event tracking: {e}")
+                self._log_if_not_background("warning", f"Failed to complete event tracking: {e}")
 
     async def _before_step_hook(
         self,
@@ -158,7 +170,7 @@ class NavigatorAgent(BugninjaAgentBase):
             browser_state_summary (BrowserStateSummary): Current browser state information
             model_output (AgentOutput): Model output containing actions to be executed
         """
-        logger.info(msg="🪝 BEFORE-Step hook called")
+        self._log_if_not_background("info", "🪝 BEFORE-Step hook called")
 
         # ? we create the brain state here since a single thought can belong to multiple actions
         brain_state_id: str = CUID().generate()
@@ -231,7 +243,9 @@ class NavigatorAgent(BugninjaAgentBase):
 
             # Store screenshot filename with extended action
             extended_action.screenshot_filename = screenshot_filename
-            logger.info(f"📸 Stored screenshot filename: {screenshot_filename}")
+            self._log_if_not_background(
+                "info", f"📸 Stored screenshot filename: {screenshot_filename}"
+            )
 
     def save_agent_actions(self, verbose: bool = False) -> Traversal:
         """Save the agent's traversal data to a JSON file for analysis and replay.
@@ -276,20 +290,23 @@ class NavigatorAgent(BugninjaAgentBase):
 
         actions: Dict[str, Any] = {}
 
-        logger.info(f"👉 Number of actions: {len(self.agent_taken_actions)}")
-        logger.info(f"🗨️ Number of thoughts: {len(self.agent_brain_states)}")
+        self._log_if_not_background(
+            "info", f"👉 Number of actions: {len(self.agent_taken_actions)}"
+        )
+        self._log_if_not_background("info", f"🗨️ Number of thoughts: {len(self.agent_brain_states)}")
 
         for idx, model_taken_action in enumerate(self.agent_taken_actions):
 
             if verbose:
-                logger.info(f"Step {idx + 1}:")
-                logger.info("Log:")
-                logger.info(model_taken_action)
+                self._log_if_not_background("info", f"Step {idx + 1}:")
+                self._log_if_not_background("info", "Log:")
+                self._log_if_not_background("info", str(model_taken_action))
 
             # Log screenshot filename if present
             if model_taken_action.screenshot_filename:
-                logger.info(
-                    f"📸 Action {idx} has screenshot: {model_taken_action.screenshot_filename}"
+                self._log_if_not_background(
+                    "info",
+                    f"📸 Action {idx} has screenshot: {model_taken_action.screenshot_filename}",
                 )
 
             actions[f"action_{idx}"] = model_taken_action.model_dump()
@@ -313,5 +330,21 @@ class NavigatorAgent(BugninjaAgentBase):
         # Store the traversal object for later access
         self._traversal = traversal
 
-        logger.info(f"Traversal saved with ID: {timestamp}_{self.run_id}")
+        # Only save to file if not in background mode
+        if not self.background:
+            with open(traversal_file, "w") as f:
+                json.dump(
+                    traversal.model_dump(),
+                    f,
+                    indent=4,
+                    ensure_ascii=False,
+                )
+            self._log_if_not_background(
+                "info", f"Traversal saved with ID: {timestamp}_{self.run_id}"
+            )
+        else:
+            self._log_if_not_background(
+                "info", f"Traversal created (not saved to file) with ID: {timestamp}_{self.run_id}"
+            )
+
         return traversal

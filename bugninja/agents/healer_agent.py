@@ -1,6 +1,5 @@
 from typing import Dict, List, Optional
 
-from browser_use.agent.service import logger  # type: ignore
 from browser_use.agent.views import AgentBrain  # type: ignore
 from browser_use.agent.views import (  # type: ignore
     AgentOutput,
@@ -93,7 +92,7 @@ class HealerAgent(BugninjaAgentBase):
         - setting up event tracking for healing operations
         - logging the start of the healing intervention
         """
-        logger.info(msg="🏁 BEFORE-Run hook called")
+        self._log_if_not_background("info", "🏁 BEFORE-Run hook called")
 
         #! we override the default controller with our own
         self.controller = BugninjaController()
@@ -113,9 +112,9 @@ class HealerAgent(BugninjaAgentBase):
                     },
                     existing_run_id=self.run_id,  # Use existing run_id instead of generating new one
                 )
-                logger.info(f"🎯 Started healing run: {self.run_id}")
+                self._log_if_not_background("info", f"🎯 Started healing run: {self.run_id}")
             except Exception as e:
-                logger.warning(f"Failed to initialize event tracking: {e}")
+                self._log_if_not_background("warning", f"Failed to initialize event tracking: {e}")
 
     # ? we do not need to override the _after_run_hook for the healer agent
     async def _after_run_hook(self) -> None:
@@ -139,10 +138,10 @@ class HealerAgent(BugninjaAgentBase):
                     result.error for result in self.state.last_result if hasattr(result, "error")
                 )
                 await self.event_manager.complete_run(self.run_id, success)
-                logger.info(f"✅ Completed healing run: {self.run_id}")
+                self._log_if_not_background("info", f"✅ Completed healing run: {self.run_id}")
 
             except Exception as e:
-                logger.warning(f"Failed to complete event tracking: {e}")
+                self._log_if_not_background("warning", f"Failed to complete event tracking: {e}")
 
     async def _before_step_hook(
         self,
@@ -161,7 +160,7 @@ class HealerAgent(BugninjaAgentBase):
             browser_state_summary (BrowserStateSummary): Current browser state information
             model_output (AgentOutput): Model output containing actions to be executed
         """
-        logger.info(msg="🪝 BEFORE-Step hook called")
+        self._log_if_not_background("info", "🪝 BEFORE-Step hook called")
 
         # ? we create the brain state here since a single thought can belong to multiple actions
         brain_state_id: str = CUID().generate()
@@ -236,4 +235,4 @@ class HealerAgent(BugninjaAgentBase):
 
         # Store screenshot filename with extended action
         extended_action.screenshot_filename = screenshot_filename
-        logger.info(f"📸 Stored screenshot filename: {screenshot_filename}")
+        self._log_if_not_background("info", f"📸 Stored screenshot filename: {screenshot_filename}")

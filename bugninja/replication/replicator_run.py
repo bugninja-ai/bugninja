@@ -71,6 +71,7 @@ class ReplicatorRun(ReplicatorNavigator):
         pause_after_each_step: bool = True,
         enable_healing: bool = True,
         event_manager: Optional[EventPublisherManager] = None,
+        background: bool = False,
     ):
         """
         Initialize the ReplicatorRun with a JSON file path or Traversal object.
@@ -82,12 +83,14 @@ class ReplicatorRun(ReplicatorNavigator):
             pause_after_each_step: Whether to pause and wait for Enter key after each step
             enable_healing: Whether to enable healing when actions fail (default: True)
             event_manager: Optional event publisher manager for tracking
+            background: Whether to run in background mode (disables console logging)
         """
 
         super().__init__(
             traversal_source=traversal_source,
             fail_on_unimplemented_action=fail_on_unimplemented_action,
             sleep_after_actions=sleep_after_actions,
+            background=background,
         )
 
         # Store the original source for metadata and error reporting
@@ -144,13 +147,17 @@ class ReplicatorRun(ReplicatorNavigator):
             replay_actions=replay_action_list[1:],
         )
 
-        logger.info(f"🚀 Initialized ReplicatorRun with {self.total_actions} steps to process")
+        self._log_if_not_background(
+            "info", f"🚀 Initialized ReplicatorRun with {self.total_actions} steps to process"
+        )
         if self.pause_after_each_step:
-            logger.info(
-                "⏸️ Pause after each step is ENABLED - press Enter to continue after each action"
+            self._log_if_not_background(
+                "info",
+                "⏸️ Pause after each step is ENABLED - press Enter to continue after each action",
             )
-        logger.info(
-            f"📸 Screenshots will be saved to: {self.screenshot_manager.get_screenshots_dir()}"
+        self._log_if_not_background(
+            "info",
+            f"📸 Screenshots will be saved to: {self.screenshot_manager.get_screenshots_dir()}",
         )
 
     def _wait_for_enter_key(self) -> None:

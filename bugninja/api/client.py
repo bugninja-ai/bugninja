@@ -27,7 +27,6 @@ from browser_use import (  # type: ignore[import-untyped]
     BrowserProfile,
     BrowserSession,
 )
-from cuid2 import Cuid as CUID
 from playwright._impl._api_structures import ViewportSize
 
 from bugninja.agents import NavigatorAgent
@@ -88,6 +87,7 @@ class BugninjaClient:
 
     Attributes:
         config (BugninjaConfig): Configuration object for browser automation settings
+        background (bool): Whether the client is running in background mode
         _settings: Internal configuration settings from ConfigurationFactory
         _event_manager (Optional[EventPublisherManager]): Event publisher manager for tracking operations
         _active_sessions (List[BrowserSession]): List of active browser sessions for cleanup
@@ -99,8 +99,9 @@ class BugninjaClient:
     2. *async* **parallel_run_tasks()** -> `BulkBugninjaTaskResult`: - Execute multiple tasks in parallel
     3. *async* **replay_session()** -> `BugninjaTaskResult`: - Replay recorded session with healing
     4. *async* **parallel_replay_sessions()** -> `BulkBugninjaTaskResult`: - Replay multiple sessions in parallel
-    5. **list_sessions()** -> `List[SessionInfo]`: - List available session files
-    6. *async* **cleanup()** -> `None`: - Clean up all resources
+    5. *async* **parallel_run_mixed()** -> `BulkBugninjaTaskResult`: - Execute mixed traversals and tasks concurrently
+    6. **list_sessions()** -> `List[SessionInfo]`: - List available session files
+    7. *async* **cleanup()** -> `None`: - Clean up all resources
 
     Example:
         ```python
@@ -139,6 +140,18 @@ class BugninjaClient:
             enable_healing=True
         )
 
+        # Execute mixed traversals and tasks concurrently
+        executions = [
+            Path("./traversals/session_1.json"),
+            traversal,
+            BugninjaTask(description="Check dashboard status")
+        ]
+        mixed_result = await client.parallel_run_mixed(
+            executions,
+            max_concurrent=3,
+            enable_healing=True
+        )
+
         # Clean up resources
         await client.cleanup()
         ```
@@ -148,6 +161,7 @@ class BugninjaClient:
         self,
         config: Optional[BugninjaConfig] = None,
         event_manager: Optional[EventPublisherManager] = None,
+        background: bool = False,
     ) -> None:
         """Initialize Bugninja client with optional configuration.
 
@@ -155,6 +169,7 @@ class BugninjaClient:
             config (Optional[BugninjaConfig]): Optional configuration object. If not provided, uses
                    default configuration with environment variable support
             event_manager (Optional[EventPublisherManager]): Optional event publisher manager for tracking
+            background (bool): Whether to run in background mode (disables console logging and enforces headless mode)
 
         Raises:
             ConfigurationError: If configuration is invalid or initialization fails
@@ -163,6 +178,13 @@ class BugninjaClient:
             # Use provided config or create default
             # BugninjaConfig validation happens automatically during instantiation
             self.config = config or BugninjaConfig()
+
+            # Enforce headless mode when background=True
+            if background:
+                self.config.headless = True
+
+            # Store background flag
+            self.background = background
 
             # Initialize internal configuration
             self._settings = ConfigurationFactory.get_settings()
@@ -588,6 +610,7 @@ class BugninjaClient:
                 browser_session=browser_session,
                 sensitive_data=task.secrets,
                 extend_planner_system_message=AUTHENTICATION_HANDLING_EXTRA_PROMPT,
+                background=self.background,
             )
 
             # Set event manager if available
@@ -700,17 +723,7 @@ class BugninjaClient:
                         "BugninjaTask description cannot be empty", field_name="description"
                     )
 
-                user_dir_path: Path = Path("./data_dir")
-
-                if self.config.user_data_dir:
-                    if isinstance(self.config.user_data_dir, str):
-                        user_dir_path = Path(self.config.user_data_dir)
-
-                # ? unique saving path for each browser user_data_dir
-                # Note: CUID generation here is independent of agent run_id for isolation
-                user_data_dir_for_task: Path = user_dir_path / CUID().generate()
-
-                # Create browser session with configured settings
+                # Create browser session with configured settings (isolation handled in agent)
                 browser_profile = BrowserProfile(
                     headless=self.config.headless,
                     viewport=ViewportSize(
@@ -719,19 +732,20 @@ class BugninjaClient:
                     user_agent=self.config.user_agent,
                     strict_selectors=self.config.strict_selectors,
                     allowed_domains=task.allowed_domains,
-                    user_data_dir=user_data_dir_for_task,
+                    user_data_dir=self.config.user_data_dir,  # Default, will be overridden in agent
                 )
 
                 browser_session = BrowserSession(browser_profile=browser_profile)
                 self._active_sessions.append(browser_session)
 
-                # Create and run agent with task parameters
+                # Create agent (isolation happens in _before_run_hook)
                 agent = NavigatorAgent(
                     task=task.description,
                     llm=azure_openai_model(temperature=self.config.llm_temperature),
                     browser_session=browser_session,
                     sensitive_data=task.secrets,
                     extend_planner_system_message=AUTHENTICATION_HANDLING_EXTRA_PROMPT,
+                    background=self.background,
                 )
 
                 # Set event manager if available
@@ -892,6 +906,7 @@ class BugninjaClient:
                 pause_after_each_step=pause_after_each_step,
                 sleep_after_actions=1.0,  # Default sleep time
                 enable_healing=enable_healing,
+                background=self.background,
             )
 
             # Execute replay and capture result
@@ -1075,6 +1090,7 @@ class BugninjaClient:
                     pause_after_each_step=pause_after_each_step,
                     sleep_after_actions=1.0,  # Default sleep time
                     enable_healing=enable_healing,
+                    background=self.background,
                 )
                 replicators.append(replicator)
 
@@ -1184,6 +1200,183 @@ class BugninjaClient:
             # Ensure consistent cleanup for all replicators
             for replicator in replicators:
                 await self._ensure_cleanup(replicator=replicator)
+
+    async def parallel_run_mixed(
+        self,
+        executions: List[Union[Path, Traversal, BugninjaTask]],
+        max_concurrent: int = 5,
+        pause_after_each_step: bool = False,
+        enable_healing: bool = True,
+    ) -> BulkBugninjaTaskResult:
+        """Execute mixed traversal replays and tasks concurrently.
+
+        This method executes a mixed list of traversal replays and browser automation tasks
+        concurrently, with proper resource management and isolation.
+
+        Args:
+            executions (List[Union[Path, Traversal, BugninjaTask]]): Mixed list of file paths,
+                   Traversal objects, or BugninjaTasks to execute
+            max_concurrent (int): Maximum number of concurrent executions (default: 5)
+            pause_after_each_step (bool): Whether to pause during replay (ignored for tasks)
+            enable_healing (bool): Whether to enable healing for replays (ignored for tasks)
+
+        Returns:
+            BulkBugninjaTaskResult: Aggregate result containing individual execution results
+
+        Raises:
+            ValidationError: If any execution input is invalid
+            TaskExecutionError: If bulk execution fails
+
+        Example:
+            ```python
+            # Mixed execution with files, traversals, and tasks
+            executions = [
+                Path("./traversals/session_1.json"),
+                traversal_object,
+                BugninjaTask(description="Login to app"),
+                Path("./traversals/session_2.json"),
+                BugninjaTask(description="Check dashboard")
+            ]
+
+            result = await client.parallel_run_mixed(
+                executions,
+                max_concurrent=3,
+                enable_healing=True
+            )
+
+            if result.overall_success:
+                print(f"All {result.total_tasks} executions completed successfully")
+            else:
+                print(f"{result.failed_tasks} executions failed out of {result.total_tasks}")
+            ```
+        """
+        start_time = time.time()
+        individual_results: List[BugninjaTaskResult] = []
+        semaphore = asyncio.Semaphore(max_concurrent)
+
+        try:
+            # Validate all executions
+            for i, execution in enumerate(executions):
+                if isinstance(execution, Path):
+                    if not execution.exists():
+                        raise ValidationError(
+                            f"Execution file does not exist: {execution}",
+                            field_name="execution",
+                            field_value=str(execution),
+                        )
+                    if not execution.suffix == ".json":
+                        raise ValidationError(
+                            f"Execution file must be a JSON file: {execution}",
+                            field_name="execution",
+                            field_value=str(execution),
+                        )
+                elif not isinstance(execution, (Traversal, BugninjaTask)):
+                    raise ValidationError(
+                        f"Invalid execution type at index {i}: {type(execution)}. "
+                        "Expected Path, Traversal, or BugninjaTask.",
+                        field_name="execution",
+                        field_value=str(execution),
+                    )
+
+            # Create execution tasks
+            async def execute_single(
+                execution: Union[Path, Traversal, BugninjaTask], index: int
+            ) -> BugninjaTaskResult:
+                """Execute a single execution with proper resource management."""
+                async with semaphore:
+                    try:
+                        if isinstance(execution, BugninjaTask):
+                            # Execute as task
+                            return await self.run_task(execution)
+                        else:
+                            # Execute as replay
+                            return await self.replay_session(
+                                execution,
+                                pause_after_each_step=pause_after_each_step,
+                                enable_healing=enable_healing,
+                            )
+                    except Exception as e:
+                        # Create error result for failed execution
+                        context = {
+                            "execution_index": index,
+                            "execution_type": type(execution).__name__,
+                            "execution": (
+                                str(execution) if isinstance(execution, Path) else "object"
+                            ),
+                        }
+                        return self._create_error_result(
+                            e, OperationType.FIRST_TRAVERSAL, context, 0.0
+                        )
+
+            # Execute all concurrently
+            tasks = [execute_single(execution, i) for i, execution in enumerate(executions)]
+
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Process results
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    # Handle unexpected exceptions
+                    context = {
+                        "execution_index": i,
+                        "execution_type": type(executions[i]).__name__,
+                        "execution": (
+                            str(executions[i]) if isinstance(executions[i], Path) else "object"
+                        ),
+                    }
+                    individual_results.append(
+                        self._create_error_result(
+                            result, OperationType.FIRST_TRAVERSAL, context, 0.0
+                        )
+                    )
+                elif isinstance(result, BugninjaTaskResult):
+                    individual_results.append(result)
+                else:
+                    # Handle unexpected result types
+                    context = {
+                        "execution_index": i,
+                        "execution_type": type(executions[i]).__name__,
+                        "execution": (
+                            str(executions[i]) if isinstance(executions[i], Path) else "object"
+                        ),
+                    }
+                    individual_results.append(
+                        self._create_error_result(
+                            Exception(f"Unexpected result type: {type(result)}"),
+                            OperationType.FIRST_TRAVERSAL,
+                            context,
+                            0.0,
+                        )
+                    )
+
+            # Calculate aggregate metrics
+            total_execution_time = time.time() - start_time
+            successful_executions = sum(1 for r in individual_results if r.success)
+            failed_executions = len(individual_results) - successful_executions
+            error_summary = self._create_error_summary(individual_results)
+
+            return BulkBugninjaTaskResult(
+                overall_success=all(r.success for r in individual_results),
+                total_tasks=len(executions),
+                successful_tasks=successful_executions,
+                failed_tasks=failed_executions,
+                total_execution_time=total_execution_time,
+                individual_results=individual_results,
+                error_summary=error_summary,
+                metadata={
+                    "operation": "parallel_mixed",
+                    "total_executions": len(executions),
+                    "successful_executions": successful_executions,
+                    "failed_executions": failed_executions,
+                    "max_concurrent": max_concurrent,
+                    "pause_after_each_step": pause_after_each_step,
+                    "healing_enabled": enable_healing,
+                },
+            )
+
+        except Exception as e:
+            execution_time = time.time() - start_time
+            return self._create_bulk_error_result(e, [], execution_time)
 
     def list_sessions(self) -> List[SessionInfo]:
         """List all available session files.

@@ -3,7 +3,7 @@ Thread-safe manager for multiple event publishers.
 """
 
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime
 from threading import Lock
 from typing import Any, Dict, List, Optional
 
@@ -144,7 +144,7 @@ class EventPublisherManager:
             publishers = self._run_publishers.get(run_id, [])
 
         event = RunEvent(
-            run_id=run_id, event_type=event_type, timestamp=datetime.utcnow(), data=data
+            run_id=run_id, event_type=event_type, timestamp=datetime.now(UTC), data=data
         )
 
         # Publish event to all publishers for this run

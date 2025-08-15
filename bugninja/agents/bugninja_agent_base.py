@@ -95,12 +95,13 @@ class BugninjaAgentBase(Agent, ABC):
     """
 
     def __init__(  # type:ignore
-        self, *args, **kwargs  # type:ignore
+        self, *args, background: bool = False, **kwargs  # type:ignore
     ) -> None:
         """Initialize BugninjaAgentBase with extended functionality.
 
         Args:
             *args: Arguments passed to the parent Agent class
+            background (bool): Whether to run in background mode (disables console logging)
             **kwargs: Keyword arguments passed to the parent Agent class
         """
         super().__init__(*args, **kwargs)
@@ -110,6 +111,9 @@ class BugninjaAgentBase(Agent, ABC):
 
         # Generate run_id at creation time for consistency across all agents
         self.run_id: str = CUID().generate()
+
+        # Store background flag
+        self.background = background
 
         # Initialize event publisher manager (explicitly passed)
         self.event_manager: Optional[EventPublisherManager] = None
@@ -279,6 +283,23 @@ class BugninjaAgentBase(Agent, ABC):
     def _clear_action_mapping(self) -> None:
         """Clear the action mapping to prevent memory accumulation."""
         self._action_to_extended_index.clear()
+
+    def _log_if_not_background(self, level: str, message: str) -> None:
+        """Log message only if not in background mode.
+
+        Args:
+            level (str): Log level ('info', 'warning', 'error', 'debug')
+            message (str): Message to log
+        """
+        if not self.background:
+            if level == "info":
+                logger.info(message)
+            elif level == "warning":
+                logger.warning(message)
+            elif level == "error":
+                logger.error(message)
+            elif level == "debug":
+                logger.debug(message)
 
     @time_execution_async("--run (agent)")
     async def run(self, max_steps: int = 100) -> Optional[AgentHistoryList]:

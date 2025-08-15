@@ -38,7 +38,7 @@ async def replay_latest_session() -> BugninjaTaskResult:
         print(f"   Created: {datetime.fromtimestamp(session_file.stat().st_mtime)}")
 
         # Replay the session
-        result = await client.replay_session(session_file=session_file, pause_after_each_step=True)
+        result = await client.replay_session(session=session_file, pause_after_each_step=True)
 
         if result.success:
             print("✅ Session replayed successfully!")
