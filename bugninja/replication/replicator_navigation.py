@@ -13,6 +13,7 @@ from cuid2 import Cuid as CUID
 from patchright.async_api import BrowserContext as PatchrightBrowserContext
 from patchright.async_api import Page
 
+from bugninja.replication.errors import ActionError, ReplicatorError, SelectorError
 from bugninja.schemas.pipeline import BugninjaExtendedAction, Traversal
 from bugninja.utils.logger_config import set_logger_config
 
@@ -21,73 +22,52 @@ set_logger_config()
 logger = logging.getLogger(__name__)
 
 
-# TODO!:AGENT errors should go to separate file for cleanliness
-class ReplicatorError(Exception):
-    """Base exception for ReplicatorRun errors."""
+def get_user_input() -> str:
+    """
+    Robust input method that forces stdin to work.
+    """
+    logger.info("⏸️ Press Enter to continue, or enter 'q' to quit...")
 
-    pass
+    # Try to reopen stdin if it's not working
+    try:
+        if not sys.stdin.isatty():
+            # Force reopen stdin
+            sys.stdin = open("/dev/tty", "r")
+    except Exception:
+        logger.warning("⚠️ Failed to reopen stdin - continuing automatically")
 
+    try:
+        return input()
+    except EOFError:
+        # Try alternative approach
+        try:
+            import select
+            import termios
+            import tty
 
-class ActionError(ReplicatorError):
-    """Exception raised when browser actions fail."""
-
-    pass
-
-
-class SelectorError(ReplicatorError):
-    """Exception raised when selector operations fail."""
-
-    pass
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            try:
+                tty.setraw(fd)
+                while True:
+                    if select.select([sys.stdin], [], [], 0.1)[0]:
+                        ch = sys.stdin.read(1)
+                        if ch == "\n" or ch == "\r":
+                            break
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            return ""
+        except Exception:
+            logger.warning("⚠️ No input available - continuing automatically")
+            return ""
+    except Exception as e:
+        logger.warning(f"⚠️ Input error: {e} - continuing automatically")
+        return ""
 
 
 class ReplicatorNavigator(ABC):
     secrets: Dict[str, str]
 
-    # TODO! likely should not be part of the class, but rather a function in utils folder for replication
-    @staticmethod
-    def _get_user_input() -> str:
-        """
-        Robust input method that forces stdin to work.
-        """
-        logger.info("⏸️ Press Enter to continue, or enter 'q' to quit...")
-
-        # Try to reopen stdin if it's not working
-        try:
-            if not sys.stdin.isatty():
-                # Force reopen stdin
-                sys.stdin = open("/dev/tty", "r")
-        except Exception:
-            logger.warning("⚠️ Failed to reopen stdin - continuing automatically")
-
-        try:
-            return input()
-        except EOFError:
-            # Try alternative approach
-            try:
-                import select
-                import termios
-                import tty
-
-                fd = sys.stdin.fileno()
-                old_settings = termios.tcgetattr(fd)
-                try:
-                    tty.setraw(fd)
-                    while True:
-                        if select.select([sys.stdin], [], [], 0.1)[0]:
-                            ch = sys.stdin.read(1)
-                            if ch == "\n" or ch == "\r":
-                                break
-                finally:
-                    termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-                return ""
-            except Exception:
-                logger.warning("⚠️ No input available - continuing automatically")
-                return ""
-        except Exception as e:
-            logger.warning(f"⚠️ Input error: {e} - continuing automatically")
-            return ""
-
-    # TODO!: validation of the JSON file should be done here, not in the CLI
     @staticmethod
     def _load_traversal_from_json(json_path: str) -> Traversal:
         """

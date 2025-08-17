@@ -28,8 +28,9 @@ def my_command():
 ```
 """
 
+import tomllib
 from enum import Enum
-from typing import Tuple
+from typing import Any, Tuple
 
 import rich_click as click
 
@@ -86,6 +87,14 @@ def display_logo() -> None:
         nl=False,
     )
     click.echo("🤖")
-    # TODO! use dynamic version display here
-    pride_version_num: str = "0.1.0"
-    click.secho(f"Version {pride_version_num}", italic=True)
+
+    def get_version() -> str:
+        try:
+            with open("pyproject.toml", "rb") as f:
+                data: dict[str, Any] = tomllib.load(f)
+                return str(data["project"]["version"])
+        except (FileNotFoundError, KeyError):
+            return "version_not_found"
+
+    version = get_version()
+    click.secho(f"Version {version}", italic=True)

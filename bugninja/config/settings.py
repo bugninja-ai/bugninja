@@ -6,13 +6,25 @@ for project settings and environment variables for sensitive data, validation,
 and default values for all Bugninja components.
 """
 
+from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings
 
 from bugninja.events.types import EventPublisherType
+
+
+class LLMProvider(str, Enum):
+    """Enumeration of supported LLM providers."""
+
+    AZURE_OPENAI = "azure_openai"
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+    GOOGLE_GEMINI = "google_gemini"
+    DEEPSEEK = "deepseek"
+    OLLAMA = "ollama"
 
 
 class BugninjaSettings(BaseSettings):
@@ -24,27 +36,68 @@ class BugninjaSettings(BaseSettings):
     - Environment variable support for sensitive data (API keys, passwords)
     - Code-based defaults for missing values
     - Nested configuration support
+    - Multi-LLM provider support
     """
 
-    # LLM Configuration (Sensitive - from .env)
-    azure_openai_endpoint: str = Field(
-        ..., alias="AZURE_OPENAI_ENDPOINT", description="Azure OpenAI endpoint URL"
+    # LLM Provider Selection (from TOML)
+    llm_provider: LLMProvider = Field(
+        default=LLMProvider.AZURE_OPENAI, description="LLM provider to use for browser automation"
     )
-    azure_openai_key: SecretStr = Field(
-        ..., alias="AZURE_OPENAI_KEY", description="Azure OpenAI API key"
-    )
-
-    # LLM Configuration (Non-sensitive - from TOML)
-    azure_openai_model: str = Field(default="gpt-4.1", description="Azure OpenAI model name")
-    azure_openai_temperature: float = Field(
+    llm_model: str = Field(default="gpt-4.1", description="LLM model name to use")
+    llm_temperature: float = Field(
         default=0.001,
         ge=0.0,
         le=2.0,
         description="Temperature for LLM responses",
     )
+
+    # Azure OpenAI Configuration (Sensitive - from .env)
+    azure_openai_endpoint: Optional[str] = Field(
+        None, alias="AZURE_OPENAI_ENDPOINT", description="Azure OpenAI endpoint URL"
+    )
+    azure_openai_key: Optional[SecretStr] = Field(
+        None, alias="AZURE_OPENAI_KEY", description="Azure OpenAI API key"
+    )
     azure_openai_api_version: str = Field(
         default="2024-02-15-preview",
         description="Azure OpenAI API version",
+    )
+
+    # OpenAI Configuration (Sensitive - from .env)
+    openai_api_key: Optional[SecretStr] = Field(
+        None, alias="OPENAI_API_KEY", description="OpenAI API key"
+    )
+    openai_base_url: Optional[str] = Field(
+        None, description="OpenAI API base URL (from TOML or env)"
+    )
+
+    # Anthropic Configuration (Sensitive - from .env)
+    anthropic_api_key: Optional[SecretStr] = Field(
+        None, alias="ANTHROPIC_API_KEY", description="Anthropic API key"
+    )
+    anthropic_base_url: Optional[str] = Field(
+        None, description="Anthropic API base URL (from TOML or env)"
+    )
+
+    # Google Gemini Configuration (Sensitive - from .env)
+    google_api_key: Optional[SecretStr] = Field(
+        None, alias="GOOGLE_API_KEY", description="Google API key for Gemini"
+    )
+    google_base_url: Optional[str] = Field(
+        None, description="Google API base URL (from TOML or env)"
+    )
+
+    # DeepSeek Configuration (Sensitive - from .env)
+    deepseek_api_key: Optional[SecretStr] = Field(
+        None, alias="DEEPSEEK_API_KEY", description="DeepSeek API key"
+    )
+    deepseek_base_url: Optional[str] = Field(
+        None, description="DeepSeek API base URL (from TOML or env)"
+    )
+
+    # Ollama Configuration (from .env)
+    ollama_base_url: str = Field(
+        default="http://localhost:11434", description="Ollama base URL (from TOML or env)"
     )
 
     # Event Publisher Configuration (from TOML)
@@ -53,100 +106,122 @@ class BugninjaSettings(BaseSettings):
     )
 
     # Logging Configuration (from TOML)
-    log_level: str = Field(
-        default="INFO",
-        pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$",
-        description="Logging level",
-    )
+    log_level: str = Field(default="INFO", description="Logging level")
     log_format: str = Field(
         default="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        description="Logging format string",
+        description="Log format string",
     )
-    enable_rich_logging: bool = Field(default=True, description="Enable rich console logging")
+    enable_rich_logging: bool = Field(default=True, description="Enable rich terminal logging")
 
     # Development Configuration (from TOML)
     debug_mode: bool = Field(default=False, description="Enable debug mode")
-    enable_verbose_logging: bool = Field(
-        default=False,
-        description="Enable verbose logging for debugging",
-    )
+    enable_verbose_logging: bool = Field(default=False, description="Enable verbose logging")
 
     # Project Configuration (from TOML)
-    project_name: str = Field(
-        default="bugninja",
-        description="Project name for identification and logging",
-    )
+    project_name: str = Field(default="bugninja", description="Project name")
 
-    # File Paths Configuration (from TOML)
+    # Paths Configuration (from TOML)
     traversals_dir: Path = Field(
-        default=Path("./traversals"),
-        description="Directory for storing traversal files",
+        default=Path("./traversals"), description="Directory for traversal files"
     )
+    screenshots_dir: Path = Field(
+        default=Path("./screenshots"), description="Directory for screenshots"
+    )
+    tasks_dir: Path = Field(default=Path("./tasks"), description="Directory for task files")
 
-    # Code-based Browser Configuration (not from environment)
-    @property
-    def browser_config(self) -> Dict[str, Any]:
-        """Get browser configuration with code-based defaults."""
-        return {
+    # Browser Configuration (from TOML)
+    browser_config: Dict[str, Any] = Field(
+        default_factory=lambda: {
             "viewport_width": 1280,
             "viewport_height": 960,
-            "user_agent": None,
-            "device_scale_factor": None,
-            "timeout": 30_000,
-        }
+            "user_agent": "",
+            "device_scale_factor": 0.0,
+            "timeout": 30000,
+        },
+        description="Browser configuration settings",
+    )
 
-    # Code-based Agent Configuration (not from environment)
-    @property
-    def agent_config(self) -> Dict[str, Any]:
-        """Get agent configuration with code-based defaults."""
-        return {
+    # Agent Configuration (from TOML)
+    agent_config: Dict[str, Any] = Field(
+        default_factory=lambda: {
             "max_steps": 100,
             "planner_interval": 5,
             "enable_vision": True,
             "enable_memory": False,
             "wait_between_actions": 0.1,
-        }
+        },
+        description="Agent configuration settings",
+    )
 
-    # Code-based Replicator Configuration (not from environment)
-    @property
-    def replicator_config(self) -> Dict[str, Any]:
-        """Get replicator configuration with code-based defaults."""
-        return {
+    # Screenshot Configuration (from TOML)
+    screenshot_config: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            "screenshots_dir": Path("./screenshots"),
+            "format": "png",
+        },
+        description="Screenshot configuration settings",
+    )
+
+    # Replicator Configuration (from TOML)
+    replicator_config: Dict[str, Any] = Field(
+        default_factory=lambda: {
             "sleep_after_actions": 1.0,
             "pause_after_each_step": True,
             "fail_on_unimplemented_action": False,
             "max_retries": 2,
             "retry_delay": 0.5,
-        }
+        },
+        description="Replicator configuration settings",
+    )
 
-    # Code-based Screenshot Configuration (not from environment)
-    @property
-    def screenshot_config(self) -> Dict[str, Any]:
-        """Get screenshot configuration with code-based defaults."""
-        return {
-            "screenshots_dir": Path("./screenshots"),
-            "screenshot_format": "png",
-        }
-
-    @field_validator("traversals_dir")
+    @field_validator("llm_provider")
     @classmethod
-    def create_directories_if_not_exist(cls, v: Path) -> Path:
-        """Create directories if they don't exist."""
-        v.mkdir(parents=True, exist_ok=True)
+    def validate_llm_provider(cls, v: LLMProvider) -> LLMProvider:
+        """Validate LLM provider selection."""
+        if v not in LLMProvider:
+            raise ValueError(f"Unsupported LLM provider: {v}")
         return v
 
-    @field_validator("log_level")
+    @field_validator("llm_temperature")
     @classmethod
-    def validate_log_level(cls, v: str) -> str:
-        """Validate log level."""
-        valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-        if v.upper() not in valid_levels:
-            raise ValueError(f"Log level must be one of {valid_levels}")
-        return v.upper()
+    def validate_temperature(cls, v: float) -> float:
+        """Validate temperature range."""
+        if not 0.0 <= v <= 2.0:
+            raise ValueError("Temperature must be between 0.0 and 2.0")
+        return v
 
-    model_config = {
-        "env_file": ".env",
-        "env_file_encoding": "utf-8",
-        "case_sensitive": False,
-        "extra": "ignore",
-    }
+    def model_post_init(self, __context: Any) -> None:
+        """Post-initialization validation for provider-specific requirements."""
+        self._validate_provider_config()
+
+    def _validate_provider_config(self) -> None:
+        """Validate that required configuration is present for the selected provider."""
+        if self.llm_provider == LLMProvider.AZURE_OPENAI:
+            if not self.azure_openai_endpoint or not self.azure_openai_key:
+                raise ValueError(
+                    "Azure OpenAI requires AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_KEY environment variables"
+                )
+        elif self.llm_provider == LLMProvider.OPENAI:
+            if not self.openai_api_key:
+                raise ValueError("OpenAI requires OPENAI_API_KEY environment variable")
+        elif self.llm_provider == LLMProvider.ANTHROPIC:
+            if not self.anthropic_api_key:
+                raise ValueError("Anthropic requires ANTHROPIC_API_KEY environment variable")
+        elif self.llm_provider == LLMProvider.GOOGLE_GEMINI:
+            if not self.google_api_key:
+                raise ValueError("Google Gemini requires GOOGLE_API_KEY environment variable")
+        elif self.llm_provider == LLMProvider.DEEPSEEK:
+            if not self.deepseek_api_key:
+                raise ValueError("DeepSeek requires DEEPSEEK_API_KEY environment variable")
+        # Ollama doesn't require API key validation as it's typically local
+
+    # Backward compatibility properties
+    @property
+    def azure_openai_model(self) -> str:
+        """Backward compatibility: Get Azure OpenAI model name."""
+        return self.llm_model
+
+    @property
+    def azure_openai_temperature(self) -> float:
+        """Backward compatibility: Get Azure OpenAI temperature."""
+        return self.llm_temperature

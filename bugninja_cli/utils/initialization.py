@@ -299,7 +299,29 @@ def get_default_config_template(project_name: str, **overrides: Dict[str, Any]) 
     """
     config = {
         "project": {"name": project_name},
-        "llm": {"model": "gpt-4.1", "temperature": 0.001, "api_version": "2024-02-15-preview"},
+        "llm": {
+            "provider": "azure_openai",
+            "model": "gpt-4.1",
+            "temperature": 0.001,
+        },
+        "llm_azure_openai": {
+            "api_version": "2024-02-15-preview",
+        },
+        "llm_openai": {
+            "base_url": "https://api.openai.com/v1",
+        },
+        "llm_anthropic": {
+            "base_url": "https://api.anthropic.com",
+        },
+        "llm_google_gemini": {
+            "base_url": "https://generativelanguage.googleapis.com",
+        },
+        "llm_deepseek": {
+            "base_url": "https://api.deepseek.com",
+        },
+        "llm_ollama": {
+            "base_url": "http://localhost:11434",
+        },
         "logging": {
             "level": "INFO",
             "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -383,7 +405,8 @@ def _dict_to_toml(data: Dict[str, Any]) -> str:
     """Convert dictionary to TOML format with proper formatting.
 
     This function converts a Python dictionary to TOML format with proper
-    section headers, value formatting, and list handling.
+    section headers, value formatting, and list handling. It also handles
+    nested LLM provider sections specially.
 
     Args:
         data (Dict[str, Any]): Dictionary to convert
@@ -402,13 +425,53 @@ def _dict_to_toml(data: Dict[str, Any]) -> str:
     """
     lines: List[str] = []
 
+    # Handle LLM sections specially
+    llm_sections = []
+    other_sections = {}
+
     for section_name, section_data in data.items():
+        if section_name.startswith("llm_") and section_name != "llm":
+            # Collect LLM provider sections for later processing
+            llm_sections.append((section_name, section_data))
+        else:
+            other_sections[section_name] = section_data
+
+    # Process regular sections first
+    for section_name, section_data in other_sections.items():
         # Add blank line before sections (except the first one)
         if lines:
             lines.append("")
 
         # Add section header
         lines.append(f"[{section_name}]")
+
+        # Add section content
+        if isinstance(section_data, dict):
+            for key, value in section_data.items():
+                if isinstance(value, list):
+                    # Handle lists properly
+                    if all(isinstance(item, str) for item in value):
+                        # String list - use double quotes for consistency
+                        formatted_list = '["' + '", "'.join(value) + '"]'
+                    else:
+                        # Other types
+                        formatted_list = str(value)
+                    lines.append(f"{key} = {formatted_list}")
+                elif isinstance(value, bool):
+                    lines.append(f"{key} = {str(value).lower()}")
+                elif isinstance(value, str):
+                    lines.append(f'{key} = "{value}"')
+                else:
+                    lines.append(f"{key} = {value}")
+
+    # Process LLM provider sections
+    for section_name, section_data in llm_sections:
+        if lines:
+            lines.append("")
+
+        # Convert llm_azure_openai to llm.azure_openai format
+        provider_name = section_name.replace("llm_", "")
+        lines.append(f"[llm.{provider_name}]")
 
         # Add section content
         if isinstance(section_data, dict):
@@ -487,11 +550,29 @@ def create_env_template(path: Path) -> None:
 # LLM Configuration (Sensitive Data Only)
 # =============================================================================
 
-# Azure OpenAI endpoint URL (required)
-AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+# LLM Provider Selection (set this to choose your provider)
+# Options: azure_openai, openai, anthropic, google_gemini, deepseek, ollama
+LLM_PROVIDER=azure_openai
 
-# Azure OpenAI API key (required)
+# Azure OpenAI Configuration (required if LLM_PROVIDER=azure_openai)
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 AZURE_OPENAI_KEY=your-api-key-here
+
+# OpenAI Configuration (required if LLM_PROVIDER=openai)
+# OPENAI_API_KEY=your-openai-api-key-here
+# OPENAI_BASE_URL=https://api.openai.com/v1
+
+# Anthropic Configuration (required if LLM_PROVIDER=anthropic)
+# ANTHROPIC_API_KEY=your-anthropic-api-key-here
+
+# Google Gemini Configuration (required if LLM_PROVIDER=google_gemini)
+# GOOGLE_API_KEY=your-google-api-key-here
+
+# DeepSeek Configuration (required if LLM_PROVIDER=deepseek)
+# DEEPSEEK_API_KEY=your-deepseek-api-key-here
+
+# Ollama Configuration (optional, defaults to localhost:11434)
+# OLLAMA_BASE_URL=http://localhost:11434
 
 # =============================================================================
 # Note: All other configuration (logging, paths, browser settings, etc.)

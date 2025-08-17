@@ -27,6 +27,7 @@ from browser_use import (  # type: ignore[import-untyped]
     BrowserProfile,
     BrowserSession,
 )
+from langchain_core.language_models.chat_models import BaseChatModel
 from playwright._impl._api_structures import ViewportSize
 
 from bugninja.agents import NavigatorAgent
@@ -50,9 +51,13 @@ from bugninja.api.models import (
     OperationType,
     SessionInfo,
 )
-from bugninja.config import ConfigurationFactory
+from bugninja.config import (
+    ConfigurationFactory,
+    create_llm_model_from_config,
+    create_provider_model_from_settings,
+)
+from bugninja.config.llm_config import LLMConfig
 from bugninja.events import EventPublisherManager
-from bugninja.models import azure_openai_model
 from bugninja.replication import ReplicatorRun
 from bugninja.schemas.pipeline import Traversal
 from bugninja.utils.logger_config import set_logger_config
@@ -162,6 +167,7 @@ class BugninjaClient:
         config: Optional[BugninjaConfig] = None,
         event_manager: Optional[EventPublisherManager] = None,
         background: bool = False,
+        llm_config: Optional[LLMConfig] = None,
     ) -> None:
         """Initialize Bugninja client with optional configuration.
 
@@ -170,6 +176,7 @@ class BugninjaClient:
                    default configuration with environment variable support
             event_manager (Optional[EventPublisherManager]): Optional event publisher manager for tracking
             background (bool): Whether to run in background mode (disables console logging and enforces headless mode)
+            llm_provider (Optional[LLMProvider]): Optional LLM provider to use (overrides config default)
 
         Raises:
             ConfigurationError: If configuration is invalid or initialization fails
@@ -185,6 +192,9 @@ class BugninjaClient:
 
             # Store background flag
             self.background = background
+
+            # Store LLM configuration (use provided or create from settings)
+            self._llm_config = llm_config
 
             # Initialize internal configuration
             self._settings = ConfigurationFactory.get_settings()
@@ -202,6 +212,32 @@ class BugninjaClient:
 
         except Exception as e:
             raise ConfigurationError(f"Failed to initialize Bugninja client: {e}", original_error=e)
+
+    def _create_llm(self, temperature: Optional[float] = None) -> BaseChatModel:
+        """Create LLM model using client configuration.
+
+        Args:
+            temperature (Optional[float]): Temperature setting (overrides config)
+
+        Returns:
+            BaseChatModel: Configured LLM model instance
+
+        Raises:
+            ValueError: If LLM configuration is invalid or missing
+        """
+        try:
+
+            # Use provided LLM config or create from settings
+            if self._llm_config is not None:
+
+                config = self._llm_config
+                if temperature is not None:
+                    config.temperature = temperature
+                return create_llm_model_from_config(config)
+            else:
+                return create_provider_model_from_settings(temperature)
+        except Exception as e:
+            raise ValueError(f"Failed to create LLM model: {e}")
 
     def _classify_error(self, error: Exception, context: Dict[str, Any]) -> BugninjaErrorType:
         """Classify errors using clean match-case structure.
@@ -601,7 +637,7 @@ class BugninjaClient:
             self._active_sessions.append(browser_session)
 
             # Create LLM with configured temperature
-            llm = azure_openai_model(temperature=self.config.llm_temperature)
+            llm = self._create_llm(temperature=self.config.llm_temperature)
 
             # Create and run agent with task parameters
             agent = NavigatorAgent(
@@ -677,7 +713,6 @@ class BugninjaClient:
                 # Ensure consistent cleanup for both success and failure
                 await self._ensure_cleanup(agent=agent, browser_session=browser_session)
 
-    # TODO! has to be completed and additionally the parallel running of existing testcases must be implemented as well
     async def parallel_run_tasks(self, task_list: List[BugninjaTask]) -> BulkBugninjaTaskResult:
         """Execute multiple browser automation tasks in parallel.
 
@@ -741,7 +776,7 @@ class BugninjaClient:
                 # Create agent (isolation happens in _before_run_hook)
                 agent = NavigatorAgent(
                     task=task.description,
-                    llm=azure_openai_model(temperature=self.config.llm_temperature),
+                    llm=self._create_llm(temperature=self.config.llm_temperature),
                     browser_session=browser_session,
                     sensitive_data=task.secrets,
                     extend_planner_system_message=AUTHENTICATION_HANDLING_EXTRA_PROMPT,
@@ -907,6 +942,7 @@ class BugninjaClient:
                 sleep_after_actions=1.0,  # Default sleep time
                 enable_healing=enable_healing,
                 background=self.background,
+                healing_llm_config=self._llm_config,  # Pass client's LLM config
             )
 
             # Execute replay and capture result
@@ -1091,6 +1127,7 @@ class BugninjaClient:
                     sleep_after_actions=1.0,  # Default sleep time
                     enable_healing=enable_healing,
                     background=self.background,
+                    healing_llm_config=self._llm_config,  # Pass client's LLM config
                 )
                 replicators.append(replicator)
 

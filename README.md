@@ -1,28 +1,714 @@
-# almafa
+# 🐛 Bugninja - AI-Powered Browser Automation & Self-Healing Framework
 
-This is a Bugninja browser automation project.
+Bugninja is a sophisticated browser automation framework that combines AI agents with intelligent self-healing capabilities. It enables robust web testing, interaction recording, and automated task execution with built-in error recovery mechanisms.
 
-## Project Structure
+## 🎯 Overview
 
-- `bugninja.toml` - Project configuration
-- `.env` - Sensitive configuration (API keys, etc.)
-- `traversals/` - Recorded browser sessions
-- `screenshots/` - Screenshots from automation runs
-- `tasks/` - BugninjaTask definitions and descriptions
+Bugninja provides a complete ecosystem for AI-driven browser automation with three main components:
 
-## Getting Started
+1. **🤖 AI Agents** - Intelligent agents that can navigate and interact with web applications
+2. **📝 Action Recording** - Comprehensive logging of all browser interactions with DOM element data
+3. **🩹 Self-Healing Replication** - Automated replay of recorded actions with intelligent error recovery
 
-1. Copy `.env.example` to `.env` and fill in your API keys
-2. Define your tasks in the `tasks/` directory
-3. Run automation with `bugninja run`
-4. Replay sessions with `bugninja replay`
+## 🏗️ Architecture
+
+### Core Components
+
+#### 1. **BugninjaAgentBase** (`bugninja/agents/bugninja_agent_base.py`)
+The foundation class that all agents inherit from, providing:
+- **Hook System**: Lifecycle hooks for before/after actions and steps
+- **Multi-Action Support**: Execute multiple actions in sequence
+- **Error Handling**: Robust error recovery and retry mechanisms
+- **State Management**: Comprehensive browser state tracking
+- **Memory Integration**: Procedural memory for complex workflows
+
+#### 2. **NavigatorAgent** (`bugninja/agents/navigator_agent.py`)
+A specialized agent for web navigation and task execution:
+- **Action Recording**: Captures all interactions with detailed DOM element data
+- **Brain State Tracking**: Records agent reasoning and decision-making
+- **Traversal Persistence**: Saves complete session data to JSON files
+- **Alternative Selectors**: Generates multiple XPath selectors for robust element identification
+
+#### 3. **HealerAgent** (`bugninja/agents/healer_agent.py`)
+An intelligent recovery agent that can:
+- **Self-Healing**: Automatically fix failed interactions
+- **State Comparison**: Compare current state with expected states
+- **Alternative Strategies**: Use different approaches when original actions fail
+- **Seamless Integration**: Work alongside other agents for error recovery
+
+#### 4. **BugninjaController** (`bugninja/agents/extensions.py`)
+Enhanced controller with additional browser actions:
+- **Custom Scroll Actions**: Intelligent page scrolling with fallback mechanisms
+- **Extended Action Support**: Additional browser interaction capabilities
+- **Selector Fallbacks**: Multiple selector strategies for element identification
+
+### Replication System
+
+#### 5. **ReplicatorNavigator** (`bugninja/replication/replicator_navigation.py`)
+Base class for replaying recorded browser sessions:
+- **Action Execution**: Replay recorded actions with intelligent fallbacks
+- **Selector Strategies**: Multiple approaches for element identification
+- **Error Recovery**: Built-in retry mechanisms for failed actions
+- **User Interaction**: Pause and continue functionality for debugging
+
+#### 6. **ReplicatorRun** (`bugninja/replication/replicator_run.py`)
+Advanced replication with self-healing capabilities:
+- **State Machine**: Tracks progress through brain states
+- **Automatic Healing**: Integrates HealerAgent for failed actions
+- **State Comparison**: AI-powered evaluation of current vs expected states
+- **Corrected Traversals**: Save successful replays with healing actions
+
+## 🚀 Key Features
+
+### 🤖 AI-Powered Navigation
+- **Intelligent Decision Making**: Agents use LLMs to understand and execute complex tasks
+- **Context Awareness**: Full browser state understanding for better decision making
+- **Memory Integration**: Procedural memory for complex multi-step workflows
+- **Adaptive Behavior**: Agents can adjust strategies based on page changes
+
+### 📝 Comprehensive Recording
+- **DOM Element Data**: Detailed information about every interacted element
+- **Alternative Selectors**: Multiple XPath strategies for robust element identification
+- **Brain State Tracking**: Complete agent reasoning and decision-making history
+- **Action Metadata**: Timestamps, tokens, and performance metrics
+
+### 🩹 Self-Healing Capabilities
+- **Automatic Recovery**: Failed actions trigger intelligent healing mechanisms
+- **State Comparison**: AI-powered evaluation of current vs expected states
+- **Alternative Strategies**: Multiple approaches when original actions fail
+- **Seamless Integration**: Healing happens transparently during replay
+
+### 🔄 Robust Replication
+- **Multiple Selector Strategies**: XPath, CSS, and relative selectors
+- **Fallback Mechanisms**: Automatic retry with different approaches
+- **User Control**: Pause, continue, and debug capabilities
+- **Corrected Outputs**: Save successful replays with healing actions
+
+### 🖥️ Command-Line Interface
+- **Markdown Task Files**: Define tasks in human-readable markdown format
+- **Simple Commands**: Easy-to-use CLI for task execution and session management
+- **Rich Output**: Beautiful terminal output with progress indicators
+- **Environment Variables**: Support for secure credential management
+
+## 📊 Data Structures
+
+### Traversal Data
+Each recorded session includes:
+```json
+{
+  "test_case": "Original task description",
+  "browser_config": "Browser profile settings",
+  "secrets": "Sensitive data used during session",
+  "brain_states": "Agent reasoning and decisions",
+  "actions": "All interactions with DOM element data"
+}
+```
+
+## 🖥️ Command-Line Interface
+
+Bugninja provides a simple and powerful CLI for browser automation tasks.
+
+### Installation
+
+```bash
+# Install the package
+pip install bugninja
+
+# Or run directly from source
+python bugninja_cli.py --help
+```
+
+### Quick Start
+
+1. **Create a task file** (`my_task.md`):
+```markdown
+# My Browser Task
+
+## Description
+Navigate to example.com and click the login button
 
 ## Configuration
+- **Allowed Domains**: example.com
+- **Max Steps**: 50
 
-Edit `bugninja.toml` to customize:
-- LLM settings
-- Browser configuration
-- Logging options
-- Directory paths
+## Secrets
+```json
+{
+  "username": "{{MY_USERNAME}}",
+  "password": "{{MY_PASSWORD}}"
+}
+```
+```
 
-For more information, see the [Bugninja documentation](https://github.com/bugninja/bugninja).
+2. **Run the task**:
+```bash
+bugninja run my_task.md
+```
+
+3. **Replay a session**:
+```bash
+bugninja replay
+```
+
+### Available Commands
+
+#### `run` - Execute browser automation tasks
+```bash
+# Run task from markdown file
+bugninja run task.md
+
+# Override max steps
+bugninja run task.md --max-steps 200
+
+# Interactive mode (pause after each step)
+bugninja run task.md --interactive
+```
+
+#### `replay` - Replay recorded sessions
+```bash
+# Replay latest session
+bugninja replay
+
+# Replay specific session
+bugninja replay --session-file ./traversals/session.json
+
+# Interactive replay
+bugninja replay --interactive
+```
+
+#### `heal` - Heal failed sessions
+```bash
+# Heal latest session
+bugninja heal
+
+# Heal specific session
+bugninja heal --session-file ./traversals/failed_session.json
+
+# Interactive healing
+bugninja heal --interactive
+```
+
+#### `list` - List available sessions
+```bash
+# List all sessions
+bugninja list
+```
+
+### Task File Format
+
+Task files use a simple markdown format:
+
+```markdown
+# Task Title
+Brief description
+
+## Description
+Detailed task description that will be passed to the AI agent
+
+## Configuration
+- **Allowed Domains**: domain1.com, domain2.com
+- **Max Steps**: 100
+- **Target URL**: https://example.com (optional)
+
+## Secrets
+```json
+{
+  "username": "{{ENV_USERNAME}}",
+  "password": "{{ENV_PASSWORD}}"
+}
+```
+
+## Notes
+Additional notes or instructions
+```
+
+### Environment Variables
+
+Use `{{VARIABLE_NAME}}` syntax in secrets to reference environment variables:
+
+```bash
+export MY_USERNAME="user@example.com"
+export MY_PASSWORD="secret123"
+
+bugninja run task.md
+```
+
+### Extended Actions
+Each action includes:
+- **Brain State ID**: Links action to agent reasoning
+- **Action Data**: Original action parameters
+- **DOM Element Data**: Detailed element information
+- **Alternative Selectors**: Multiple XPath strategies
+
+## 🛠️ Usage Examples
+
+### 🚀 High-Level API (Recommended)
+
+The new high-level API provides a simple, intuitive interface for browser automation:
+
+```python
+from bugninjaapi import BugninjaClient, Task, BugninjaConfig
+
+# Create client with default configuration
+client = BugninjaClient()
+
+# Execute a simple task
+task = Task(
+    description="Navigate to example.com and click the login button",
+    max_steps=50,
+    enable_healing=True
+)
+
+result = await client.run_task(task)
+
+if result.success:
+    print(f"Task completed in {result.steps_completed} steps")
+    print(f"Session saved to: {result.session_file}")
+else:
+    print(f"Task failed: {result.error_message}")
+```
+
+### 🔧 Custom Configuration
+
+```python
+from bugninjaapi import BugninjaClient, Task, BugninjaConfig
+
+# Create custom configuration
+config = BugninjaConfig(
+    llm_provider="azure_openai",
+    llm_model="gpt-4.1",
+    headless=True,
+    viewport_width=1920,
+    viewport_height=1080,
+    enable_healing=True
+)
+
+client = BugninjaClient(config=config)
+
+# Execute task with custom config
+task = Task(
+    description="Search for 'Python automation' on Google",
+    max_steps=30
+)
+
+result = await client.run_task(task)
+```
+
+### 📋 Session Management
+
+```python
+from bugninjaapi import BugninjaClient
+from pathlib import Path
+
+client = BugninjaClient()
+
+# List available sessions
+sessions = client.list_sessions()
+for session in sessions:
+    print(f"Session: {session.file_path}")
+    print(f"Created: {session.created_at}")
+
+# Replay a session
+session_file = Path("./traversals/session_20240115.json")
+result = await client.replay_session(session_file)
+
+# Heal a failed session
+result = await client.heal_session(session_file)
+```
+
+### 🛡️ Error Handling
+
+```python
+from bugninjaapi import (
+    BugninjaClient, Task, 
+    BugninjaError, TaskExecutionError, 
+    ConfigurationError, LLMError
+)
+
+try:
+    client = BugninjaClient()
+    task = Task(description="Navigate to example.com")
+    result = await client.run_task(task)
+    
+except TaskExecutionError as e:
+    print(f"Task failed: {e}")
+    print(f"Steps completed: {e.steps_completed}")
+    
+except ConfigurationError as e:
+    print(f"Configuration error: {e}")
+    
+except LLMError as e:
+    print(f"LLM error: {e}")
+```
+
+### 🔄 Context Manager Usage
+
+```python
+from bugninjaapi import BugninjaClient, Task
+
+async with BugninjaClient() as client:
+    task = Task(description="Navigate to example.com")
+    result = await client.run_task(task)
+    # Client automatically cleaned up
+```
+
+### 🏗️ Low-Level API (Advanced Usage)
+
+For advanced use cases, you can still use the low-level components directly:
+
+#### Basic Navigation Agent
+```python
+from bugninjaagents.navigator_agent import NavigatorAgent
+
+# Create and run a navigation agent
+agent = NavigatorAgent(
+    task="Navigate to website and fill out form",
+    llm=your_llm_model,
+    browser_session=browser_session
+)
+
+# Run the agent (automatically saves traversal data)
+await agent.run(max_steps=50)
+```
+
+#### Self-Healing Replication
+```python
+from bugninjareplication.replicator_run import ReplicatorRun
+
+# Replay recorded session with self-healing
+replicator = ReplicatorRun(
+    json_path="traversals/traverse_20231201_143022_abc123.json",
+    pause_after_each_step=True,
+    sleep_after_actions=1.0
+)
+
+# Start replication (automatically handles failures with healer agent)
+await replicator.start()
+```
+
+#### Custom Healer Agent
+```python
+from bugninjaagents.healer_agent import HealerAgent
+
+# Create specialized healing agent
+healer = HealerAgent(
+    task="Complete failed form submission",
+    llm=your_llm_model,
+    browser_session=browser_session
+)
+
+# Run healing process
+await healer.run(max_steps=10)
+```
+
+## 🏗️ API Structure
+
+### High-Level API Components
+
+The new high-level API is built around Pydantic models for type safety and validation:
+
+#### **BugninjaClient**
+Main entry point for browser automation operations:
+- **Task Execution**: Run browser automation tasks with `run_task()`
+- **Session Management**: Replay and heal recorded sessions
+- **Configuration**: Environment-aware configuration with validation
+- **Error Handling**: Comprehensive exception hierarchy
+- **Resource Management**: Automatic cleanup with context managers
+
+#### **Task Model**
+Pydantic model for defining browser automation tasks:
+```python
+Task(
+    description="Navigate to example.com and click login",
+    max_steps=50,
+    enable_healing=True,
+    custom_config={"screenshot_on_error": True}
+)
+```
+
+#### **TaskResult Model**
+Pydantic model for task execution results:
+```python
+TaskResult(
+    success=True,
+    session_file=Path("./traversals/session.json"),
+    steps_completed=15,
+    execution_time=45.2,
+    metadata={"screenshots_taken": 5}
+)
+```
+
+#### **BugninjaConfig Model**
+Pydantic model for client configuration:
+```python
+BugninjaConfig(
+    llm_provider="azure_openai",
+    llm_model="gpt-4.1",
+    headless=True,
+    viewport_width=1920,
+    viewport_height=1080,
+    enable_healing=True
+)
+```
+
+#### **Exception Hierarchy**
+Comprehensive error handling with specific exception types:
+- **BugninjaError**: Base exception for all operations
+- **TaskExecutionError**: Task execution failures
+- **SessionReplayError**: Session replay failures
+- **ConfigurationError**: Configuration validation errors
+- **LLMError**: Language model operation errors
+- **BrowserError**: Browser automation errors
+- **ValidationError**: Input validation errors
+
+### Configuration Management
+
+#### Environment Variables
+The API supports environment variable configuration:
+```bash
+# LLM Configuration
+BUGNINJA_LLM_PROVIDER=azure_openai
+BUGNINJA_LLM_MODEL=gpt-4.1
+BUGNINJA_LLM_TEMPERATURE=0.001
+
+# Browser Configuration
+BUGNINJA_HEADLESS=true
+BUGNINJA_VIEWPORT_WIDTH=1920
+BUGNINJA_VIEWPORT_HEIGHT=1080
+
+# Task Configuration
+BUGNINJA_ENABLE_HEALING=true
+BUGNINJA_ENABLE_SCREENSHOTS=true
+```
+
+#### Browser Profile
+```python
+from browser_use import BrowserProfile
+
+browser_profile = BrowserProfile(
+    headless=False,
+    slow_mo=100,
+    viewport={"width": 1920, "height": 1080}
+)
+```
+
+#### Agent Settings
+```python
+agent_settings = {
+    "use_vision": True,
+    "planner_interval": 5,
+    "save_conversation_path": "logs/conversation"
+}
+```
+
+## 📁 File Structure
+```
+bugninja/
+├── agents/
+│   ├── bugninja_agent_base.py    # Base agent class
+│   ├── navigator_agent.py        # Navigation agent
+│   ├── healer_agent.py          # Self-healing agent
+│   └── extensions.py            # Enhanced controller
+├── replication/
+│   ├── replicator_navigation.py # Base replication
+│   └── replicator_run.py        # Self-healing replication
+├── schemas.py                   # Data models
+└── utils/
+    └── selector_factory.py      # XPath generation
+```
+
+## 🎯 Use Cases
+
+### 🧪 Automated Testing
+- **Regression Testing**: Replay recorded user sessions
+- **Cross-Browser Testing**: Consistent behavior across browsers
+- **Load Testing**: Automated user simulation
+- **Accessibility Testing**: Automated compliance checking
+
+### 🔄 Process Automation
+- **Form Filling**: Automated data entry
+- **Data Extraction**: Scraping with intelligent navigation
+- **Workflow Automation**: Complex multi-step processes
+- **Monitoring**: Automated health checks
+
+### 🛠️ Development & Debugging
+- **Bug Reproduction**: Reliable replay of user-reported issues
+- **Performance Testing**: Automated performance regression detection
+- **UI Testing**: Automated interface validation
+- **Integration Testing**: End-to-end workflow validation
+
+## 🔒 Security Features
+
+- **Secret Management**: Secure handling of sensitive data
+- **Isolated Sessions**: Clean browser state for each run
+- **Error Isolation**: Failures don't affect subsequent runs
+- **Audit Trail**: Complete logging of all actions
+
+## ⚙️ Configuration Management
+
+Bugninja uses a centralized configuration system with Pydantic Settings for type-safe, environment-aware configuration:
+
+### **Environment-Specific Configuration**
+```python
+from bugninja import ConfigurationFactory, Environment
+
+# Development environment (debug enabled, verbose logging)
+dev_settings = ConfigurationFactory.get_settings(Environment.DEVELOPMENT)
+
+# Production environment (optimized for performance)
+prod_settings = ConfigurationFactory.get_settings(Environment.PRODUCTION)
+
+# Testing environment (minimal features for fast execution)
+test_settings = ConfigurationFactory.get_settings(Environment.TESTING)
+```
+
+### **Configuration Features**
+- **Type Safety**: All configuration values are validated
+- **Environment Variables**: Automatic loading from `.env` files
+- **Environment Overrides**: Different settings per deployment environment
+- **Validation**: Automatic validation with custom rules
+- **Documentation**: Self-documenting configuration with descriptions
+
+### **Configuration File**
+Copy `env.example` to `.env` and customize your settings:
+```bash
+cp env.example .env
+# Edit .env with your configuration values
+```
+
+## 📦 API Structure
+
+Bugninja provides a clean, intuitive API structure with progressive disclosure of complexity:
+
+### **Simple Usage (Recommended)**
+```python
+from bugninja import NavigatorAgent, ReplicatorRun, Traversal, create_llm_model, LLMProvider
+
+# Configure and run agent (uses configuration default)
+llm = create_llm_model()
+
+# Or specify a specific provider
+llm = create_llm_model(provider=LLMProvider.OPENAI)
+agent = NavigatorAgent(task="...", llm=llm, browser_session=...)
+await agent.run()
+
+# Replay recorded session
+replicator = ReplicatorRun(json_path="traversal.json")
+await replicator.start()
+```
+
+### **Advanced Usage (Submodules)**
+```python
+from bugninjaagents import HealerAgent, BugninjaAgentBase
+from bugninjaschemas import StateComparison, BugninjaExtendedAction
+from bugninjautils import ScreenshotManager, SelectorFactory
+
+# Custom agent development
+class CustomAgent(BugninjaAgentBase):
+    # Implementation...
+
+# Advanced utilities
+screenshot_manager = ScreenshotManager(folder_prefix="custom")
+selector_factory = SelectorFactory(html_content="...")
+```
+
+### **Configuration**
+```python
+from bugninja import ConfigurationFactory, Environment, BugninjaBrowserConfig
+
+# Get environment-specific settings
+settings = ConfigurationFactory.get_settings(Environment.DEVELOPMENT)
+
+# Configure browser using code-based settings
+config = BugninjaBrowserConfig(
+    viewport={"width": settings.browser_config["viewport_width"], "height": settings.browser_config["viewport_height"]},
+    user_agent=settings.browser_config["user_agent"]
+)
+
+# Get configuration summary
+summary = ConfigurationFactory.get_settings_summary(Environment.PRODUCTION)
+print(f"Production settings: {summary}")
+```
+
+## 📊 Event-Driven Progress Tracking
+
+Bugninja includes an optional event-driven progress tracking system that allows you to monitor browser automation runs in real-time.
+
+### **Setup Event Tracking**
+
+1. **Configure Event Publishers**
+   ```python
+   # In your settings or environment
+   from bugninja.events.types import EventPublisherType
+   
+   # Enable Redis publisher
+   event_publishers = [EventPublisherType.REDIS]
+   
+   # Or use null publisher for testing
+   event_publishers = [EventPublisherType.NULL]
+   ```
+
+2. **Install Redis (Optional)**
+   ```bash
+   # Ubuntu/Debian
+   sudo apt-get install redis-server
+   
+   # macOS
+   brew install redis
+   
+   # Start Redis
+   redis-server
+   ```
+
+4. **Monitor Run Status**
+   ```bash
+   # Show all runs summary
+   bugninja status
+   
+   # Show specific run details
+   bugninja status --run-id run_abc123
+   ```
+
+### **Event Tracking Features**
+
+- **Multi-Publisher Support**: Use multiple publishers simultaneously (Redis, Null, etc.)
+- **Thread-Safe Operations**: Concurrent runs with data integrity
+- **Event Types**: Track run start, step completion, action completion, healing, run completion
+- **Run Types**: Distinguish between navigation, replay, and healing runs
+- **Error Tracking**: Monitor failed runs with detailed error information
+- **CLI Integration**: Built-in status monitoring commands
+
+### **Programmatic Event Monitoring**
+
+```python
+from bugninja.config import ConfigurationFactory, Environment
+from bugninja.events import EventPublisherFactory, EventPublisherManager
+from bugninja.events.types import EventPublisherType
+
+# Get event publishers with explicit configuration
+settings = ConfigurationFactory.get_settings(Environment.DEVELOPMENT)
+
+# Create publishers with explicit configuration
+publisher_types = [EventPublisherType.REDIS]  # Default to Redis
+configs = {}
+
+# Add Redis configuration if available in settings
+if hasattr(settings, "redis_host") and settings.redis_host:
+    configs["redis"] = {
+        "redis_host": settings.redis_host,
+        "redis_port": getattr(settings, "redis_port", 6379),
+        "redis_db": getattr(settings, "redis_db", 0),
+        "redis_password": getattr(settings, "redis_password", None),
+    }
+
+publishers = EventPublisherFactory.create_publishers(publisher_types, configs)
+event_manager = EventPublisherManager(publishers)
+
+if event_manager.has_publishers():
+    # Check available publishers
+    available_publishers = event_manager.get_available_publishers()
+    print(f"Available publishers: {len(available_publishers)}")
+    
+    for publisher in available_publishers:
+        print(f"- {publisher.__class__.__name__}")
+```

@@ -7,10 +7,8 @@ instances with TOML-based configuration and singleton behavior.
 
 from typing import Any, Dict, Optional
 
-from .settings import BugninjaSettings
-from .toml_loader import TOMLConfigLoader
-
-# TODO!:AGENT this current configuration factory here does not support multiple AI models to be utilized, and naming conventions also do not reflect on this
+from bugninja.config.settings import BugninjaSettings, LLMProvider
+from bugninja.config.toml_loader import TOMLConfigLoader
 
 
 class ConfigurationFactory:
@@ -55,14 +53,10 @@ class ConfigurationFactory:
                 cls._instance = BugninjaSettings(**toml_overrides)
             except Exception as e:
                 # Provide more helpful error message for missing environment variables
-                error_str = str(e).lower()
-                if "azure_openai_endpoint" in error_str or "azure_openai_key" in error_str:
-                    raise ValueError(
-                        f"Missing required environment variables. Please ensure AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_KEY are set in your .env file or environment. "
-                        f"Error: {e}"
-                    )
-                else:
-                    raise ValueError(f"Failed to create settings: {e}")
+                # Simplified error handling to avoid constructor issues
+                raise ValueError(
+                    f"Configuration error. Please check your environment variables. Original error: {str(e).lower()}"
+                )
 
         return cls._instance
 
@@ -77,23 +71,82 @@ class ConfigurationFactory:
             Dictionary compatible with Pydantic Settings
         """
         field_mapping = {
+            # Project configuration
             "project.name": "project_name",
-            "llm.model": "azure_openai_model",
-            "llm.temperature": "azure_openai_temperature",
-            "llm.api_version": "azure_openai_api_version",
+            # LLM configuration
+            "llm.provider": "llm_provider",
+            "llm.model": "llm_model",
+            "llm.temperature": "llm_temperature",
+            # Azure OpenAI configuration
+            "llm.azure_openai.api_version": "azure_openai_api_version",
+            # OpenAI configuration
+            "llm.openai.base_url": "openai_base_url",
+            # Anthropic configuration
+            "llm.anthropic.base_url": "anthropic_base_url",
+            # Google Gemini configuration
+            "llm.google_gemini.base_url": "google_base_url",
+            # DeepSeek configuration
+            "llm.deepseek.base_url": "deepseek_base_url",
+            # Ollama configuration
+            "llm.ollama.base_url": "ollama_base_url",
+            # Logging configuration
             "logging.level": "log_level",
             "logging.format": "log_format",
             "logging.enable_rich_logging": "enable_rich_logging",
+            # Development configuration
             "development.debug_mode": "debug_mode",
             "development.enable_verbose_logging": "enable_verbose_logging",
+            # Paths configuration
             "paths.traversals_dir": "traversals_dir",
+            "paths.screenshots_dir": "screenshots_dir",
+            "paths.tasks_dir": "tasks_dir",
+            # Events configuration
             "events.publishers": "event_publishers",
         }
 
         pydantic_config = {}
         for toml_key, field_name in field_mapping.items():
             if toml_key in toml_config:
-                pydantic_config[field_name] = toml_config[toml_key]
+                value = toml_config[toml_key]
+
+                # Handle special cases
+                if toml_key == "llm.provider" and isinstance(value, str):
+                    # Convert string to LLMProvider enum
+                    try:
+                        value = LLMProvider(value)
+                    except ValueError:
+                        # Skip invalid provider values
+                        continue
+                elif toml_key.startswith("paths.") and isinstance(value, str):
+                    # Convert string paths to Path objects
+                    from pathlib import Path
+
+                    value = Path(value)
+
+                pydantic_config[field_name] = value
+
+        # Add environment variable fallbacks for base URLs
+        import os
+
+        # OpenAI base URL fallback
+        if "openai_base_url" not in pydantic_config and os.getenv("OPENAI_BASE_URL"):
+            pydantic_config["openai_base_url"] = os.getenv("OPENAI_BASE_URL")
+
+        # Anthropic base URL fallback
+        if "anthropic_base_url" not in pydantic_config and os.getenv("ANTHROPIC_BASE_URL"):
+            pydantic_config["anthropic_base_url"] = os.getenv("ANTHROPIC_BASE_URL")
+
+        # Google base URL fallback
+        if "google_base_url" not in pydantic_config and os.getenv("GOOGLE_BASE_URL"):
+            pydantic_config["google_base_url"] = os.getenv("GOOGLE_BASE_URL")
+
+        # DeepSeek base URL fallback
+        if "deepseek_base_url" not in pydantic_config and os.getenv("DEEPSEEK_BASE_URL"):
+            pydantic_config["deepseek_base_url"] = os.getenv("DEEPSEEK_BASE_URL")
+
+        # Ollama base URL fallback
+        if "ollama_base_url" not in pydantic_config and os.getenv("OLLAMA_BASE_URL"):
+            pydantic_config["ollama_base_url"] = os.getenv("OLLAMA_BASE_URL")
 
         return pydantic_config
 
@@ -135,8 +188,9 @@ class ConfigurationFactory:
 
         return {
             "project_name": settings.project_name,
-            "llm_model": settings.azure_openai_model,
-            "llm_temperature": settings.azure_openai_temperature,
+            "llm_provider": settings.llm_provider.value,
+            "llm_model": settings.llm_model,
+            "llm_temperature": settings.llm_temperature,
             "viewport": {
                 "width": settings.browser_config["viewport_width"],
                 "height": settings.browser_config["viewport_height"],

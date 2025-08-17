@@ -420,6 +420,11 @@ class BugninjaConfig(BaseModel):
         default=0.001, ge=0.0, le=2.0, description="Temperature for LLM responses"
     )
 
+    # Provider-specific LLM configuration
+    llm_config: Dict[str, Any] = Field(
+        default_factory=dict, description="Provider-specific LLM configuration parameters"
+    )
+
     # Browser Configuration
     headless: bool = Field(default=False, description="Run browser in headless mode")
 

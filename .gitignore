@@ -276,5 +276,6 @@ user_data_dir
 tasks
 logs
 bugninja.toml
+BUGNINJA_README.md
 
 .scannerwork

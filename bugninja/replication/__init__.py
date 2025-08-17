@@ -40,10 +40,25 @@ await replicator.start()
 """
 
 from .replicator_run import ReplicatorRun
-from .replicator_navigation import ReplicatorNavigator, ReplicatorError
+from .replicator_navigation import ReplicatorNavigator
+from .errors import (
+    ActionError,
+    BrowserError,
+    ConfigurationError,
+    NavigationError,
+    ReplicatorError,
+    SelectorError,
+    ValidationError,
+)
 
 __all__ = [
     "ReplicatorRun",
     "ReplicatorNavigator",
+    "ActionError",
+    "BrowserError",
+    "ConfigurationError",
+    "NavigationError",
     "ReplicatorError",
+    "SelectorError",
+    "ValidationError",
 ]

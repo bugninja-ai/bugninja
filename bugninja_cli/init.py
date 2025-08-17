@@ -131,7 +131,7 @@ def init(
         create_env_template(env_file)
 
         # Create README
-        readme_file = current_dir / "README.md"
+        readme_file = current_dir / "BUGNINJA_README.md"
         create_readme_template(readme_file, project_name)
 
         # Success message
@@ -147,7 +147,7 @@ def init(
         success_text.append("📄 Created files:\n", style="bold")
         success_text.append("  • bugninja.toml (project configuration)\n", style="blue")
         success_text.append("  • .env.example (environment template)\n", style="blue")
-        success_text.append("  • README.md (project documentation)\n\n", style="blue")
+        success_text.append("  • BUGNINJA_README.md (project documentation)\n\n", style="blue")
 
         success_text.append("🚀 Next steps:\n", style="bold")
         success_text.append("  1. Copy .env.example to .env and add your API keys\n", style="cyan")

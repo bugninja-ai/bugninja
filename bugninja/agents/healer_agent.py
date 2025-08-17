@@ -53,7 +53,7 @@ class HealerAgent(BugninjaAgentBase):
         # Create healer agent with event tracking
         healer = HealerAgent(
             task="Fix the broken login flow",
-            llm=azure_openai_model(),
+            llm=create_llm_model_from_config(create_llm_config_from_settings()),  # Uses unified LLM configuration
             browser_session=browser_session,
             event_manager=event_manager,
             parent_run_id="original_run_id"

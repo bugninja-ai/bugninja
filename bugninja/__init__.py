@@ -12,6 +12,7 @@ task execution with built-in error recovery mechanisms.
 3. **Session Recording** - Complete interaction traversal capture
 4. **Event Tracking** - Comprehensive operation monitoring
 5. **Modular Architecture** - Extensible and maintainable design
+6. **Multi-LLM Support** - Support for multiple AI providers (Azure, OpenAI, Anthropic, Google, DeepSeek, Ollama)
 
 ## Core Components
 
@@ -20,18 +21,34 @@ task execution with built-in error recovery mechanisms.
 - `ReplicatorRun` - Session replay with healing capabilities
 - `BugninjaClient` - High-level API interface
 - `EventPublisherManager` - Event tracking and monitoring
+- `LLMProvider` - Enumeration of supported LLM providers
 """
 
 # Core components
-from .agents.navigator_agent import NavigatorAgent
-from .agents.healer_agent import HealerAgent
-from .replication.replicator_run import ReplicatorRun
-from .schemas.pipeline import Traversal, BugninjaBrowserConfig, BugninjaExtendedAction
-from .models.model_configs import azure_openai_model
-from .config import ConfigurationFactory, BugninjaSettings
+from bugninja.agents.navigator_agent import NavigatorAgent
+from bugninja.agents.healer_agent import HealerAgent
+from bugninja.replication.replicator_run import ReplicatorRun
+from bugninja.schemas.pipeline import Traversal, BugninjaBrowserConfig, BugninjaExtendedAction
+from bugninja.config.llm_creator import (
+    anthropic_model,
+    azure_openai_model,
+    deepseek_model,
+    google_gemini_model,
+    ollama_model,
+    openai_model,
+)
+from bugninja.config import (
+    ConfigurationFactory,
+    BugninjaSettings,
+    LLMProvider,
+    LLMConfig,
+    ModelRegistry,
+    create_llm_model_from_config,
+    create_llm_config_from_settings,
+)
 
 # High-level API
-from .api import (
+from bugninja.api import (
     BugninjaClient,
     BugninjaTask,
     BugninjaConfig,
@@ -51,9 +68,21 @@ __all__ = [
     "Traversal",
     "BugninjaBrowserConfig",
     "BugninjaExtendedAction",
+    # LLM models
     "azure_openai_model",
+    "openai_model",
+    "anthropic_model",
+    "google_gemini_model",
+    "deepseek_model",
+    "ollama_model",
+    # Configuration
     "ConfigurationFactory",
     "BugninjaSettings",
+    "LLMProvider",
+    "LLMConfig",
+    "ModelRegistry",
+    "create_llm_model_from_config",
+    "create_llm_config_from_settings",
     # High-level API
     "BugninjaClient",
     "BugninjaTask",

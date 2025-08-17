@@ -60,7 +60,7 @@ class NavigatorAgent(BugninjaAgentBase):
         # Create navigator agent with event tracking
         navigator = NavigatorAgent(
             task="Navigate to example.com and click the login button",
-            llm=azure_openai_model(),
+            llm=create_llm_model_from_config(create_llm_config_from_settings()),  # Uses unified LLM configuration
             browser_session=browser_session,
             event_manager=event_manager
         )

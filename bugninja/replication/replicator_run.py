@@ -26,12 +26,17 @@ from cuid2 import Cuid as CUID
 from rich import print as rich_print
 
 from bugninja.agents.healer_agent import HealerAgent
+from bugninja.config import (
+    create_llm_config_from_settings,
+    create_llm_model_from_config,
+)
+from bugninja.config.llm_config import LLMConfig
 from bugninja.events import EventPublisherManager
 from bugninja.events.types import EventType
-from bugninja.models.model_configs import azure_openai_model
+from bugninja.replication.errors import ReplicatorError
 from bugninja.replication.replicator_navigation import (
-    ReplicatorError,
     ReplicatorNavigator,
+    get_user_input,
 )
 from bugninja.schemas.pipeline import (
     BugninjaBrainState,
@@ -72,6 +77,7 @@ class ReplicatorRun(ReplicatorNavigator):
         enable_healing: bool = True,
         event_manager: Optional[EventPublisherManager] = None,
         background: bool = False,
+        healing_llm_config: Optional[LLMConfig] = None,
     ):
         """
         Initialize the ReplicatorRun with a JSON file path or Traversal object.
@@ -84,6 +90,7 @@ class ReplicatorRun(ReplicatorNavigator):
             enable_healing: Whether to enable healing when actions fail (default: True)
             event_manager: Optional event publisher manager for tracking
             background: Whether to run in background mode (disables console logging)
+            healing_llm_config: Optional LLM configuration for healing agent (uses default if None)
         """
 
         super().__init__(
@@ -112,6 +119,7 @@ class ReplicatorRun(ReplicatorNavigator):
 
         self.pause_after_each_step = pause_after_each_step
         self.enable_healing = enable_healing
+        self.healing_llm_config: Optional[LLMConfig] = healing_llm_config
         self.secrets = self.replay_traversal.secrets
 
         # Get the number of actions from the actions dictionary
@@ -168,7 +176,7 @@ class ReplicatorRun(ReplicatorNavigator):
         each step before proceeding to the next one.
         """
         try:
-            user_input: str = self._get_user_input()
+            user_input: str = get_user_input()
             if user_input == "q":
                 raise UserInterruptionError("User interrupted the replication process")
             logger.info("▶️ Continuing to next step...")
@@ -184,9 +192,19 @@ class ReplicatorRun(ReplicatorNavigator):
         """
         Start the self-healing agent.
         """
+        # Use provided LLM config or fall back to default
+        if self.healing_llm_config:
+            llm = create_llm_model_from_config(self.healing_llm_config)
+            logger.info(
+                f"🩹 Using custom LLM for healing: {self.healing_llm_config.provider.value} - {self.healing_llm_config.model}"
+            )
+        else:
+            llm = create_llm_model_from_config(create_llm_config_from_settings())
+            logger.info("🩹 Using default LLM configuration for healing")
+
         agent = HealerAgent(
             task=self.replay_traversal.test_case,
-            llm=azure_openai_model(),
+            llm=llm,
             browser_session=self.browser_session,
             sensitive_data=self.secrets,
             parent_run_id=self.run_id,  # Pass parent's run_id to maintain consistency

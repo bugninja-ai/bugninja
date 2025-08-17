@@ -122,7 +122,8 @@ import os
 from bugninja.config import ConfigurationFactory
 
 # Override specific settings via environment variables
-os.environ["AZURE_OPENAI_MODEL"] = "gpt-4-turbo"
+os.environ["LLM_PROVIDER"] = "azure_openai"
+os.environ["LLM_MODEL"] = "gpt-4-turbo"
 os.environ["LOG_LEVEL"] = "DEBUG"
 
 # Load settings (environment variables take precedence)
@@ -160,6 +161,27 @@ DEBUG_MODE=false
 TRAVERSALS_DIR=./traversals
 ```
 
+**New `.env` file (multi-LLM support):**
+```bash
+# LLM Provider Configuration
+LLM_PROVIDER=azure_openai
+LLM_MODEL=gpt-4.1
+LLM_TEMPERATURE=0.001
+
+# Azure OpenAI (only needed if using Azure)
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_KEY=your-api-key-here
+
+# OpenAI (only needed if using OpenAI)
+# OPENAI_API_KEY=your-openai-key-here
+
+# Anthropic (only needed if using Anthropic)
+# ANTHROPIC_API_KEY=your-anthropic-key-here
+
+# Google Gemini (only needed if using Google)
+# GOOGLE_API_KEY=your-google-key-here
+```
+
 **New `.env` file:**
 ```bash
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
@@ -172,8 +194,27 @@ AZURE_OPENAI_KEY=your-api-key-here
 name = "bugninja"
 
 [llm]
+provider = "azure_openai"
 model = "gpt-4.1"
 temperature = 0.001
+
+[llm.azure_openai]
+api_version = "2024-02-15-preview"
+
+[llm.openai]
+base_url = "https://api.openai.com/v1"
+
+[llm.anthropic]
+base_url = "https://api.anthropic.com"
+
+[llm.google_gemini]
+base_url = "https://generativelanguage.googleapis.com"
+
+[llm.deepseek]
+base_url = "https://api.deepseek.com"
+
+[llm.ollama]
+base_url = "http://localhost:11434"
 
 [logging]
 level = "INFO"
@@ -218,6 +259,83 @@ traversals_dir = "./traversals"
 - Ensure `.env` file exists
 - Check environment variable names
 - Verify `.env` file is not gitignored
+
+## Multi-LLM Provider Configuration
+
+Bugninja supports multiple LLM providers through configuration. You can select your preferred provider and configure provider-specific settings.
+
+### **Provider Selection**
+
+Set the `provider` field in the `[llm]` section:
+
+```toml
+[llm]
+provider = "openai"  # Options: azure_openai, openai, anthropic, google_gemini, deepseek, ollama
+model = "gpt-4"
+temperature = 0.1
+```
+
+### **Provider-Specific Configuration**
+
+Each provider has its own configuration section:
+
+```toml
+# Azure OpenAI
+[llm.azure_openai]
+api_version = "2024-02-15-preview"
+
+# OpenAI
+[llm.openai]
+base_url = "https://api.openai.com/v1"
+
+# Anthropic
+[llm.anthropic]
+base_url = "https://api.anthropic.com"
+
+# Google Gemini
+[llm.google_gemini]
+base_url = "https://generativelanguage.googleapis.com"
+
+# DeepSeek
+[llm.deepseek]
+base_url = "https://api.deepseek.com"
+
+# Ollama
+[llm.ollama]
+base_url = "http://localhost:11434"
+```
+
+### **Environment Variable Fallbacks**
+
+Base URLs can also be set via environment variables:
+
+```bash
+# OpenAI
+OPENAI_BASE_URL=https://api.openai.com/v1
+
+# Anthropic
+ANTHROPIC_BASE_URL=https://api.anthropic.com
+
+# Google
+GOOGLE_BASE_URL=https://generativelanguage.googleapis.com
+
+# DeepSeek
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+
+# Ollama
+OLLAMA_BASE_URL=http://localhost:11434
+```
+
+### **Switching Providers**
+
+To switch providers, simply change the `provider` field and ensure the corresponding API key is set in your `.env` file:
+
+```toml
+[llm]
+provider = "anthropic"  # Changed from "azure_openai"
+model = "claude-3-sonnet-20240229"
+temperature = 0.1
+```
 
 ## Advanced Configuration
 

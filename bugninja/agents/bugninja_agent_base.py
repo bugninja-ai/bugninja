@@ -21,8 +21,14 @@ from browser_use.browser.views import BrowserStateSummary  # type: ignore
 from browser_use.controller.registry.views import ActionModel  # type: ignore
 from browser_use.utils import time_execution_async  # type: ignore
 from cuid2 import Cuid as CUID
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage
 
+from bugninja.config import (
+    create_llm_model_from_config,
+    create_provider_model_from_settings,
+)
+from bugninja.config.llm_config import LLMConfig
 from bugninja.events import EventPublisherManager
 from bugninja.events.types import EventType
 
@@ -117,6 +123,40 @@ class BugninjaAgentBase(Agent, ABC):
 
         # Initialize event publisher manager (explicitly passed)
         self.event_manager: Optional[EventPublisherManager] = None
+
+    def _create_llm(
+        self,
+        llm_config: Optional[LLMConfig] = None,
+        temperature: Optional[float] = None,
+    ) -> BaseChatModel:
+        """Create LLM model using unified configuration.
+
+        This method provides a centralized way for all agents to create LLM instances.
+        It uses the unified LLM configuration system for consistent model creation.
+
+        Args:
+            llm_config (Optional[LLMConfig]): Unified LLM configuration
+            temperature (Optional[float]): Temperature setting (overrides config)
+
+        Returns:
+            BaseChatModel: Configured LLM model instance
+
+        Raises:
+            ValueError: If LLM configuration is invalid or missing
+        """
+        try:
+
+            # Use provided LLM config or create from settings
+            if llm_config is not None:
+
+                config = llm_config
+                if temperature is not None:
+                    config.temperature = temperature
+                return create_llm_model_from_config(config)
+            else:
+                return create_provider_model_from_settings(temperature)
+        except Exception as e:
+            raise ValueError(f"Failed to create LLM model: {e}")
 
     @staticmethod
     async def get_raw_html_of_playwright_page(page: Page) -> str:

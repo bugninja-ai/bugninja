@@ -5,9 +5,7 @@ Abstract base class for event publishers.
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
-from .models import RunEvent, RunState
-
-# TODO!:AGENT these abstract methods MUST BE IMPLEMENTED, if not, they should raise exception
+from bugninja.events.models import RunEvent, RunState
 
 
 class EventPublisher(ABC):
@@ -25,7 +23,7 @@ class EventPublisher(ABC):
         Returns:
             True if publisher is available, False otherwise
         """
-        pass
+        raise NotImplementedError("is_available() must be implemented by subclasses")
 
     @abstractmethod
     async def initialize_run(
@@ -44,7 +42,7 @@ class EventPublisher(ABC):
         Raises:
             PublisherUnavailableError: If publisher is not available
         """
-        pass
+        raise NotImplementedError("initialize_run() must be implemented by subclasses")
 
     @abstractmethod
     async def update_run_state(self, run_id: str, state: RunState) -> None:
@@ -57,7 +55,7 @@ class EventPublisher(ABC):
         Raises:
             PublisherUnavailableError: If publisher is not available
         """
-        pass
+        raise NotImplementedError("update_run_state() must be implemented by subclasses")
 
     @abstractmethod
     async def complete_run(self, run_id: str, success: bool, error: Optional[str] = None) -> None:
@@ -71,7 +69,7 @@ class EventPublisher(ABC):
         Raises:
             PublisherUnavailableError: If publisher is not available
         """
-        pass
+        raise NotImplementedError("complete_run() must be implemented by subclasses")
 
     @abstractmethod
     async def publish_event(self, event: RunEvent) -> None:
@@ -83,4 +81,4 @@ class EventPublisher(ABC):
         Raises:
             PublisherUnavailableError: If publisher is not available
         """
-        pass
+        raise NotImplementedError("publish_event() must be implemented by subclasses")
