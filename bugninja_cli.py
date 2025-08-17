@@ -1,7 +1,9 @@
 import rich_click as click
 
+from bugninja_cli.add import add
 from bugninja_cli.init import init
 from bugninja_cli.replay import replay
+
 from bugninja_cli.run import run
 from bugninja_cli.stats import stats
 from bugninja_cli.utils.style import MARKDOWN_CONFIG, display_logo
@@ -19,6 +21,7 @@ def bugninja(ctx):
         click.echo(ctx.get_help())
 
 
+bugninja.add_command(add)
 bugninja.add_command(init)
 bugninja.add_command(run)
 bugninja.add_command(replay)
