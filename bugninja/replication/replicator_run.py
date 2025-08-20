@@ -20,7 +20,7 @@ boundaries.
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 from cuid2 import Cuid as CUID
 from rich import print as rich_print
@@ -32,7 +32,6 @@ from bugninja.config import (
 )
 from bugninja.config.llm_config import LLMConfig
 from bugninja.events import EventPublisherManager
-from bugninja.events.types import EventType
 from bugninja.replication.errors import ReplicatorError
 from bugninja.replication.replicator_navigation import (
     ReplicatorNavigator,
@@ -71,6 +70,7 @@ class ReplicatorRun(ReplicatorNavigator):
     def __init__(
         self,
         traversal_source: Union[str, Traversal],
+        run_id: Optional[str] = None,
         fail_on_unimplemented_action: bool = False,
         sleep_after_actions: float = 1.0,
         pause_after_each_step: bool = True,
@@ -125,14 +125,17 @@ class ReplicatorRun(ReplicatorNavigator):
         # Get the number of actions from the actions dictionary
         self.total_actions = len(self.replay_traversal.actions)
 
+        # Generate run_id at creation time for consistency
+        self.run_id: str = CUID().generate()
+
+        if run_id is not None:
+            self.run_id = run_id
+
         # Initialize screenshot manager
-        self.screenshot_manager = ScreenshotManager(folder_prefix="replay")
+        self.screenshot_manager = ScreenshotManager(run_id=self.run_id, folder_prefix="replay")
 
         # Initialize event publisher manager (explicitly passed)
         self.event_manager = event_manager
-
-        # Generate run_id at creation time for consistency
-        self.run_id = CUID().generate()
 
         brain_state_list: List[BugninjaBrainState] = [
             BugninjaBrainState(
@@ -337,16 +340,17 @@ class ReplicatorRun(ReplicatorNavigator):
                 # ? we update the state machine here that a replay action has been taken
                 self.replay_state_machine.replay_action_done()
 
-                # Publish action completion event
-                if self.event_manager and self.run_id:
-                    await self._publish_run_event(
-                        EventType.ACTION_COMPLETED,
-                        {
-                            "action_index": self._get_current_action_index(),
-                            "action_type": action_type,
-                            "success": True,
-                        },
-                    )
+                # TODO! reenable this when action handling is properly implemented
+                # # Publish action completion event
+                # if self.event_manager and self.run_id:
+                #     await self._publish_run_event(
+                #         EventType.ACTION_COMPLETED,
+                #         {
+                #             "action_index": self._get_current_action_index(),
+                #             "action_type": action_type,
+                #             "success": True,
+                #         },
+                #     )
 
                 # Add pause after action if enabled
                 if self.pause_after_each_step:
@@ -373,15 +377,6 @@ class ReplicatorRun(ReplicatorNavigator):
                     )
 
                     try:
-                        # Start healing event tracking
-                        if self.event_manager and self.run_id:
-                            await self._publish_run_event(
-                                EventType.HEALING_STARTED,
-                                {
-                                    "action_index": self._get_current_action_index(),
-                                    "error": str(e),
-                                },
-                            )
 
                         # Use free healing agent to complete the entire remaining traversal
                         agent_reached_goal, healer_agent = await self._start_free_healing()
@@ -395,32 +390,12 @@ class ReplicatorRun(ReplicatorNavigator):
 
                             logger.info("🎉 === FREE HEALING COMPLETED SUCCESSFULLY ===")
 
-                            # Complete healing event tracking
-                            if self.event_manager and self.run_id:
-                                await self._publish_run_event(
-                                    EventType.RUN_COMPLETED,
-                                    {
-                                        "success": True,
-                                        "healing_used": True,
-                                    },
-                                )
-
                         else:
                             logger.error("❌ === FREE HEALING TIMED OUT ===")
 
                             failed = True
                             failed_reason = "Free healing failed to complete traversal"
 
-                            # Complete failed healing event tracking
-                            if self.event_manager and self.run_id:
-                                await self._publish_run_event(
-                                    EventType.RUN_FAILED,
-                                    {
-                                        "success": False,
-                                        "error": failed_reason,
-                                        "healing_used": True,
-                                    },
-                                )
                             break
 
                     except UserInterruptionError as e:
@@ -437,25 +412,6 @@ class ReplicatorRun(ReplicatorNavigator):
                     )
                     break
 
-        # Complete run event tracking
-        if self.event_manager and self.run_id:
-            if not failed:
-                await self._publish_run_event(
-                    EventType.RUN_COMPLETED,
-                    {
-                        "success": True,
-                        "healing_used": self.healing_happened,
-                    },
-                )
-            else:
-                await self._publish_run_event(
-                    EventType.RUN_FAILED,
-                    {
-                        "success": False,
-                        "error": failed_reason,
-                        "healing_used": self.healing_happened,
-                    },
-                )
         logger.info("")
         logger.info("🏁 === REPLICATION COMPLETED ===")
         logger.info(f"📊 Final status: {'❌ FAILED' if failed else '✅ SUCCESS'}")
@@ -614,17 +570,18 @@ class ReplicatorRun(ReplicatorNavigator):
             pass
         return "unknown"
 
-    async def _publish_run_event(self, event_type: str, data: Dict[str, Any]) -> None:
-        """Publish event to all available publishers (NEW).
+    # TODO! this has to be implemented properly with the new event publisher setup
+    # async def _publish_run_event(self, event_type: str, data: Dict[str, Any]) -> None:
+    #     """Publish event to all available publishers (NEW).
 
-        Args:
-            event_type: Type of event to publish
-            data: Event data
-        """
-        if not self.event_manager or not self.run_id:
-            return
+    #     Args:
+    #         event_type: Type of event to publish
+    #         data: Event data
+    #     """
+    #     if not self.event_manager or not self.run_id:
+    #         return
 
-        try:
-            await self.event_manager.publish_event(self.run_id, event_type, data)
-        except Exception as e:
-            logger.warning(f"Failed to publish event {event_type}: {e}")
+    #     try:
+    #         await self.event_manager.publish_action_event(self.run_id, event_type, data)
+    #     except Exception as e:
+    #         logger.warning(f"Failed to publish event {event_type}: {e}")

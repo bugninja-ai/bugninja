@@ -52,17 +52,3 @@ class RunState(BaseModel):
         """Pydantic configuration for RunState."""
 
         use_enum_values = True
-
-
-class RunEvent(BaseModel):
-    """Base event for run state changes."""
-
-    run_id: str
-    event_type: str
-    timestamp: datetime
-    data: Dict[str, Any]
-
-    class Config:
-        """Pydantic configuration for RunEvent."""
-
-        use_enum_values = True

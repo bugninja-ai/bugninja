@@ -103,7 +103,7 @@ class NavigatorAgent(BugninjaAgentBase):
         self.controller = BugninjaController()
 
         # Initialize screenshot manager
-        self.screenshot_manager = ScreenshotManager(folder_prefix="traversal")
+        self.screenshot_manager = ScreenshotManager(run_id=self.run_id, folder_prefix="traversal")
 
         # Initialize event tracking for navigation run (if event_manager is provided)
         if self.event_manager and self.event_manager.has_publishers():

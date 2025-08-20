@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class ScreenshotManager:
     """Unified screenshot management for all agents and replay sessions."""
 
-    def __init__(self, folder_prefix: str = "traversal"):
+    def __init__(self, run_id: str, folder_prefix: str = "traversal"):
         """
         Initialize screenshot manager.
 
@@ -24,6 +24,7 @@ class ScreenshotManager:
             folder_prefix: Prefix for screenshot folders (traversal, replay, etc.)
         """
         self.folder_prefix = folder_prefix
+        self.run_id = run_id
         self.screenshots_dir = self._get_screenshots_dir()
         self.screenshots_dir.mkdir(exist_ok=True)
         self.screenshot_counter = 0
@@ -35,11 +36,7 @@ class ScreenshotManager:
         base_dir = Path("./screenshots")
         base_dir.mkdir(exist_ok=True)
 
-        folder_number = 1
-        while (base_dir / f"{self.folder_prefix}_{folder_number}").exists():
-            folder_number += 1
-
-        return base_dir / f"{self.folder_prefix}_{folder_number}"
+        return base_dir / f"{self.run_id}"
 
     async def take_screenshot(
         self,

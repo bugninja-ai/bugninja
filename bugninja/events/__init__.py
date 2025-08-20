@@ -39,14 +39,13 @@ run_id = await event_manager.initialize_run(
 from .base import EventPublisher
 from .manager import EventPublisherManager
 from .types import EventPublisherType
-from .models import RunEvent, RunState
+from .models import RunState
 from .exceptions import PublisherUnavailableError
 
 __all__ = [
     "EventPublisher",
     "EventPublisherManager",
     "EventPublisherType",
-    "RunEvent",
     "RunState",
     "PublisherUnavailableError",
 ]

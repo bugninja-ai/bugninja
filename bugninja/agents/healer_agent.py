@@ -94,7 +94,7 @@ class HealerAgent(BugninjaAgentBase):
 
         # Initialize screenshot manager (will be overridden if shared from replay)
         if not hasattr(self, "screenshot_manager"):
-            self.screenshot_manager = ScreenshotManager(folder_prefix="healing")
+            self.screenshot_manager = ScreenshotManager(run_id=self.run_id, folder_prefix="healing")
 
         # Initialize event tracking for healing run (if event_manager is provided)
         if self.event_manager and self.event_manager.has_publishers():

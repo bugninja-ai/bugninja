@@ -99,7 +99,7 @@ class BugninjaAgentBase(Agent, ABC):
     """
 
     def __init__(  # type:ignore
-        self, *args, background: bool = False, **kwargs  # type:ignore
+        self, *args, run_id: Optional[str] = None, background: bool = False, **kwargs  # type:ignore
     ) -> None:
         """Initialize BugninjaAgentBase with extended functionality.
 
@@ -115,6 +115,9 @@ class BugninjaAgentBase(Agent, ABC):
 
         # Generate run_id at creation time for consistency across all agents
         self.run_id: str = CUID().generate()
+
+        if run_id is not None:
+            self.run_id = run_id
 
         # Store background flag
         self.background = background

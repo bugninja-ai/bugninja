@@ -28,6 +28,7 @@ SELECTOR_ORIENTED_ACTIONS: List[str] = [
 
 ALTERNATIVE_XPATH_SELECTORS_KEY: str = "alternative_relative_xpaths"
 DOM_ELEMENT_DATA_KEY: str = "dom_element_data"
+BRAINSTATE_IDX_DATA_KEY: str = "idx_in_brainstate"
 
 
 class UserInputTypeEnum(str, Enum):
@@ -105,12 +106,13 @@ async def extend_agent_action_with_info(
     """
     currently_taken_actions: List["BugninjaExtendedAction"] = []
 
-    for action in model_output.action:
+    for action_idx, action in enumerate(model_output.action):
         short_action_descriptor: Dict[str, Any] = action.model_dump(exclude_none=True)
 
         action_dictionary: Dict[str, Any] = {
             "brain_state_id": brain_state_id,
             "action": action.model_dump(),
+            "idx_in_brainstate": action_idx,
             DOM_ELEMENT_DATA_KEY: None,
         }
 

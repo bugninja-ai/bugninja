@@ -190,6 +190,8 @@ class TestHealerAgent:
                     "//html[contains(@class, 'light')]/body/div[1]/div/div[1]/div/div[2]/div[2]/form/button",
                 ],
             },
+            idx_in_brainstate=0,
+            screenshot_filename="screenshot.png",
         )
 
     @pytest.mark.asyncio

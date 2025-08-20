@@ -36,6 +36,7 @@ class BugninjaExtendedAction(BaseModel):
     action: Dict[str, Any]
     dom_element_data: Optional[Dict[str, Any]]
     screenshot_filename: Optional[str] = None
+    idx_in_brainstate: int
 
 
 #! Traversal
