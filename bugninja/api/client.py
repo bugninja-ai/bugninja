@@ -640,6 +640,7 @@ class BugninjaClient:
 
             # Create and run agent with task parameters
             agent = NavigatorAgent(
+                run_id=task.run_id,
                 task=task.description,
                 llm=llm,
                 browser_session=browser_session,
@@ -774,6 +775,7 @@ class BugninjaClient:
 
                 # Create agent (isolation happens in _before_run_hook)
                 agent = NavigatorAgent(
+                    run_id=task.run_id,
                     task=task.description,
                     llm=self._create_llm(temperature=self.config.llm_temperature),
                     browser_session=browser_session,

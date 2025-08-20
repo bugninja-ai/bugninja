@@ -108,6 +108,8 @@ class BugninjaTask(BaseModel):
         ```
     """
 
+    run_id: Optional[str] = Field(default=None, description="Unique identifier for the task run")
+
     description: str = Field(
         ...,
         min_length=1,
