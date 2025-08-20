@@ -5,7 +5,10 @@ Abstract base class for event publishers.
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
-from bugninja.events.models import RunEvent, RunState
+from browser_use.agent.views import AgentBrain  # type: ignore
+
+from bugninja.events.models import RunState
+from bugninja.schemas.pipeline import BugninjaExtendedAction
 
 
 class EventPublisher(ABC):
@@ -72,7 +75,13 @@ class EventPublisher(ABC):
         raise NotImplementedError("complete_run() must be implemented by subclasses")
 
     @abstractmethod
-    async def publish_event(self, event: RunEvent) -> None:
+    async def publish_action_event(
+        self,
+        run_id: str,
+        brain_state_id: str,
+        actual_brain_state: AgentBrain,
+        action_result_data: BugninjaExtendedAction,
+    ) -> None:
         """Publish a run event.
 
         Args:

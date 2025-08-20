@@ -1,6 +1,5 @@
-from typing import Dict, List, Optional
+from typing import Optional
 
-from browser_use.agent.views import AgentBrain  # type: ignore
 from browser_use.agent.views import (  # type: ignore
     AgentOutput,
 )
@@ -11,7 +10,6 @@ from cuid2 import Cuid as CUID
 
 from bugninja.agents.bugninja_agent_base import BugninjaAgentBase
 from bugninja.agents.extensions import BugninjaController, extend_agent_action_with_info
-from bugninja.schemas.pipeline import BugninjaExtendedAction
 from bugninja.utils.screenshot_manager import ScreenshotManager
 
 #! keep in mind that the HealerAgent is not inherited from BugninjaAgentBase but from the NavigatorAgent directly
@@ -79,9 +77,6 @@ class HealerAgent(BugninjaAgentBase):
         # Use parent's run_id if provided, otherwise keep the generated one
         if parent_run_id is not None:
             self.run_id = parent_run_id
-
-        self.agent_taken_actions: List[BugninjaExtendedAction] = []
-        self.agent_brain_states: Dict[str, AgentBrain] = {}
 
     async def _before_run_hook(self) -> None:
         """Initialize healing session with event tracking and screenshot management.

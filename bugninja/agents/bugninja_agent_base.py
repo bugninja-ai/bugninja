@@ -2,7 +2,7 @@ import asyncio
 import inspect
 import time
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from browser_use.agent.message_manager.utils import save_conversation  # type: ignore
 from browser_use.agent.service import (  # type: ignore
@@ -12,6 +12,7 @@ from browser_use.agent.service import (  # type: ignore
 )
 from browser_use.agent.views import (  # type: ignore
     ActionResult,
+    AgentBrain,
     AgentHistoryList,
     AgentOutput,
     StepMetadata,
@@ -30,10 +31,7 @@ from bugninja.config import (
 )
 from bugninja.config.llm_config import LLMConfig
 from bugninja.events import EventPublisherManager
-from bugninja.events.types import EventType
-
-if TYPE_CHECKING:
-    from bugninja.schemas.pipeline import BugninjaExtendedAction
+from bugninja.schemas.pipeline import BugninjaExtendedAction
 
 
 def hook_missing_error(hook_name: str, class_val: type) -> NotImplementedError:
@@ -124,6 +122,9 @@ class BugninjaAgentBase(Agent, ABC):
         # Initialize event publisher manager (explicitly passed)
         self.event_manager: Optional[EventPublisherManager] = None
 
+        self.agent_taken_actions: List[BugninjaExtendedAction] = []
+        self.agent_brain_states: Dict[str, AgentBrain] = {}
+
     def _create_llm(
         self,
         llm_config: Optional[LLMConfig] = None,
@@ -189,18 +190,22 @@ class BugninjaAgentBase(Agent, ABC):
             pass
         return "unknown"
 
-    async def _publish_run_event(self, event_type: str, data: Dict[str, Any]) -> None:
-        """Publish event to all available publishers.
-
-        Args:
-            event_type (str): Type of event to publish
-            data (Dict[str, Any]): Event data to publish
-        """
+    async def _publish_action_event(
+        self,
+        brain_state_id: str,
+        actual_brain_state: AgentBrain,
+        action_result_data: BugninjaExtendedAction,
+    ) -> None:
         if not self.event_manager or not self.run_id:
             return
 
         try:
-            await self.event_manager.publish_event(self.run_id, event_type, data)
+            await self.event_manager.publish_action_event(
+                run_id=self.run_id,
+                brain_state_id=brain_state_id,
+                actual_brain_state=actual_brain_state,
+                action_result_data=action_result_data,
+            )
         except Exception:
             # Continue execution even if event publishing fails
             pass
@@ -521,18 +526,6 @@ class BugninjaAgentBase(Agent, ABC):
                 browser_state_summary=browser_state_summary, model_output=model_output
             )
 
-            # Publish step completion event
-            if self.event_manager and self.run_id:
-                current_url = await self._get_current_url()
-
-                await self._publish_run_event(
-                    EventType.STEP_COMPLETED,
-                    {
-                        "step_number": self.state.n_steps,
-                        "current_url": current_url,
-                    },
-                )
-
         except InterruptedError:
             # logger.debug('Agent paused')
             self.state.last_result = [
@@ -643,25 +636,33 @@ class BugninjaAgentBase(Agent, ABC):
                 action_data = action.model_dump(exclude_unset=True)
                 action_name = next(iter(action_data.keys())) if action_data else "unknown"
                 logger.info(f"☑️ Executed action {i + 1}/{len(actions)}: {action_name}")
+
+                # Associate action with extended action
+                self._associate_action_with_extended_action(action, i)
+
+                # rich_print("Agent last brainstate:")
+                # rich_print(list(self.agent_brain_states.items())[-1])
+
+                # rich_print("Current step action data:")
+                # rich_print(self.current_step_extended_actions[i])
+
+                brain_state_id: str
+                brain_state: AgentBrain
+                brain_state_id, brain_state = list(self.agent_brain_states.items())[-1]
+
+                # Publish action completion event
+                if self.event_manager and self.run_id:
+                    await self._publish_action_event(
+                        brain_state_id=brain_state_id,
+                        actual_brain_state=brain_state,
+                        action_result_data=self.current_step_extended_actions[i],
+                    )
+
                 if results[-1].is_done or results[-1].error or i == len(actions) - 1:
                     break
 
                 await asyncio.sleep(self.browser_profile.wait_between_actions)
                 # hash all elements. if it is a subset of cached_state its fine - else break (new elements on page)
-
-                # Associate action with extended action
-                self._associate_action_with_extended_action(action, i)
-
-                # Publish action completion event
-                if self.event_manager and self.run_id:
-                    await self._publish_run_event(
-                        EventType.ACTION_COMPLETED,
-                        {
-                            "action_index": i,
-                            "action_data": action_data,
-                            "success": not result.error if hasattr(result, "error") else True,
-                        },
-                    )
 
             except asyncio.CancelledError:
                 # Gracefully handle task cancellation

@@ -45,7 +45,6 @@ from bugninja.schemas.pipeline import Traversal
 
 from .task_manager import TaskInfo
 
-
 console = Console()
 logger = logging.getLogger(__name__)
 

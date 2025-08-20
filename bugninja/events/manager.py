@@ -3,13 +3,16 @@ Thread-safe manager for multiple event publishers.
 """
 
 import asyncio
-from datetime import UTC, datetime
 from threading import Lock
 from typing import Any, Dict, List, Optional
 
+from browser_use.agent.views import AgentBrain  # type: ignore
+
+from bugninja.schemas.pipeline import BugninjaExtendedAction
+
 from .base import EventPublisher
 from .exceptions import PublisherUnavailableError
-from .models import RunEvent, RunState
+from .models import RunState
 
 
 class EventPublisherManager:
@@ -132,26 +135,29 @@ class EventPublisherManager:
         with self._lock:
             self._run_publishers.pop(run_id, None)
 
-    async def publish_event(self, run_id: str, event_type: str, data: Dict[str, Any]) -> None:
-        """Publish event across all publishers for this run.
+    async def publish_action_event(
+        self,
+        run_id: str,
+        brain_state_id: str,
+        actual_brain_state: AgentBrain,
+        action_result_data: BugninjaExtendedAction,
+    ) -> None:
 
-        Args:
-            run_id: ID of the run
-            event_type: Type of event
-            data: Event data
-        """
         with self._lock:
             publishers = self._run_publishers.get(run_id, [])
-
-        event = RunEvent(
-            run_id=run_id, event_type=event_type, timestamp=datetime.now(UTC), data=data
-        )
 
         # Publish event to all publishers for this run
         tasks = []
         for publisher in publishers:
             if publisher.is_available():
-                tasks.append(publisher.publish_event(event))
+                tasks.append(
+                    publisher.publish_action_event(
+                        run_id=run_id,
+                        brain_state_id=brain_state_id,
+                        actual_brain_state=actual_brain_state,
+                        action_result_data=action_result_data,
+                    )
+                )
 
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)

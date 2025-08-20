@@ -5,7 +5,16 @@ import logging
 import sys
 from abc import ABC
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple, Union
+from typing import (
+    Any,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+)
 
 from browser_use import BrowserProfile, BrowserSession  # type: ignore
 from browser_use.agent.views import AgentBrain  # type: ignore

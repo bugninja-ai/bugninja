@@ -633,7 +633,6 @@ class BugninjaClient:
             )
 
             browser_session = BrowserSession(browser_profile=browser_profile)
-            await browser_session.start()
             self._active_sessions.append(browser_session)
 
             # Create LLM with configured temperature

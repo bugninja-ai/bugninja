@@ -7,22 +7,17 @@ browser automation tasks with proper configuration and error handling.
 
 import asyncio
 import os
-import uuid
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 from faker import Faker
-from rich.console import Console
-from rich.text import Text
 
 # Import the new high-level API
 from bugninja.api import BugninjaClient, BugninjaTask, BugninjaTaskResult
 from bugninja.api.models import BugninjaConfig
 from bugninja.config import ConfigurationFactory
 from bugninja.events import EventPublisherManager
-from bugninja.events.base import EventPublisher
-from bugninja.events.exceptions import PublisherUnavailableError
-from bugninja.events.models import RunEvent, RunState
+from bugninja.events.publishers.rich_terminal_publisher import RichTerminalPublisher
 
 # Initialize faker for generating test data
 fake = Faker()
@@ -32,133 +27,6 @@ load_dotenv()
 
 # Get settings for authentication prompt
 settings = ConfigurationFactory.get_settings()
-
-
-class RichTerminalPublisher(EventPublisher):
-    """Rich terminal-based event publisher with colored output."""
-
-    def __init__(self) -> None:
-        """Initialize the rich terminal publisher."""
-        self.console = Console()
-        self._available = True
-        self.style = "bright_blue"
-
-    def is_available(self) -> bool:
-        """Check if rich terminal publisher is available (always True)."""
-        return self._available
-
-    async def initialize_run(
-        self, run_type: str, metadata: Dict[str, Any], existing_run_id: Optional[str] = None
-    ) -> str:
-        """Initialize a run with rich terminal output.
-
-        Args:
-            run_type (str): Type of run
-            metadata (Dict[str, Any]): Run metadata
-            existing_run_id (Optional[str]): Existing run ID for compatibility reasons, but not used in any way
-
-        Returns:
-            str: Generated run ID
-
-        Raises:
-            PublisherUnavailableError: If publisher is not available for any reason
-        """
-        if not self.is_available():
-            raise PublisherUnavailableError("Rich terminal publisher is not available")
-
-        run_id = f"rich_run_{uuid.uuid4().hex[:8]}"
-
-        # Create blue colored message
-        message = Text("🚀 Starting navigation run", style=self.style)
-        self.console.print(message)
-
-        # Print metadata if available
-        if metadata.get("task_description"):
-            task_msg = Text(
-                f"📋 BugninjaTask: {metadata['task_description'][:100]}...", style=self.style
-            )
-            self.console.print(task_msg)
-
-        return run_id
-
-    async def update_run_state(self, run_id: str, state: RunState) -> None:
-        """Update run state with rich terminal output.
-
-        Args:
-            run_id: ID of the run to update
-            state: New state of the run
-
-        Raises:
-            PublisherUnavailableError: If publisher is not available
-        """
-        if not self.is_available():
-            raise PublisherUnavailableError("Rich terminal publisher is not available")
-
-        # Print progress updates in blue
-        if state.current_action:
-            action_msg = Text(f"⚙️ Action: {state.current_action}", style=self.style)
-            self.console.print(action_msg)
-
-    async def complete_run(self, run_id: str, success: bool, error: Optional[str] = None) -> None:
-        """Complete run with rich terminal output.
-
-        Args:
-            run_id: ID of the run to complete
-            success: Whether the run was successful
-            error: Error message if run failed
-
-        Raises:
-            PublisherUnavailableError: If publisher is not available
-        """
-        if not self.is_available():
-            raise PublisherUnavailableError("Rich terminal publisher is not available")
-
-        if success:
-            message = Text("🎉 Navigation completed successfully!", style=self.style)
-        else:
-            message = Text(f"❌ Navigation failed: {error}", style=self.style)
-
-        self.console.print(message)
-
-    async def publish_event(self, event: RunEvent) -> None:
-        """Publish event with rich terminal output.
-
-        Args:
-            event: Event to publish
-
-        Raises:
-            PublisherUnavailableError: If publisher is not available
-        """
-        if not self.is_available():
-            raise PublisherUnavailableError("Rich terminal publisher is not available")
-
-        # Handle different event types with appropriate messages
-        if event.event_type == "step_completed":
-            self.console.print(f"📋 Step completed event:\n{event}", style=self.style)
-
-        elif event.event_type == "action_completed":
-            self.console.print(f"✅ Action completed event:\n{event}", style=self.style)
-
-        elif event.event_type == "healing_started":
-            message = Text("🩹 Starting healing process...", style=self.style)
-            self.console.print(message)
-
-        elif event.event_type == "run_completed":
-            success = event.data.get("success", True)
-            healing_used = event.data.get("healing_used", False)
-            if success:
-                if healing_used:
-                    message = Text("🎉 Navigation completed with healing!", style=self.style)
-                else:
-                    message = Text("🎉 Navigation completed successfully!", style=self.style)
-            else:
-                message = Text("❌ Navigation failed", style=self.style)
-            self.console.print(message)
-
-        elif event.event_type == "run_failed":
-            error = event.data.get("error", "Unknown error")
-            message = Text(f"❌ Navigation failed: {error}", style=self.style)
-            self.console.print(message)
 
 
 async def run_task_with_client(
@@ -183,7 +51,10 @@ async def run_task_with_client(
     event_manager = EventPublisherManager([rich_publisher])
 
     # Create client with event manager
-    client = BugninjaClient(event_manager=event_manager, config=BugninjaConfig(headless=False))
+    client = BugninjaClient(
+        event_manager=event_manager,
+        config=BugninjaConfig(headless=False, viewport_height=800, viewport_width=1200),
+    )
 
     try:
         # Create task with all necessary parameters

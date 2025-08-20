@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 from bugninja.api import BugninjaClient, BugninjaTaskResult
+from bugninja.api.models import BugninjaConfig
 
 
 async def replay_latest_session() -> BugninjaTaskResult:
@@ -21,7 +22,9 @@ async def replay_latest_session() -> BugninjaTaskResult:
         BugninjaTaskResult containing replay status and metadata
     """
     # Create client with default configuration
-    client = BugninjaClient()
+    client = BugninjaClient(
+        config=BugninjaConfig(headless=False, viewport_height=800, viewport_width=1200)
+    )
 
     try:
         # Find the most recent traversal file

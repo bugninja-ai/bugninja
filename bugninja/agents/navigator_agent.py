@@ -2,10 +2,9 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from browser_use.agent.views import (  # type: ignore
-    AgentBrain,
     AgentOutput,
 )
 from browser_use.browser.session import Page  # type: ignore
@@ -17,7 +16,6 @@ from bugninja.agents.bugninja_agent_base import BugninjaAgentBase
 from bugninja.agents.extensions import BugninjaController, extend_agent_action_with_info
 from bugninja.schemas.pipeline import (
     BugninjaBrowserConfig,
-    BugninjaExtendedAction,
     Traversal,
 )
 from bugninja.utils.screenshot_manager import ScreenshotManager
@@ -99,8 +97,6 @@ class NavigatorAgent(BugninjaAgentBase):
                 "info", f"🔒 Using isolated browser directory: {isolated_dir}"
             )
 
-        self.agent_taken_actions: List[BugninjaExtendedAction] = []
-        self.agent_brain_states: Dict[str, AgentBrain] = {}
         self._traversal: Optional[Traversal] = None  # Store traversal after successful run
 
         #! we override the default controller with our own
