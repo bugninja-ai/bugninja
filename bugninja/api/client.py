@@ -630,6 +630,7 @@ class BugninjaClient:
                 strict_selectors=self.config.strict_selectors,
                 allowed_domains=task.allowed_domains,
                 user_data_dir=self.config.user_data_dir,
+                args=["--no-sandbox", "--disable-setuid-sandbox"],
             )
 
             browser_session = BrowserSession(browser_profile=browser_profile)
@@ -768,6 +769,7 @@ class BugninjaClient:
                     strict_selectors=self.config.strict_selectors,
                     allowed_domains=task.allowed_domains,
                     user_data_dir=self.config.user_data_dir,  # Default, will be overridden in agent
+                    args=["--no-sandbox", "--disable-setuid-sandbox"],
                 )
 
                 browser_session = BrowserSession(browser_profile=browser_profile)

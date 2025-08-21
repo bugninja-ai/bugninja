@@ -160,6 +160,7 @@ class ReplicatorNavigator(ABC):
             storage_state=None,
             # Apply browser configuration if available
             **self.replay_traversal.browser_config.model_dump(exclude_none=True),
+            args=["--no-sandbox", "--disable-setuid-sandbox"],
         )
 
         # Override user_data_dir with run_id for browser isolation
