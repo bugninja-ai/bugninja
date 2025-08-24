@@ -36,7 +36,10 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+from browser_use import BrowserProfile, BrowserSession  # type: ignore
 from browser_use.browser.profile import BROWSERUSE_PROFILES_DIR  # type: ignore
+from cuid2 import Cuid as CUID
+from playwright._impl._api_structures import ViewportSize
 from pydantic import BaseModel, Field, field_validator
 
 from bugninja.schemas.pipeline import Traversal
@@ -108,7 +111,9 @@ class BugninjaTask(BaseModel):
         ```
     """
 
-    run_id: Optional[str] = Field(default=None, description="Unique identifier for the task run")
+    run_id: str = Field(
+        default_factory=lambda: CUID().generate(), description="Unique identifier for the task run"
+    )
 
     description: str = Field(
         ...,
@@ -374,7 +379,7 @@ class BugninjaConfig(BaseModel):
     Attributes:
         llm_provider (str): LLM provider to use (default: "azure_openai")
         llm_model (str): LLM model to use (default: "gpt-4.1")
-        llm_temperature (float): Temperature for LLM responses (0.0-2.0, default: 0.001)
+        llm_temperature (float): Temperature for LLM responses (0.0-2.0, default: 0.0)
         headless (bool): Run browser in headless mode (default: False)
         viewport_width (int): Browser viewport width (800-3840, default: 1280)
         viewport_height (int): Browser viewport height (600-2160, default: 960)
@@ -419,7 +424,7 @@ class BugninjaConfig(BaseModel):
     llm_model: str = Field(default="gpt-4.1", description="LLM model to use")
 
     llm_temperature: float = Field(
-        default=0.001, ge=0.0, le=2.0, description="Temperature for LLM responses"
+        default=0.0, ge=0.0, le=2.0, description="Temperature for LLM responses"
     )
 
     # Provider-specific LLM configuration
@@ -502,6 +507,29 @@ class BugninjaConfig(BaseModel):
                 "strict_selectors": True,
             }
         }
+
+    def build_bugninja_session_from_config_for_run(self, run_id: str) -> BrowserSession:
+
+        # Override user_data_dir with run_id for browser isolation
+        base_dir = self.user_data_dir or Path("./data_dir")
+        if isinstance(base_dir, str):
+            base_dir = Path(base_dir)
+        isolated_dir = base_dir / f"run_{run_id}"
+
+        viewport = ViewportSize(width=self.viewport_width, height=self.viewport_height)
+
+        return BrowserSession(
+            browser_profile=BrowserProfile(
+                headless=self.headless,
+                viewport=viewport,
+                user_agent=self.user_agent,
+                strict_selectors=self.strict_selectors,
+                user_data_dir=isolated_dir,
+                args=["--no-sandbox", "--disable-setuid-sandbox"],
+                record_video_dir="./recordings",  # Directory to save .webm video files
+                record_video_size=viewport,
+            )
+        )
 
 
 class SessionInfo(BaseModel):

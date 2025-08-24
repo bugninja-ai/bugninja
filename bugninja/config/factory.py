@@ -5,6 +5,7 @@ This module provides a factory pattern for creating and managing configuration
 instances with TOML-based configuration and singleton behavior.
 """
 
+import os
 from typing import Any, Dict, Optional
 
 from bugninja.config.settings import BugninjaSettings, LLMProvider
@@ -126,27 +127,17 @@ class ConfigurationFactory:
                 pydantic_config[field_name] = value
 
         # Add environment variable fallbacks for base URLs
-        import os
+        config_name_env_var_assoc: Dict[str, str] = {
+            "openai_base_url": "OPENAI_BASE_URL",
+            "anthropic_base_url": "ANTHROPIC_BASE_URL",
+            "google_base_url": "GOOGLE_BASE_URL",
+            "deepseek_base_url": "DEEPSEEK_BASE_URL",
+            "ollama_base_url": "OLLAMA_BASE_URL",
+        }
 
-        # OpenAI base URL fallback
-        if "openai_base_url" not in pydantic_config and os.getenv("OPENAI_BASE_URL"):
-            pydantic_config["openai_base_url"] = os.getenv("OPENAI_BASE_URL")
-
-        # Anthropic base URL fallback
-        if "anthropic_base_url" not in pydantic_config and os.getenv("ANTHROPIC_BASE_URL"):
-            pydantic_config["anthropic_base_url"] = os.getenv("ANTHROPIC_BASE_URL")
-
-        # Google base URL fallback
-        if "google_base_url" not in pydantic_config and os.getenv("GOOGLE_BASE_URL"):
-            pydantic_config["google_base_url"] = os.getenv("GOOGLE_BASE_URL")
-
-        # DeepSeek base URL fallback
-        if "deepseek_base_url" not in pydantic_config and os.getenv("DEEPSEEK_BASE_URL"):
-            pydantic_config["deepseek_base_url"] = os.getenv("DEEPSEEK_BASE_URL")
-
-        # Ollama base URL fallback
-        if "ollama_base_url" not in pydantic_config and os.getenv("OLLAMA_BASE_URL"):
-            pydantic_config["ollama_base_url"] = os.getenv("OLLAMA_BASE_URL")
+        for config_name, env_Var_name in config_name_env_var_assoc.items():
+            if config_name not in pydantic_config and os.getenv(env_Var_name):
+                pydantic_config[config_name] = os.getenv(env_Var_name)
 
         return pydantic_config
 

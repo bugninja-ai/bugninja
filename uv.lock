@@ -217,6 +217,7 @@ dependencies = [
     { name = "lxml" },
     { name = "mypy" },
     { name = "openai" },
+    { name = "pillow" },
     { name = "polyfactory" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -231,6 +232,7 @@ dependencies = [
     { name = "tomli" },
     { name = "typer" },
     { name = "types-lxml" },
+    { name = "types-pillow" },
     { name = "uvloop" },
 ]
 
@@ -249,6 +251,7 @@ requires-dist = [
     { name = "lxml", specifier = "==5.4.0" },
     { name = "mypy", specifier = "==1.16.0" },
     { name = "openai", specifier = "==1.84.0" },
+    { name = "pillow", specifier = "==11.3.0" },
     { name = "polyfactory", specifier = "==2.22.0" },
     { name = "pydantic", specifier = "==2.10.6" },
     { name = "pydantic-settings", specifier = ">=2.10.1" },
@@ -263,6 +266,7 @@ requires-dist = [
     { name = "tomli", specifier = ">=2.2.1" },
     { name = "typer", specifier = ">=0.16.0" },
     { name = "types-lxml", specifier = "==2025.3.30" },
+    { name = "types-pillow", specifier = "==10.2.0.20240822" },
     { name = "uvloop", specifier = ">=0.21.0" },
 ]
 
@@ -5771,6 +5775,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/84/01/9e45ccd26ca36982ef505174a6e5f661abb68565fa27c77d2e56a3f0e9f5/types_lxml-2025.3.30.tar.gz", hash = "sha256:ea4da0d2b61a73e114e14e2dcca1f62671182d80016a483369c553a24ba8f163", size = 152963 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0d/a4/97b5427717f6499bdc093228b695e7ff8a2972c9e47e2492c30a21cc85e0/types_lxml-2025.3.30-py3-none-any.whl", hash = "sha256:310b0ddf9e2104c8684362445808adf8a2cf41cf102d4ea0d16ced413cc46f66", size = 93216 },
+]
+
+[[package]]
+name = "types-pillow"
+version = "10.2.0.20240822"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/18/4a/4495264dddaa600d65d68bcedb64dcccf9d9da61adff51f7d2ffd8e4c9ce/types-Pillow-10.2.0.20240822.tar.gz", hash = "sha256:559fb52a2ef991c326e4a0d20accb3bb63a7ba8d40eb493e0ecb0310ba52f0d3", size = 35389 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/66/23/e81a5354859831fcf54d488d33b80ba6133ea84f874a9c0ec40a4881e133/types_Pillow-10.2.0.20240822-py3-none-any.whl", hash = "sha256:d9dab025aba07aeb12fd50a6799d4eac52a9603488eca09d7662543983f16c5d", size = 54354 },
 ]
 
 [[package]]

@@ -24,11 +24,9 @@ from typing import Any, Dict, List, Optional, Union
 
 from browser_use import (  # type: ignore[import-untyped]
     AgentHistoryList,
-    BrowserProfile,
     BrowserSession,
 )
 from langchain_core.language_models.chat_models import BaseChatModel
-from playwright._impl._api_structures import ViewportSize
 
 from bugninja.agents import NavigatorAgent
 from bugninja.api.exceptions import (
@@ -620,20 +618,9 @@ class BugninjaClient:
                     "BugninjaTask description cannot be empty", field_name="description"
                 )
 
-            # Create browser session with configured settings
-            browser_profile = BrowserProfile(
-                headless=self.config.headless,
-                viewport=ViewportSize(
-                    width=self.config.viewport_width, height=self.config.viewport_height
-                ),
-                user_agent=self.config.user_agent,
-                strict_selectors=self.config.strict_selectors,
-                allowed_domains=task.allowed_domains,
-                user_data_dir=self.config.user_data_dir,
-                args=["--no-sandbox", "--disable-setuid-sandbox"],
-            )
-
-            browser_session = BrowserSession(browser_profile=browser_profile)
+            browser_session = self.config.build_bugninja_session_from_config_for_run(task.run_id)
+            # TODO! this is extremely ugly and a strong antipattern, but it works for now, has to get rid of it later
+            browser_session.browser_profile.allowed_domains = task.allowed_domains
             self._active_sessions.append(browser_session)
 
             # Create LLM with configured temperature
@@ -760,19 +747,12 @@ class BugninjaClient:
                     )
 
                 # Create browser session with configured settings (isolation handled in agent)
-                browser_profile = BrowserProfile(
-                    headless=self.config.headless,
-                    viewport=ViewportSize(
-                        width=self.config.viewport_width, height=self.config.viewport_height
-                    ),
-                    user_agent=self.config.user_agent,
-                    strict_selectors=self.config.strict_selectors,
-                    allowed_domains=task.allowed_domains,
-                    user_data_dir=self.config.user_data_dir,  # Default, will be overridden in agent
-                    args=["--no-sandbox", "--disable-setuid-sandbox"],
+                browser_session = self.config.build_bugninja_session_from_config_for_run(
+                    run_id=task.run_id
                 )
 
-                browser_session = BrowserSession(browser_profile=browser_profile)
+                # TODO! this is extremely ugly and a strong antipattern, but it works for now, has to get rid of it later
+                browser_session.browser_profile.allowed_domains = task.allowed_domains
                 self._active_sessions.append(browser_session)
 
                 # Create agent (isolation happens in _before_run_hook)

@@ -5,12 +5,12 @@ This module provides unified functions for creating LLM models,
 eliminating duplication across provider-specific creation functions.
 """
 
-from typing import Any, Dict, Optional
+from typing import Optional
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from bugninja.config.factory import ConfigurationFactory
-from bugninja.config.llm_config import LLMConfig, ModelRegistry
+from bugninja.config.llm_config import LLMConfig
 from bugninja.config.llm_factory import BaseLLMFactory
 from bugninja.config.settings import BugninjaSettings, LLMProvider
 
@@ -84,37 +84,6 @@ def create_provider_model_from_settings(
     )
 
 
-# Convenience functions for backward compatibility
-def azure_openai_model(temperature: Optional[float] = None) -> BaseChatModel:
-    """Create Azure OpenAI model with configuration."""
-    return create_provider_model(LLMProvider.AZURE_OPENAI, temperature)
-
-
-def openai_model(temperature: Optional[float] = None) -> BaseChatModel:
-    """Create OpenAI model with configuration."""
-    return create_provider_model(LLMProvider.OPENAI, temperature)
-
-
-def anthropic_model(temperature: Optional[float] = None) -> BaseChatModel:
-    """Create Anthropic model with configuration."""
-    return create_provider_model(LLMProvider.ANTHROPIC, temperature)
-
-
-def google_gemini_model(temperature: Optional[float] = None) -> BaseChatModel:
-    """Create Google Gemini model with configuration."""
-    return create_provider_model(LLMProvider.GOOGLE_GEMINI, temperature)
-
-
-def deepseek_model(temperature: Optional[float] = None) -> BaseChatModel:
-    """Create DeepSeek model with configuration."""
-    return create_provider_model(LLMProvider.DEEPSEEK, temperature)
-
-
-def ollama_model(temperature: Optional[float] = None) -> BaseChatModel:
-    """Create Ollama model with configuration."""
-    return create_provider_model(LLMProvider.OLLAMA, temperature)
-
-
 def create_llm_model_from_config(config: LLMConfig) -> BaseChatModel:
     """Create LLM model from unified configuration.
 
@@ -145,18 +114,3 @@ def create_llm_config_from_settings() -> LLMConfig:
 
     settings = ConfigurationFactory.get_settings()
     return LLMConfig.create_default(settings.llm_provider)
-
-
-def get_provider_info(provider: LLMProvider) -> Dict[str, Any]:
-    """Get detailed information about a provider.
-
-    Args:
-        provider: LLM provider to get info for
-
-    Returns:
-        Dictionary with provider information
-
-    Raises:
-        ValueError: If provider is not supported
-    """
-    return ModelRegistry.get_provider_info(provider)

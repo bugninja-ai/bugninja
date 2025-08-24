@@ -302,7 +302,7 @@ def get_default_config_template(project_name: str, **overrides: Dict[str, Any]) 
         "llm": {
             "provider": "azure_openai",
             "model": "gpt-4.1",
-            "temperature": 0.001,
+            "temperature": 0.0,
         },
         "llm_azure_openai": {
             "api_version": "2024-02-15-preview",

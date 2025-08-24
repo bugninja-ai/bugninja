@@ -154,6 +154,8 @@ class ReplicatorNavigator(ABC):
         # Generate run_id for browser isolation
         self.run_id = CUID().generate()
 
+        # TODO! this is also a horrible antipattern here, the handling of the browser session should be decoupled from the navigator
+
         # Create browser session with isolation
         browser_profile = BrowserProfile(
             # ? these None settings are necessary in order for every new run to be perfectly independent and clean
@@ -161,6 +163,7 @@ class ReplicatorNavigator(ABC):
             # Apply browser configuration if available
             **self.replay_traversal.browser_config.model_dump(exclude_none=True),
             args=["--no-sandbox", "--disable-setuid-sandbox"],
+            record_video_dir="./recordings",  # Directory to save .webm video files
         )
 
         # Override user_data_dir with run_id for browser isolation
