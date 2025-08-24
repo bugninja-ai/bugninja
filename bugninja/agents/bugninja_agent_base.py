@@ -30,8 +30,10 @@ from bugninja.config import (
     create_provider_model_from_settings,
 )
 from bugninja.config.llm_config import LLMConfig
+from bugninja.config.video_recording import VideoRecordingConfig
 from bugninja.events import EventPublisherManager
 from bugninja.schemas.pipeline import BugninjaExtendedAction
+from bugninja.utils.video_recording_manager import VideoRecordingManager
 
 
 def hook_missing_error(hook_name: str, class_val: type) -> NotImplementedError:
@@ -99,13 +101,19 @@ class BugninjaAgentBase(Agent, ABC):
     """
 
     def __init__(  # type:ignore
-        self, *args, run_id: Optional[str] = None, background: bool = False, **kwargs  # type:ignore
+        self,
+        *args,
+        run_id: Optional[str] = None,
+        background: bool = False,
+        video_recording_config: Optional[VideoRecordingConfig] = None,
+        **kwargs,  # type:ignore
     ) -> None:
         """Initialize BugninjaAgentBase with extended functionality.
 
         Args:
             *args: Arguments passed to the parent Agent class
             background (bool): Whether to run in background mode (disables console logging)
+            video_recording_config (Optional[VideoRecordingConfig]): Video recording configuration
             **kwargs: Keyword arguments passed to the parent Agent class
         """
         super().__init__(*args, **kwargs)
@@ -124,6 +132,14 @@ class BugninjaAgentBase(Agent, ABC):
 
         # Initialize event publisher manager (explicitly passed)
         self.event_manager: Optional[EventPublisherManager] = None
+
+        # Initialize video recording manager if enabled
+        self.video_recording_config = video_recording_config
+        self.video_recording_manager: Optional[VideoRecordingManager] = None
+        if video_recording_config and video_recording_config.enabled:
+            self.video_recording_manager = VideoRecordingManager(
+                self.run_id, video_recording_config
+            )
 
         self.agent_taken_actions: List[BugninjaExtendedAction] = []
         self.agent_brain_states: Dict[str, AgentBrain] = {}

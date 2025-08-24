@@ -635,6 +635,7 @@ class BugninjaClient:
                 sensitive_data=task.secrets,
                 extend_planner_system_message=AUTHENTICATION_HANDLING_EXTRA_PROMPT,
                 background=self.background,
+                video_recording_config=self.config.video_recording,
             )
 
             # Set event manager if available
@@ -764,6 +765,7 @@ class BugninjaClient:
                     sensitive_data=task.secrets,
                     extend_planner_system_message=AUTHENTICATION_HANDLING_EXTRA_PROMPT,
                     background=self.background,
+                    video_recording_config=self.config.video_recording,
                 )
 
                 # Set event manager if available

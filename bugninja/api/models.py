@@ -42,6 +42,7 @@ from cuid2 import Cuid as CUID
 from playwright._impl._api_structures import ViewportSize
 from pydantic import BaseModel, Field, field_validator
 
+from bugninja.config.video_recording import VideoRecordingConfig
 from bugninja.schemas.pipeline import Traversal
 
 
@@ -393,6 +394,7 @@ class BugninjaConfig(BaseModel):
         verbose_logging (bool): Enable verbose logging (default: False)
         screenshots_dir (Path): Directory for storing screenshots (default: "./screenshots")
         traversals_dir (Path): Directory for storing traversal files (default: "./traversals")
+        video_recording (VideoRecordingConfig): Video recording configuration (default: disabled)
 
     Example:
         ```python
@@ -478,6 +480,12 @@ class BugninjaConfig(BaseModel):
         default=Path("./traversals"), description="Directory for storing traversal files"
     )
 
+    # Video Recording Configuration
+    video_recording: VideoRecordingConfig = Field(
+        default_factory=VideoRecordingConfig,
+        description="Video recording configuration for navigation sessions",
+    )
+
     @field_validator("screenshots_dir", "traversals_dir", "user_data_dir")
     @classmethod
     def create_directories_if_not_exist(cls, v: Path) -> Path:
@@ -491,6 +499,22 @@ class BugninjaConfig(BaseModel):
         """
         if v is not None:
             v.mkdir(parents=True, exist_ok=True)
+        return v
+
+    @field_validator("video_recording")
+    @classmethod
+    def validate_video_recording_config(cls, v: VideoRecordingConfig) -> VideoRecordingConfig:
+        """Validate and create video recording directory if enabled.
+
+        Args:
+            v (VideoRecordingConfig): The video recording configuration to validate
+
+        Returns:
+            VideoRecordingConfig: The validated configuration
+        """
+        if v.enabled:
+            # Create video recording directory if it doesn't exist
+            Path(v.output_dir).mkdir(parents=True, exist_ok=True)
         return v
 
     class Config:
@@ -526,8 +550,6 @@ class BugninjaConfig(BaseModel):
                 strict_selectors=self.strict_selectors,
                 user_data_dir=isolated_dir,
                 args=["--no-sandbox", "--disable-setuid-sandbox"],
-                record_video_dir="./recordings",  # Directory to save .webm video files
-                record_video_size=viewport,
             )
         )
 

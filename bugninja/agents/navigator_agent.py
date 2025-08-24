@@ -1,9 +1,13 @@
+import asyncio
+import base64
 import json
 import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+import cv2
+import numpy as np
 from browser_use.agent.views import (  # type: ignore
     AgentOutput,
 )
@@ -11,6 +15,7 @@ from browser_use.browser.session import Page  # type: ignore
 from browser_use.browser.views import BrowserStateSummary  # type: ignore
 from browser_use.controller.registry.views import ActionModel  # type: ignore
 from cuid2 import Cuid as CUID
+from playwright.async_api import CDPSession
 
 from bugninja.agents.bugninja_agent_base import BugninjaAgentBase
 from bugninja.agents.extensions import BugninjaController, extend_agent_action_with_info
@@ -82,6 +87,7 @@ class NavigatorAgent(BugninjaAgentBase):
         - initializing event tracking for navigation operations
         - logging the start of the navigation session
         - setting up browser isolation using run_id
+        - setting up video recording if enabled
         """
         self._log_if_not_background("info", "🏁 BEFORE-Run hook called")
 
@@ -105,6 +111,8 @@ class NavigatorAgent(BugninjaAgentBase):
         # Initialize screenshot manager
         self.screenshot_manager = ScreenshotManager(run_id=self.run_id, folder_prefix="traversal")
 
+        # Setup video recording if enabled
+
         # Initialize event tracking for navigation run (if event_manager is provided)
         if self.event_manager and self.event_manager.has_publishers():
             try:
@@ -127,12 +135,21 @@ class NavigatorAgent(BugninjaAgentBase):
         - saving all agent actions and brain states
         - creating a complete traversal object
         - completing event tracking for navigation operations
+        - stopping video recording if enabled
         - logging completion status for monitoring
 
         The hook ensures that all navigation data is properly serialized
         for later replay and analysis.
         """
         self._log_if_not_background("info", "✅ AFTER-Run hook called")
+
+        # Stop video recording if enabled
+        if self.video_recording_manager:
+            stats = await self.video_recording_manager.stop_recording()
+            self._log_if_not_background(
+                "info", f"🎥 Stopped video recording. Frames processed: {stats['frames_processed']}"
+            )
+
         # Save agent actions and store traversal
         self._traversal = self.save_agent_actions()
 
@@ -161,6 +178,7 @@ class NavigatorAgent(BugninjaAgentBase):
         - generates extended actions with DOM element information
         - associates actions with their extended versions
         - stores actions for later serialization and analysis
+        - initializes video recording on the first step
 
         Args:
             browser_state_summary (BrowserStateSummary): Current browser state information
@@ -168,11 +186,50 @@ class NavigatorAgent(BugninjaAgentBase):
         """
         self._log_if_not_background("info", "🪝 BEFORE-Step hook called")
 
+        current_page: Page = await self.browser_session.get_current_page()
+
+        # Initialize video recording on the first step only
+        if not hasattr(self, "_video_recording_initialized"):
+            self._video_recording_initialized = False
+
+        if not self._video_recording_initialized:
+            if (
+                self.video_recording_manager
+                and self.video_recording_config
+                and self.browser_session.browser_context
+            ):
+                cdp_session = await self.browser_session.browser_context.new_cdp_session(current_page)  # type: ignore
+
+                # Start video recording
+                output_file = f"run_{self.run_id}"
+                await self.video_recording_manager.start_recording(output_file, cdp_session)
+
+                # Setup CDP screencast
+                await cdp_session.send(
+                    "Page.startScreencast",
+                    {
+                        "format": "jpeg",
+                        "quality": self.video_recording_config.quality,
+                        "maxWidth": self.video_recording_config.width,
+                        "maxHeight": self.video_recording_config.height,
+                        "everyNthFrame": 1,
+                    },
+                )
+
+                # Setup frame handler
+                cdp_session.on(
+                    "Page.screencastFrame",
+                    lambda frame: asyncio.create_task(
+                        self._handle_screencast_frame(frame, cdp_session)
+                    ),
+                )
+
+                self._video_recording_initialized = True
+                self._log_if_not_background("info", f"🎥 Started video recording: {output_file}")
+
         # ? we create the brain state here since a single thought can belong to multiple actions
         brain_state_id: str = CUID().generate()
         self.agent_brain_states[brain_state_id] = model_output.current_state
-
-        current_page: Page = await self.browser_session.get_current_page()
 
         #! generating the alternative CSS and XPath selectors should happen BEFORE the actions are completed
         extended_taken_actions = await extend_agent_action_with_info(
@@ -344,3 +401,29 @@ class NavigatorAgent(BugninjaAgentBase):
             )
 
         return traversal
+
+    async def _handle_screencast_frame(
+        self, frame: dict[str, Any], cdp_session: CDPSession
+    ) -> None:
+        """Handle incoming screencast frames for video recording.
+
+        Args:
+            frame: CDP screencast frame data
+            cdp_session: CDP session for acknowledgment
+        """
+        if self.video_recording_manager and self.video_recording_config:
+            try:
+                img_data: bytes = base64.b64decode(frame["data"])
+                arr: np.ndarray = np.frombuffer(img_data, np.uint8)  # type: ignore
+                img: Optional[np.ndarray] = cv2.imdecode(arr, cv2.IMREAD_COLOR)  # type: ignore
+
+                if img is not None:
+                    img = cv2.resize(
+                        img, (self.video_recording_config.width, self.video_recording_config.height)
+                    )
+                    frame_bytes: bytes = img.tobytes()
+                    await self.video_recording_manager.add_frame(frame_bytes)
+            except Exception:
+                pass
+            finally:
+                await cdp_session.send("Page.screencastFrameAck", {"sessionId": frame["sessionId"]})

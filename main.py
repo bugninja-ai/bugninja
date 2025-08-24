@@ -16,6 +16,7 @@ from faker import Faker
 from bugninja.api import BugninjaClient, BugninjaTask, BugninjaTaskResult
 from bugninja.api.models import BugninjaConfig
 from bugninja.config import ConfigurationFactory
+from bugninja.config.video_recording import VideoRecordingConfig
 from bugninja.events import EventPublisherManager
 from bugninja.events.publishers.rich_terminal_publisher import RichTerminalPublisher
 
@@ -53,7 +54,12 @@ async def run_task_with_client(
     # Create client with event manager
     client = BugninjaClient(
         event_manager=event_manager,
-        config=BugninjaConfig(headless=False, viewport_height=800, viewport_width=1200),
+        config=BugninjaConfig(
+            headless=False,
+            viewport_height=800,
+            viewport_width=1200,
+            video_recording=VideoRecordingConfig(enabled=True),
+        ),
     )
 
     try:
