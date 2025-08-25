@@ -16,9 +16,11 @@ from faker import Faker
 from bugninja.api import BugninjaClient, BugninjaTask, BugninjaTaskResult
 from bugninja.api.models import BugninjaConfig
 from bugninja.config import ConfigurationFactory
-from bugninja.config.video_recording import VideoRecordingConfig
 from bugninja.events import EventPublisherManager
 from bugninja.events.publishers.rich_terminal_publisher import RichTerminalPublisher
+
+os.environ["BROWSER_USE_LOGGING_LEVEL"] = "critical"
+
 
 # Initialize faker for generating test data
 fake = Faker()
@@ -58,7 +60,8 @@ async def run_task_with_client(
             headless=False,
             viewport_height=800,
             viewport_width=1200,
-            video_recording=VideoRecordingConfig(enabled=True),
+            # TODO! temporal disable
+            # video_recording=VideoRecordingConfig(),
         ),
     )
 

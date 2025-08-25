@@ -52,6 +52,13 @@ console = Console()
     help="Run browser in headless mode (default: True)",
 )
 @click.option(
+    "--enable-logging",
+    is_flag=False,
+    flag_value=True,
+    default=False,
+    help="Enable Bugninja logging (true/false)",
+)
+@click.option(
     "--info",
     is_flag=True,
     help="Show project information before running",
@@ -62,6 +69,7 @@ def run(
     task: str,
     multiple: List[str],
     headless: bool,
+    enable_logging: bool,
     info: bool,
     project_root: Path,
 ) -> None:
@@ -110,7 +118,9 @@ def run(
 
     async def run_tasks() -> None:
         """Async function to run tasks."""
-        async with TaskExecutor(project_root, headless=headless) as executor:
+        async with TaskExecutor(
+            project_root, headless=headless, enable_logging=enable_logging
+        ) as executor:
             if all_flag:
                 await _run_all_tasks(executor, task_manager, headless)
             elif task:

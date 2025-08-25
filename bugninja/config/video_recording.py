@@ -4,7 +4,6 @@ from pydantic import BaseModel, Field
 class VideoRecordingConfig(BaseModel):
     """Configuration for video recording functionality."""
 
-    enabled: bool = Field(default=False, description="Enable video recording")
     width: int = Field(default=1920, description="Video width in pixels")
     height: int = Field(default=1080, description="Video height in pixels")
     fps: int = Field(default=60, description="Target frame rate")

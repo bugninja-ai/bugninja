@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import Optional
 
 from playwright.async_api import CDPSession
@@ -22,6 +23,10 @@ class VideoRecordingManager:
         self.is_recording = False
         self.cdp_session: Optional[CDPSession] = None
         self.output_dir = config.output_dir
+
+        self.config = config
+
+        Path(config.output_dir).mkdir(parents=True, exist_ok=True)
 
     async def start_recording(self, output_file: str, cdp_session: CDPSession) -> None:
         """Start video recording.

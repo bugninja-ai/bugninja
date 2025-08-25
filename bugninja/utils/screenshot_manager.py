@@ -1,4 +1,3 @@
-import logging
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
@@ -7,10 +6,10 @@ from browser_use import BrowserSession  # type: ignore
 from patchright.async_api import Page  # type: ignore
 from PIL import Image, ImageDraw
 
+from bugninja.utils.logging_config import logger
+
 if TYPE_CHECKING:
     from bugninja.schemas.pipeline import BugninjaExtendedAction  # type: ignore
-
-logger = logging.getLogger(__name__)
 
 
 class ScreenshotManager:
@@ -28,7 +27,7 @@ class ScreenshotManager:
         self.screenshots_dir = self._get_screenshots_dir()
         self.screenshots_dir.mkdir(exist_ok=True)
         self.screenshot_counter = 0
-        logger.info(f"📸 Screenshots will be saved to: {self.screenshots_dir}")
+        logger.bugninja_log(f"📸 Screenshots will be saved to: {self.screenshots_dir}")
 
     def _get_screenshots_dir(self) -> Path:
         """Get the screenshots directory for current session"""
@@ -77,7 +76,7 @@ class ScreenshotManager:
         if coordinates:
             self._draw_rectangle_on_screenshot(self.screenshots_dir / filename, coordinates)
 
-        logger.info(f"📸 Screenshot: {filename}")
+        logger.bugninja_log(f"📸 Screenshot: {filename}")
 
         # Return full relative path
         return f"screenshots/{self.screenshots_dir.name}/{filename}"

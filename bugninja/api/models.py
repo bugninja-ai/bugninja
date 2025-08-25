@@ -144,6 +144,10 @@ class BugninjaTask(BaseModel):
         default=None, description="Sensitive data for authentication and task execution"
     )
 
+    extra_rules: List[str] = Field(
+        default_factory=list, description="List of extra rules for navigation"
+    )
+
     @field_validator("description")
     @classmethod
     def validate_description(cls, v: str) -> str:
@@ -499,22 +503,6 @@ class BugninjaConfig(BaseModel):
         """
         if v is not None:
             v.mkdir(parents=True, exist_ok=True)
-        return v
-
-    @field_validator("video_recording")
-    @classmethod
-    def validate_video_recording_config(cls, v: VideoRecordingConfig) -> VideoRecordingConfig:
-        """Validate and create video recording directory if enabled.
-
-        Args:
-            v (VideoRecordingConfig): The video recording configuration to validate
-
-        Returns:
-            VideoRecordingConfig: The validated configuration
-        """
-        if v.enabled:
-            # Create video recording directory if it doesn't exist
-            Path(v.output_dir).mkdir(parents=True, exist_ok=True)
         return v
 
     class Config:

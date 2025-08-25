@@ -32,7 +32,10 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
-from .initialization import get_project_root, validate_project_structure
+from bugninja_cli.utils.initialization import (
+    get_project_root,
+    validate_project_structure,
+)
 
 console = Console()
 

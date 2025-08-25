@@ -14,7 +14,6 @@ entry point** for browser automation operations with a simple, intuitive API.
 """
 
 import asyncio
-import logging
 import time
 from asyncio import Task as AsyncioTask
 from datetime import datetime
@@ -58,7 +57,7 @@ from bugninja.config.llm_config import LLMConfig
 from bugninja.events import EventPublisherManager
 from bugninja.replication import ReplicatorRun
 from bugninja.schemas.pipeline import Traversal
-from bugninja.utils.logger_config import set_logger_config
+from bugninja.utils.logging_config import logger
 from bugninja.utils.prompt_string_factories import AUTHENTICATION_HANDLING_EXTRA_PROMPT
 
 
@@ -94,7 +93,6 @@ class BugninjaClient:
         _settings: Internal configuration settings from ConfigurationFactory
         _event_manager (Optional[EventPublisherManager]): Event publisher manager for tracking operations
         _active_sessions (List[BrowserSession]): List of active browser sessions for cleanup
-        _logger: Logger instance for client operations
 
     ### Key Methods
 
@@ -202,11 +200,6 @@ class BugninjaClient:
 
             # Initialize session tracking
             self._active_sessions: List[BrowserSession] = []
-
-            # Configure logging with custom format
-            set_logger_config()
-
-            self._logger = logging.getLogger(__name__)
 
         except Exception as e:
             raise ConfigurationError(f"Failed to initialize Bugninja client: {e}", original_error=e)
@@ -544,7 +537,7 @@ class BugninjaClient:
                     await replicator.cleanup()
                 except Exception as e:
                     # Log cleanup error but don't raise to avoid masking original errors
-                    self._logger.warning(f"Replicator cleanup failed: {e}")
+                    logger.warning(f"Replicator cleanup failed: {e}")
 
             # Cleanup agent if provided
             if agent:
@@ -555,7 +548,7 @@ class BugninjaClient:
                         await agent.cleanup()
                 except Exception as e:
                     # Log cleanup error but don't raise to avoid masking original errors
-                    self._logger.warning(f"Agent cleanup failed: {e}")
+                    logger.warning(f"Agent cleanup failed: {e}")
 
             # Cleanup browser session if provided
             if browser_session:
@@ -565,11 +558,11 @@ class BugninjaClient:
                         self._active_sessions.remove(browser_session)
                 except Exception as e:
                     # Log cleanup error but don't raise to avoid masking original errors
-                    self._logger.warning(f"Browser session cleanup failed: {e}")
+                    logger.warning(f"Browser session cleanup failed: {e}")
 
         except Exception as e:
             # Log any unexpected cleanup errors but don't raise
-            self._logger.warning(f"Unexpected cleanup error: {e}")
+            logger.warning(f"Unexpected cleanup error: {e}")
 
     async def run_task(self, task: BugninjaTask) -> BugninjaTaskResult:
         """Execute a browser automation task.
@@ -634,7 +627,6 @@ class BugninjaClient:
                 browser_session=browser_session,
                 sensitive_data=task.secrets,
                 extend_planner_system_message=AUTHENTICATION_HANDLING_EXTRA_PROMPT,
-                background=self.background,
                 video_recording_config=self.config.video_recording,
             )
 
@@ -764,7 +756,6 @@ class BugninjaClient:
                     browser_session=browser_session,
                     sensitive_data=task.secrets,
                     extend_planner_system_message=AUTHENTICATION_HANDLING_EXTRA_PROMPT,
-                    background=self.background,
                     video_recording_config=self.config.video_recording,
                 )
 
@@ -926,7 +917,6 @@ class BugninjaClient:
                 pause_after_each_step=pause_after_each_step,
                 sleep_after_actions=1.0,  # Default sleep time
                 enable_healing=enable_healing,
-                background=self.background,
                 healing_llm_config=self._llm_config,  # Pass client's LLM config
             )
 
@@ -1111,7 +1101,6 @@ class BugninjaClient:
                     pause_after_each_step=pause_after_each_step,
                     sleep_after_actions=1.0,  # Default sleep time
                     enable_healing=enable_healing,
-                    background=self.background,
                     healing_llm_config=self._llm_config,  # Pass client's LLM config
                 )
                 replicators.append(replicator)

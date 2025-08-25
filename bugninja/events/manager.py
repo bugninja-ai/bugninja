@@ -8,11 +8,10 @@ from typing import Any, Dict, List, Optional
 
 from browser_use.agent.views import AgentBrain  # type: ignore
 
+from bugninja.events.base import EventPublisher
+from bugninja.events.exceptions import PublisherUnavailableError
+from bugninja.events.models import RunState
 from bugninja.schemas.pipeline import BugninjaExtendedAction
-
-from .base import EventPublisher
-from .exceptions import PublisherUnavailableError
-from .models import RunState
 
 
 class EventPublisherManager:

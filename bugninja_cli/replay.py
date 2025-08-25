@@ -43,6 +43,13 @@ console = Console()
     help="Replay multiple traversals with the given IDs",
 )
 @click.option(
+    "--enable-logging",
+    is_flag=False,
+    flag_value=True,
+    default=False,
+    help="Enable Bugninja logging (true/false)",
+)
+@click.option(
     "--info",
     is_flag=True,
     help="Show project information before replaying",
@@ -52,6 +59,7 @@ def replay(
     all_flag: bool,
     traversal: str,
     multiple: List[str],
+    enable_logging: bool,
     info: bool,
     project_root: Path,
 ) -> None:

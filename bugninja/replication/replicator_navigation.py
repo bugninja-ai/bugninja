@@ -1,7 +1,6 @@
 import asyncio
 import gc
 import json
-import logging
 import sys
 from abc import ABC
 from pathlib import Path
@@ -24,18 +23,14 @@ from patchright.async_api import Page
 
 from bugninja.replication.errors import ActionError, ReplicatorError, SelectorError
 from bugninja.schemas.pipeline import BugninjaExtendedAction, Traversal
-from bugninja.utils.logger_config import set_logger_config
-
-# Configure logging with custom format
-set_logger_config()
-logger = logging.getLogger(__name__)
+from bugninja.utils.logging_config import logger
 
 
 def get_user_input() -> str:
     """
     Robust input method that forces stdin to work.
     """
-    logger.info("⏸️ Press Enter to continue, or enter 'q' to quit...")
+    logger.bugninja_log("⏸️ Press Enter to continue, or enter 'q' to quit...")
 
     # Try to reopen stdin if it's not working
     try:
@@ -94,23 +89,6 @@ class ReplicatorNavigator(ABC):
         except Exception as e:
             raise ReplicatorError(f"Failed to load JSON file: {str(e)}")
 
-    def _log_if_not_background(self, level: str, message: str) -> None:
-        """Log message only if not in background mode.
-
-        Args:
-            level (str): Log level ('info', 'warning', 'error', 'debug')
-            message (str): Message to log
-        """
-        if not self.background:
-            if level == "info":
-                logger.info(message)
-            elif level == "warning":
-                logger.warning(message)
-            elif level == "error":
-                logger.error(message)
-            elif level == "debug":
-                logger.debug(message)
-
     @staticmethod
     def _load_traversal_from_source(traversal_source: Union[str, Traversal]) -> Traversal:
         """
@@ -142,14 +120,12 @@ class ReplicatorNavigator(ABC):
         traversal_source: Union[str, Traversal],
         fail_on_unimplemented_action: bool = True,
         sleep_after_actions: float = 1.0,
-        background: bool = False,
     ):
         self.replay_traversal = self._load_traversal_from_source(traversal_source)
         self.brain_states: Dict[str, AgentBrain] = self.replay_traversal.brain_states
         self.fail_on_unimplemented_action = fail_on_unimplemented_action
         self.sleep_after_actions = sleep_after_actions
         self.brain_states_passed: List[str] = []
-        self.background = background
 
         # Generate run_id for browser isolation
         self.run_id = CUID().generate()
@@ -175,12 +151,12 @@ class ReplicatorNavigator(ABC):
 
         self.browser_session = BrowserSession(browser_profile=browser_profile)
 
-        self._log_if_not_background("info", f"🔒 Using isolated browser directory: {isolated_dir}")
+        logger.bugninja_log(f"🔒 Using isolated browser directory: {isolated_dir}")
 
     async def _handle_go_to_url(self, action: Dict[str, Any]) -> None:
         """Handle navigation to a URL."""
         url = action["go_to_url"]["url"]
-        logger.info(f"🌐 Navigating to URL: {url}")
+        logger.bugninja_log(f"🌐 Navigating to URL: {url}")
 
         max_retries = 3
         retry_delay = 1.0
@@ -221,32 +197,32 @@ class ReplicatorNavigator(ABC):
 
     async def _handle_extract_content(self) -> None:
         """Handle content extraction."""
-        logger.info("📋 Content extraction requested")
+        logger.bugninja_log("📋 Content extraction requested")
         await self.__handle_not_implemented_action("Content extraction")
 
     async def _handle_wait(self) -> None:
         """Handle waiting."""
-        logger.info("⏳ Waiting requested")
+        logger.bugninja_log("⏳ Waiting requested")
         await self.__handle_not_implemented_action("Waiting functionality")
 
     async def _handle_go_back(self) -> None:
         """Handle navigation back."""
-        logger.info("⬅️ Go back requested")
+        logger.bugninja_log("⬅️ Go back requested")
         await self.__handle_not_implemented_action("Back navigation")
 
     async def _handle_search_google(self) -> None:
         """Handle Google search."""
-        logger.info("🔍 Google search requested")
+        logger.bugninja_log("🔍 Google search requested")
         await self.__handle_not_implemented_action("Google search")
 
     async def _handle_save_pdf(self) -> None:
         """Handle PDF saving."""
-        logger.info("📄 PDF save requested")
+        logger.bugninja_log("📄 PDF save requested")
         await self.__handle_not_implemented_action("PDF saving")
 
     async def _handle_switch_tab(self, switch_tab_id: Optional[int]) -> None:
         """Handle tab switching."""
-        logger.info("🔄 Tab switch requested")
+        logger.bugninja_log("🔄 Tab switch requested")
 
         #! precautionary sleep, so that the tab has time to load
         await asyncio.sleep(1)
@@ -270,22 +246,22 @@ class ReplicatorNavigator(ABC):
 
     async def _handle_open_tab(self) -> None:
         """Handle opening new tab."""
-        logger.info("➕ New tab requested")
+        logger.bugninja_log("➕ New tab requested")
         await self.__handle_not_implemented_action("New tab")
 
     async def _handle_close_tab(self) -> None:
         """Handle closing tab."""
-        logger.info("❌ Tab close requested")
+        logger.bugninja_log("❌ Tab close requested")
         await self.__handle_not_implemented_action("Tab closing")
 
     async def _handle_get_ax_tree(self) -> None:
         """Handle getting accessibility tree."""
-        logger.info("🌳 Accessibility tree requested")
+        logger.bugninja_log("🌳 Accessibility tree requested")
         await self.__handle_not_implemented_action("Accessability tree request")
 
     async def _scroll(self, scroll_amount: Optional[int], how: Literal["up", "down"]) -> None:
         """Handle scrolling to a specific direction."""
-        logger.info(f"⬇️ Scroll {how} requested")
+        logger.bugninja_log(f"⬇️ Scroll {how} requested")
         """
 			(a) Use browser._scroll_container for container-aware scrolling.
 			(b) If that JavaScript throws, fall back to window.scrollBy().
@@ -299,7 +275,7 @@ class ReplicatorNavigator(ABC):
         await self.current_page.wait_for_timeout(500)
 
         await self.current_page.evaluate("(y) => window.scrollBy(0, y)", dy)
-        logger.info(f"🔍 Scrolled down the page by {dy} pixels")
+        logger.bugninja_log(f"🔍 Scrolled down the page by {dy} pixels")
 
     async def _handle_scroll_down(self, scroll_amount: Optional[int]) -> None:
         """Handle scrolling down."""
@@ -311,32 +287,32 @@ class ReplicatorNavigator(ABC):
 
     async def _handle_send_keys(self) -> None:
         """Handle sending keys."""
-        logger.info("⌨️ Send keys requested")
+        logger.bugninja_log("⌨️ Send keys requested")
         await self.__handle_not_implemented_action("Send keys")
 
     async def _handle_scroll_to_text(self) -> None:
         """Handle scrolling to text."""
-        logger.info("🔍 Scroll to text requested")
+        logger.bugninja_log("🔍 Scroll to text requested")
         await self.__handle_not_implemented_action("Scroll to text")
 
     async def _handle_get_dropdown_options(self) -> None:
         """Handle getting dropdown options."""
-        logger.info("📝 Dropdown options requested")
+        logger.bugninja_log("📝 Dropdown options requested")
         await self.__handle_not_implemented_action("Dropdown options")
 
     async def _handle_select_dropdown_option(self) -> None:
         """Handle selecting dropdown option."""
-        logger.info("✅ Dropdown selection requested")
+        logger.bugninja_log("✅ Dropdown selection requested")
         await self.__handle_not_implemented_action("Dropdown selection")
 
     async def _handle_drag_drop(self) -> None:
         """Handle drag and drop."""
-        logger.info("🔄 Drag and drop requested")
+        logger.bugninja_log("🔄 Drag and drop requested")
         await self.__handle_not_implemented_action("Drag and drop")
 
     async def _handle_done(self) -> None:
         """Handle done action."""
-        logger.info("✅ Done action received")
+        logger.bugninja_log("✅ Done action received")
 
     async def _execute_with_fallback(
         self,
@@ -359,17 +335,19 @@ class ReplicatorNavigator(ABC):
             raise ActionError("No element information provided")
 
         selectors = await self._get_element_selector(element_info)
-        logger.info(f"🖱️ Attempting to {action_type} element with {len(selectors)} selectors")
+        logger.bugninja_log(
+            f"🖱️ Attempting to {action_type} element with {len(selectors)} selectors"
+        )
 
         last_error = None
         for selector_type, selector in selectors:
-            logger.info(f"🔄 Trying {selector_type} selector: {selector}")
+            logger.bugninja_log(f"🔄 Trying {selector_type} selector: {selector}")
             success, error = await self._try_selector(
                 self.current_page, selector, action_type, **(action_kwargs or {})
             )
 
             if success:
-                logger.info(
+                logger.bugninja_log(
                     f"✅ Successfully {action_type}ed element using {selector_type} selector"
                 )
                 return
@@ -456,12 +434,12 @@ class ReplicatorNavigator(ABC):
             logger.error(error_msg)
             raise ActionError(error_msg)
 
-        logger.info("\n")
-        logger.info("🧠 Current State:")
-        logger.info(f"📝 Memory: {brain.memory}")
-        logger.info(f"🎯 Next Goal: {brain.next_goal}")
-        logger.info(f"✅ Previous Evaluation: {brain.evaluation_previous_goal}")
-        logger.info("=" * 20)
+        logger.bugninja_log("\n")
+        logger.bugninja_log("🧠 Current State:")
+        logger.bugninja_log(f"📝 Memory: {brain.memory}")
+        logger.bugninja_log(f"🎯 Next Goal: {brain.next_goal}")
+        logger.bugninja_log(f"✅ Previous Evaluation: {brain.evaluation_previous_goal}")
+        logger.bugninja_log("=" * 20)
 
         # TODO! Do here a major refactor with a lot of custom schemas,
         #! otherwise dictionary drilling will be pain and also makes the code hard to debug
@@ -543,7 +521,7 @@ class ReplicatorNavigator(ABC):
         await page.wait_for_load_state("load")
         await page.wait_for_load_state("domcontentloaded")
 
-        logger.info(f"📝 Using selector: {selector}")
+        logger.bugninja_log(f"📝 Using selector: {selector}")
 
         try:
             # Get element and verify its state
@@ -552,7 +530,7 @@ class ReplicatorNavigator(ABC):
             await element.wait_for(state="attached", timeout=1000)
 
             element_count = await element.count()
-            logger.info(f"Found '{element_count}' elements for selector")
+            logger.bugninja_log(f"Found '{element_count}' elements for selector")
 
             if element_count == 0:
                 logger.warning(f"⚠️ No elements found for selector: {selector}")
@@ -603,23 +581,23 @@ class ReplicatorNavigator(ABC):
 
         gc.collect()
 
-        logger.info("✨ Cleanup completed")
+        logger.bugninja_log("✨ Cleanup completed")
 
     async def before_run(self) -> None:
-        logger.info("🚀 Starting browser session")
+        logger.bugninja_log("🚀 Starting browser session")
         await self.browser_session.start()
         self.current_page = await self.browser_session.get_current_page()
 
     async def after_run(self, did_run_fail: bool, failed_reason: Optional[str]) -> None:
 
-        logger.info("🧹 Cleaning up resources")
+        logger.bugninja_log("🧹 Cleaning up resources")
         await self.cleanup()
 
         if did_run_fail:
             logger.error("❌ Replication failed")
             raise ReplicatorError(failed_reason)
         else:
-            logger.info("✅ Replication completed successfully")
+            logger.bugninja_log("✅ Replication completed successfully")
 
     async def start(self) -> None:
         """

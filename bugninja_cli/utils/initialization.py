@@ -326,6 +326,7 @@ def get_default_config_template(project_name: str, **overrides: Dict[str, Any]) 
             "level": "INFO",
             "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
             "enable_rich_logging": True,
+            "logging_enabled": False,
         },
         "development": {"debug_mode": False, "enable_verbose_logging": False},
         "paths": {

@@ -1,4 +1,3 @@
-import logging
 from typing import Any, Dict, List, Optional
 
 from browser_use.agent.views import AgentBrain  # type: ignore
@@ -16,11 +15,7 @@ from browser_use.browser.profile import (  # type: ignore
 from pydantic import BaseModel, Field, NonNegativeFloat
 from rich import print as rich_print
 
-from bugninja.utils.logger_config import set_logger_config
-
-# Configure logging with custom format
-set_logger_config()
-logger = logging.getLogger(__name__)
+from bugninja.utils.logging_config import logger
 
 #! State comparisons
 
@@ -289,8 +284,8 @@ class ReplayWithHealingStateMachine(BaseModel):
         remaining_state_num: int = len(self.replay_states)
 
         if verbose:
-            logger.info(f"Number of remaining states: {remaining_state_num}")
-            logger.info(f"Did healing agent reach the goal? '{remaining_state_num}'")
+            logger.bugninja_log(f"Number of remaining states: {remaining_state_num}")
+            logger.bugninja_log(f"Did healing agent reach the goal? '{remaining_state_num}'")
 
         # Either the healing agent reached the full goal of the test or there are no remaining steps to be done!
         return healing_agent_reached_goal or not remaining_state_num

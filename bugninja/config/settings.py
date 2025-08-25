@@ -112,6 +112,7 @@ class BugninjaSettings(BaseSettings):
         description="Log format string",
     )
     enable_rich_logging: bool = Field(default=True, description="Enable rich terminal logging")
+    logging_enabled: bool = Field(default=False, description="Enable Bugninja-specific logging")
 
     # Development Configuration (from TOML)
     debug_mode: bool = Field(default=False, description="Enable debug mode")

@@ -10,12 +10,13 @@ from browser_use.agent.views import (  # type: ignore
 )
 from browser_use.browser.session import Page  # type: ignore
 from browser_use.browser.views import BrowserStateSummary  # type: ignore
-from browser_use.controller.service import Controller, logger  # type: ignore
+from browser_use.controller.service import Controller  # type: ignore
 from browser_use.controller.views import ScrollAction  # type: ignore
 from pydantic import BaseModel
 
 from bugninja.agents.bugninja_agent_base import BugninjaAgentBase
 from bugninja.schemas.pipeline import BugninjaExtendedAction
+from bugninja.utils.logging_config import logger
 from bugninja.utils.selector_factory import SelectorFactory
 
 SELECTOR_ORIENTED_ACTIONS: List[str] = [
@@ -118,14 +119,14 @@ async def extend_agent_action_with_info(
 
         action_key: str = list(short_action_descriptor.keys())[-1]
 
-        logger.info(f"📄 Action: {short_action_descriptor}")
-        logger.info(f"📄 Action key: {action_key}")
+        logger.bugninja_log(f"📄 Action: {short_action_descriptor}")
+        logger.bugninja_log(f"📄 Action key: {action_key}")
 
         #!! these values here were selected by hand, if necessary they can be extended with other actions as well
         if action_key in SELECTOR_ORIENTED_ACTIONS:
             action_index = short_action_descriptor[action_key]["index"]
             chosen_selector: DOMElementNode = browser_state_summary.selector_map[action_index]
-            logger.info(f"📄 {action_key} on {chosen_selector}")
+            logger.bugninja_log(f"📄 {action_key} on {chosen_selector}")
 
             selector_data: Dict[str, Any] = chosen_selector.__json__()
 
@@ -226,7 +227,7 @@ class BugninjaController(Controller):
 
             msg = f"🔍 Scrolled down the page by {dy} pixels"
 
-            logger.info(msg)
+            logger.bugninja_log(msg)
             return ActionResult(extracted_content=msg, include_in_memory=True)
 
         @self.registry.action(
@@ -274,7 +275,7 @@ class BugninjaController(Controller):
                 ActionResult: Result of the waiting operation
             """
             msg = f"🕒  Waiting for {seconds} seconds"
-            logger.info(msg)
+            logger.bugninja_log(msg)
             await asyncio.sleep(seconds)
             return ActionResult(extracted_content=msg, include_in_memory=True)
 
