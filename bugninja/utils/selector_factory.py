@@ -4,7 +4,6 @@ from typing import Dict, List, Optional
 from lxml import html
 from lxml.etree import _Element as Element
 from lxml.html import HtmlElement
-from rich import print as rich_print
 
 
 class SelectorSpecificity(str, Enum):
@@ -16,17 +15,6 @@ class SelectorSpecificity(str, Enum):
 class SelectorFactory:
     def __init__(self, html_content: str):
         self.tree: HtmlElement = html.fromstring(html_content)
-
-    @staticmethod
-    def log_element(element: Element) -> None:
-        rich_print("-----")
-        rich_print("ID:")
-        rich_print("Tag:")
-        rich_print(element.tag)
-        rich_print("Attributes:")
-        rich_print({k: v for k, v in element.attrib.items()})
-        rich_print("Text:")
-        rich_print(element.text)
 
     def evaluate_selector_on_page(self, xpath: str) -> SelectorSpecificity:
         found_elements = self.tree.xpath(xpath)

@@ -267,6 +267,8 @@ recording/
 
 data
 saved_paths
+recordings
+screen_recordings
 test_output
 graph.html
 traversals

@@ -182,7 +182,7 @@ name = "your-project-name"
 
 [llm]
 model = "gpt-4.1"
-temperature = 0.001
+temperature=0.0
 
 [logging]
 level = "INFO"

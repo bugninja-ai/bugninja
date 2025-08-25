@@ -1202,7 +1202,7 @@ class TestReplayWithHealingStateMachine:
             state_machine.replay_should_stop(healing_agent_reached_goal=False, verbose=True)
 
             # Verify logging was called for debugging purposes - important for debugging complex state machine scenarios
-            mock_logger.info.assert_called(), "Should log information when verbose mode is enabled"
+            mock_logger.bugninja_log.assert_called(), "Should log information when verbose mode is enabled"
 
     # ? VALID CASE
     def test_state_machine_with_empty_replay_data(self) -> None:

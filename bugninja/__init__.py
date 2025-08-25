@@ -29,14 +29,7 @@ from bugninja.agents.navigator_agent import NavigatorAgent
 from bugninja.agents.healer_agent import HealerAgent
 from bugninja.replication.replicator_run import ReplicatorRun
 from bugninja.schemas.pipeline import Traversal, BugninjaBrowserConfig, BugninjaExtendedAction
-from bugninja.config.llm_creator import (
-    anthropic_model,
-    azure_openai_model,
-    deepseek_model,
-    google_gemini_model,
-    ollama_model,
-    openai_model,
-)
+
 from bugninja.config import (
     ConfigurationFactory,
     BugninjaSettings,
@@ -68,13 +61,6 @@ __all__ = [
     "Traversal",
     "BugninjaBrowserConfig",
     "BugninjaExtendedAction",
-    # LLM models
-    "azure_openai_model",
-    "openai_model",
-    "anthropic_model",
-    "google_gemini_model",
-    "deepseek_model",
-    "ollama_model",
     # Configuration
     "ConfigurationFactory",
     "BugninjaSettings",

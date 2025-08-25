@@ -14,7 +14,6 @@ entry point** for browser automation operations with a simple, intuitive API.
 """
 
 import asyncio
-import logging
 import time
 from asyncio import Task as AsyncioTask
 from datetime import datetime
@@ -24,11 +23,9 @@ from typing import Any, Dict, List, Optional, Union
 
 from browser_use import (  # type: ignore[import-untyped]
     AgentHistoryList,
-    BrowserProfile,
     BrowserSession,
 )
 from langchain_core.language_models.chat_models import BaseChatModel
-from playwright._impl._api_structures import ViewportSize
 
 from bugninja.agents import NavigatorAgent
 from bugninja.api.exceptions import (
@@ -60,7 +57,7 @@ from bugninja.config.llm_config import LLMConfig
 from bugninja.events import EventPublisherManager
 from bugninja.replication import ReplicatorRun
 from bugninja.schemas.pipeline import Traversal
-from bugninja.utils.logger_config import set_logger_config
+from bugninja.utils.logging_config import logger
 from bugninja.utils.prompt_string_factories import AUTHENTICATION_HANDLING_EXTRA_PROMPT
 
 
@@ -96,7 +93,6 @@ class BugninjaClient:
         _settings: Internal configuration settings from ConfigurationFactory
         _event_manager (Optional[EventPublisherManager]): Event publisher manager for tracking operations
         _active_sessions (List[BrowserSession]): List of active browser sessions for cleanup
-        _logger: Logger instance for client operations
 
     ### Key Methods
 
@@ -204,11 +200,6 @@ class BugninjaClient:
 
             # Initialize session tracking
             self._active_sessions: List[BrowserSession] = []
-
-            # Configure logging with custom format
-            set_logger_config()
-
-            self._logger = logging.getLogger(__name__)
 
         except Exception as e:
             raise ConfigurationError(f"Failed to initialize Bugninja client: {e}", original_error=e)
@@ -546,7 +537,7 @@ class BugninjaClient:
                     await replicator.cleanup()
                 except Exception as e:
                     # Log cleanup error but don't raise to avoid masking original errors
-                    self._logger.warning(f"Replicator cleanup failed: {e}")
+                    logger.warning(f"Replicator cleanup failed: {e}")
 
             # Cleanup agent if provided
             if agent:
@@ -557,7 +548,7 @@ class BugninjaClient:
                         await agent.cleanup()
                 except Exception as e:
                     # Log cleanup error but don't raise to avoid masking original errors
-                    self._logger.warning(f"Agent cleanup failed: {e}")
+                    logger.warning(f"Agent cleanup failed: {e}")
 
             # Cleanup browser session if provided
             if browser_session:
@@ -567,11 +558,11 @@ class BugninjaClient:
                         self._active_sessions.remove(browser_session)
                 except Exception as e:
                     # Log cleanup error but don't raise to avoid masking original errors
-                    self._logger.warning(f"Browser session cleanup failed: {e}")
+                    logger.warning(f"Browser session cleanup failed: {e}")
 
         except Exception as e:
             # Log any unexpected cleanup errors but don't raise
-            self._logger.warning(f"Unexpected cleanup error: {e}")
+            logger.warning(f"Unexpected cleanup error: {e}")
 
     async def run_task(self, task: BugninjaTask) -> BugninjaTaskResult:
         """Execute a browser automation task.
@@ -620,20 +611,9 @@ class BugninjaClient:
                     "BugninjaTask description cannot be empty", field_name="description"
                 )
 
-            # Create browser session with configured settings
-            browser_profile = BrowserProfile(
-                headless=self.config.headless,
-                viewport=ViewportSize(
-                    width=self.config.viewport_width, height=self.config.viewport_height
-                ),
-                user_agent=self.config.user_agent,
-                strict_selectors=self.config.strict_selectors,
-                allowed_domains=task.allowed_domains,
-                user_data_dir=self.config.user_data_dir,
-                args=["--no-sandbox", "--disable-setuid-sandbox"],
-            )
-
-            browser_session = BrowserSession(browser_profile=browser_profile)
+            browser_session = self.config.build_bugninja_session_from_config_for_run(task.run_id)
+            # TODO! this is extremely ugly and a strong antipattern, but it works for now, has to get rid of it later
+            browser_session.browser_profile.allowed_domains = task.allowed_domains
             self._active_sessions.append(browser_session)
 
             # Create LLM with configured temperature
@@ -647,7 +627,7 @@ class BugninjaClient:
                 browser_session=browser_session,
                 sensitive_data=task.secrets,
                 extend_planner_system_message=AUTHENTICATION_HANDLING_EXTRA_PROMPT,
-                background=self.background,
+                video_recording_config=self.config.video_recording,
             )
 
             # Set event manager if available
@@ -760,19 +740,12 @@ class BugninjaClient:
                     )
 
                 # Create browser session with configured settings (isolation handled in agent)
-                browser_profile = BrowserProfile(
-                    headless=self.config.headless,
-                    viewport=ViewportSize(
-                        width=self.config.viewport_width, height=self.config.viewport_height
-                    ),
-                    user_agent=self.config.user_agent,
-                    strict_selectors=self.config.strict_selectors,
-                    allowed_domains=task.allowed_domains,
-                    user_data_dir=self.config.user_data_dir,  # Default, will be overridden in agent
-                    args=["--no-sandbox", "--disable-setuid-sandbox"],
+                browser_session = self.config.build_bugninja_session_from_config_for_run(
+                    run_id=task.run_id
                 )
 
-                browser_session = BrowserSession(browser_profile=browser_profile)
+                # TODO! this is extremely ugly and a strong antipattern, but it works for now, has to get rid of it later
+                browser_session.browser_profile.allowed_domains = task.allowed_domains
                 self._active_sessions.append(browser_session)
 
                 # Create agent (isolation happens in _before_run_hook)
@@ -783,7 +756,7 @@ class BugninjaClient:
                     browser_session=browser_session,
                     sensitive_data=task.secrets,
                     extend_planner_system_message=AUTHENTICATION_HANDLING_EXTRA_PROMPT,
-                    background=self.background,
+                    video_recording_config=self.config.video_recording,
                 )
 
                 # Set event manager if available
@@ -944,7 +917,6 @@ class BugninjaClient:
                 pause_after_each_step=pause_after_each_step,
                 sleep_after_actions=1.0,  # Default sleep time
                 enable_healing=enable_healing,
-                background=self.background,
                 healing_llm_config=self._llm_config,  # Pass client's LLM config
             )
 
@@ -1129,7 +1101,6 @@ class BugninjaClient:
                     pause_after_each_step=pause_after_each_step,
                     sleep_after_actions=1.0,  # Default sleep time
                     enable_healing=enable_healing,
-                    background=self.background,
                     healing_llm_config=self._llm_config,  # Pass client's LLM config
                 )
                 replicators.append(replicator)

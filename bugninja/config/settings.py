@@ -45,7 +45,7 @@ class BugninjaSettings(BaseSettings):
     )
     llm_model: str = Field(default="gpt-4.1", description="LLM model name to use")
     llm_temperature: float = Field(
-        default=0.001,
+        default=0.0,
         ge=0.0,
         le=2.0,
         description="Temperature for LLM responses",
@@ -112,6 +112,7 @@ class BugninjaSettings(BaseSettings):
         description="Log format string",
     )
     enable_rich_logging: bool = Field(default=True, description="Enable rich terminal logging")
+    logging_enabled: bool = Field(default=False, description="Enable Bugninja-specific logging")
 
     # Development Configuration (from TOML)
     debug_mode: bool = Field(default=False, description="Enable debug mode")
@@ -182,38 +183,34 @@ class BugninjaSettings(BaseSettings):
             raise ValueError(f"Unsupported LLM provider: {v}")
         return v
 
-    @field_validator("llm_temperature")
-    @classmethod
-    def validate_temperature(cls, v: float) -> float:
-        """Validate temperature range."""
-        if not 0.0 <= v <= 2.0:
-            raise ValueError("Temperature must be between 0.0 and 2.0")
-        return v
-
     def model_post_init(self, __context: Any) -> None:
         """Post-initialization validation for provider-specific requirements."""
         self._validate_provider_config()
 
     def _validate_provider_config(self) -> None:
         """Validate that required configuration is present for the selected provider."""
-        if self.llm_provider == LLMProvider.AZURE_OPENAI:
-            if not self.azure_openai_endpoint or not self.azure_openai_key:
-                raise ValueError(
-                    "Azure OpenAI requires AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_KEY environment variables"
-                )
-        elif self.llm_provider == LLMProvider.OPENAI:
-            if not self.openai_api_key:
-                raise ValueError("OpenAI requires OPENAI_API_KEY environment variable")
-        elif self.llm_provider == LLMProvider.ANTHROPIC:
-            if not self.anthropic_api_key:
-                raise ValueError("Anthropic requires ANTHROPIC_API_KEY environment variable")
-        elif self.llm_provider == LLMProvider.GOOGLE_GEMINI:
-            if not self.google_api_key:
-                raise ValueError("Google Gemini requires GOOGLE_API_KEY environment variable")
-        elif self.llm_provider == LLMProvider.DEEPSEEK:
-            if not self.deepseek_api_key:
-                raise ValueError("DeepSeek requires DEEPSEEK_API_KEY environment variable")
-        # Ollama doesn't require API key validation as it's typically local
+
+        match self.llm_provider:
+            case LLMProvider.AZURE_OPENAI:
+                if not self.azure_openai_endpoint or not self.azure_openai_key:
+                    raise ValueError(
+                        "Azure OpenAI requires AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_KEY environment variables"
+                    )
+            case LLMProvider.OPENAI:
+                if not self.openai_api_key:
+                    raise ValueError("OpenAI requires OPENAI_API_KEY environment variable")
+            case LLMProvider.ANTHROPIC:
+                if not self.anthropic_api_key:
+                    raise ValueError("Anthropic requires ANTHROPIC_API_KEY environment variable")
+            case LLMProvider.GOOGLE_GEMINI:
+                if not self.google_api_key:
+                    raise ValueError("Google Gemini requires GOOGLE_API_KEY environment variable")
+            case LLMProvider.DEEPSEEK:
+                if not self.deepseek_api_key:
+                    raise ValueError("DeepSeek requires DEEPSEEK_API_KEY environment variable")
+            case _:
+                # Ollama doesn't require API key validation as it's typically local
+                pass
 
     # Backward compatibility properties
     @property

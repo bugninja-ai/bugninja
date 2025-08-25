@@ -19,6 +19,9 @@ from bugninja.config import ConfigurationFactory
 from bugninja.events import EventPublisherManager
 from bugninja.events.publishers.rich_terminal_publisher import RichTerminalPublisher
 
+os.environ["BROWSER_USE_LOGGING_LEVEL"] = "critical"
+
+
 # Initialize faker for generating test data
 fake = Faker()
 
@@ -53,7 +56,13 @@ async def run_task_with_client(
     # Create client with event manager
     client = BugninjaClient(
         event_manager=event_manager,
-        config=BugninjaConfig(headless=False, viewport_height=800, viewport_width=1200),
+        config=BugninjaConfig(
+            headless=False,
+            viewport_height=800,
+            viewport_width=1200,
+            # TODO! temporal disable
+            # video_recording=VideoRecordingConfig(),
+        ),
     )
 
     try:

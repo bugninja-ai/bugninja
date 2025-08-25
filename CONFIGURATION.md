@@ -28,7 +28,7 @@ name = "bugninja"
 [llm]
 # Azure OpenAI Configuration (non-sensitive)
 model = "gpt-4.1"
-temperature = 0.001
+temperature=0.0
 api_version = "2024-02-15-preview"
 # Note: endpoint and key are loaded from .env file
 
@@ -155,7 +155,7 @@ If you're migrating from the old .env-only system:
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 AZURE_OPENAI_KEY=your-api-key-here
 AZURE_OPENAI_MODEL=gpt-4.1
-AZURE_OPENAI_TEMPERATURE=0.001
+AZURE_OPENAI_TEMPERATURE=0.0
 LOG_LEVEL=INFO
 DEBUG_MODE=false
 TRAVERSALS_DIR=./traversals
@@ -166,7 +166,7 @@ TRAVERSALS_DIR=./traversals
 # LLM Provider Configuration
 LLM_PROVIDER=azure_openai
 LLM_MODEL=gpt-4.1
-LLM_TEMPERATURE=0.001
+LLM_TEMPERATURE=0.0
 
 # Azure OpenAI (only needed if using Azure)
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
@@ -196,7 +196,7 @@ name = "bugninja"
 [llm]
 provider = "azure_openai"
 model = "gpt-4.1"
-temperature = 0.001
+temperature=0.0
 
 [llm.azure_openai]
 api_version = "2024-02-15-preview"

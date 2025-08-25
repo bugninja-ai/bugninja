@@ -8,7 +8,6 @@ from browser_use.agent.message_manager.utils import save_conversation  # type: i
 from browser_use.agent.service import (  # type: ignore
     Agent,
     AgentStepInfo,
-    logger,
 )
 from browser_use.agent.views import (  # type: ignore
     ActionResult,
@@ -30,8 +29,11 @@ from bugninja.config import (
     create_provider_model_from_settings,
 )
 from bugninja.config.llm_config import LLMConfig
+from bugninja.config.video_recording import VideoRecordingConfig
 from bugninja.events import EventPublisherManager
 from bugninja.schemas.pipeline import BugninjaExtendedAction
+from bugninja.utils.logging_config import logger
+from bugninja.utils.video_recording_manager import VideoRecordingManager
 
 
 def hook_missing_error(hook_name: str, class_val: type) -> NotImplementedError:
@@ -99,13 +101,17 @@ class BugninjaAgentBase(Agent, ABC):
     """
 
     def __init__(  # type:ignore
-        self, *args, run_id: Optional[str] = None, background: bool = False, **kwargs  # type:ignore
+        self,
+        *args,
+        run_id: Optional[str] = None,
+        video_recording_config: Optional[VideoRecordingConfig] = None,
+        **kwargs,  # type:ignore
     ) -> None:
         """Initialize BugninjaAgentBase with extended functionality.
 
         Args:
             *args: Arguments passed to the parent Agent class
-            background (bool): Whether to run in background mode (disables console logging)
+            video_recording_config (Optional[VideoRecordingConfig]): Video recording configuration
             **kwargs: Keyword arguments passed to the parent Agent class
         """
         super().__init__(*args, **kwargs)
@@ -119,11 +125,16 @@ class BugninjaAgentBase(Agent, ABC):
         if run_id is not None:
             self.run_id = run_id
 
-        # Store background flag
-        self.background = background
-
         # Initialize event publisher manager (explicitly passed)
         self.event_manager: Optional[EventPublisherManager] = None
+
+        # Initialize video recording manager if enabled
+        self.video_recording_manager: Optional[VideoRecordingManager] = (
+            # TODO! temporal disable
+            # VideoRecordingManager(self.run_id, video_recording_config)
+            # if video_recording_config
+            None
+        )
 
         self.agent_taken_actions: List[BugninjaExtendedAction] = []
         self.agent_brain_states: Dict[str, AgentBrain] = {}
@@ -332,23 +343,6 @@ class BugninjaAgentBase(Agent, ABC):
         """Clear the action mapping to prevent memory accumulation."""
         self._action_to_extended_index.clear()
 
-    def _log_if_not_background(self, level: str, message: str) -> None:
-        """Log message only if not in background mode.
-
-        Args:
-            level (str): Log level ('info', 'warning', 'error', 'debug')
-            message (str): Message to log
-        """
-        if not self.background:
-            if level == "info":
-                logger.info(message)
-            elif level == "warning":
-                logger.warning(message)
-            elif level == "error":
-                logger.error(message)
-            elif level == "debug":
-                logger.debug(message)
-
     @time_execution_async("--run (agent)")
     async def run(self, max_steps: int = 100) -> Optional[AgentHistoryList]:
         """Execute the task with maximum number of steps.
@@ -522,7 +516,7 @@ class BugninjaAgentBase(Agent, ABC):
             self.state.last_result = result
 
             if len(result) > 0 and result[-1].is_done:
-                logger.info(f"📄 Result: {result[-1].extracted_content}")
+                logger.bugninja_log(f"📄 Result: {result[-1].extracted_content}")
             self.state.consecutive_failures = 0
 
             await self._after_step_hook(
@@ -638,16 +632,10 @@ class BugninjaAgentBase(Agent, ABC):
                 # Get action name from the action model
                 action_data = action.model_dump(exclude_unset=True)
                 action_name = next(iter(action_data.keys())) if action_data else "unknown"
-                logger.info(f"☑️ Executed action {i + 1}/{len(actions)}: {action_name}")
+                logger.bugninja_log(f"☑️ Executed action {i + 1}/{len(actions)}: {action_name}")
 
                 # Associate action with extended action
                 self._associate_action_with_extended_action(action, i)
-
-                # rich_print("Agent last brainstate:")
-                # rich_print(list(self.agent_brain_states.items())[-1])
-
-                # rich_print("Current step action data:")
-                # rich_print(self.current_step_extended_actions[i])
 
                 brain_state_id: str
                 brain_state: AgentBrain
@@ -669,7 +657,7 @@ class BugninjaAgentBase(Agent, ABC):
 
             except asyncio.CancelledError:
                 # Gracefully handle task cancellation
-                logger.info(f"Action {i + 1} was cancelled due to Ctrl+C")
+                logger.bugninja_log(f"Action {i + 1} was cancelled due to Ctrl+C")
                 if not results:
                     # Add a result for the cancelled action
                     results.append(

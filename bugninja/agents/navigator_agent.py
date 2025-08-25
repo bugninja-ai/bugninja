@@ -1,9 +1,13 @@
+import asyncio
+import base64
 import json
 import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+import cv2
+import numpy as np
 from browser_use.agent.views import (  # type: ignore
     AgentOutput,
 )
@@ -11,6 +15,7 @@ from browser_use.browser.session import Page  # type: ignore
 from browser_use.browser.views import BrowserStateSummary  # type: ignore
 from browser_use.controller.registry.views import ActionModel  # type: ignore
 from cuid2 import Cuid as CUID
+from playwright.async_api import CDPSession
 
 from bugninja.agents.bugninja_agent_base import BugninjaAgentBase
 from bugninja.agents.extensions import BugninjaController, extend_agent_action_with_info
@@ -18,6 +23,7 @@ from bugninja.schemas.pipeline import (
     BugninjaBrowserConfig,
     Traversal,
 )
+from bugninja.utils.logging_config import logger
 from bugninja.utils.screenshot_manager import ScreenshotManager
 
 
@@ -82,8 +88,9 @@ class NavigatorAgent(BugninjaAgentBase):
         - initializing event tracking for navigation operations
         - logging the start of the navigation session
         - setting up browser isolation using run_id
+        - setting up video recording if enabled
         """
-        self._log_if_not_background("info", "🏁 BEFORE-Run hook called")
+        logger.bugninja_log("🏁 BEFORE-Run hook called")
 
         # Override user_data_dir with run_id for browser isolation
         if hasattr(self, "browser_session") and self.browser_session:
@@ -93,9 +100,7 @@ class NavigatorAgent(BugninjaAgentBase):
             isolated_dir = base_dir / f"run_{self.run_id}"
             self.browser_session.browser_profile.user_data_dir = isolated_dir
 
-            self._log_if_not_background(
-                "info", f"🔒 Using isolated browser directory: {isolated_dir}"
-            )
+            logger.bugninja_log(f"🔒 Using isolated browser directory: {isolated_dir}")
 
         self._traversal: Optional[Traversal] = None  # Store traversal after successful run
 
@@ -104,6 +109,8 @@ class NavigatorAgent(BugninjaAgentBase):
 
         # Initialize screenshot manager
         self.screenshot_manager = ScreenshotManager(run_id=self.run_id, folder_prefix="traversal")
+
+        # Setup video recording if enabled
 
         # Initialize event tracking for navigation run (if event_manager is provided)
         if self.event_manager and self.event_manager.has_publishers():
@@ -116,9 +123,9 @@ class NavigatorAgent(BugninjaAgentBase):
                     },
                     existing_run_id=self.run_id,  # Use existing run_id instead of generating new one
                 )
-                self._log_if_not_background("info", f"🎯 Started navigation run: {self.run_id}")
+                logger.bugninja_log(f"🎯 Started navigation run: {self.run_id}")
             except Exception as e:
-                self._log_if_not_background("warning", f"Failed to initialize event tracking: {e}")
+                logger.warning(f"Failed to initialize event tracking: {e}")
 
     async def _after_run_hook(self) -> None:
         """Complete navigation session and save traversal data.
@@ -127,12 +134,21 @@ class NavigatorAgent(BugninjaAgentBase):
         - saving all agent actions and brain states
         - creating a complete traversal object
         - completing event tracking for navigation operations
+        - stopping video recording if enabled
         - logging completion status for monitoring
 
         The hook ensures that all navigation data is properly serialized
         for later replay and analysis.
         """
-        self._log_if_not_background("info", "✅ AFTER-Run hook called")
+        logger.bugninja_log("✅ AFTER-Run hook called")
+
+        # Stop video recording if enabled
+        if self.video_recording_manager:
+            stats = await self.video_recording_manager.stop_recording()
+            logger.bugninja_log(
+                f"🎥 Stopped video recording. Frames processed: {stats['frames_processed']}"
+            )
+
         # Save agent actions and store traversal
         self._traversal = self.save_agent_actions()
 
@@ -145,9 +161,9 @@ class NavigatorAgent(BugninjaAgentBase):
                     result.error for result in self.state.last_result if hasattr(result, "error")
                 )
                 await self.event_manager.complete_run(self.run_id, success)
-                self._log_if_not_background("info", f"✅ Completed navigation run: {self.run_id}")
+                logger.bugninja_log(f"✅ Completed navigation run: {self.run_id}")
             except Exception as e:
-                self._log_if_not_background("warning", f"Failed to complete event tracking: {e}")
+                logger.warning(f"Failed to complete event tracking: {e}")
 
     async def _before_step_hook(
         self,
@@ -161,18 +177,54 @@ class NavigatorAgent(BugninjaAgentBase):
         - generates extended actions with DOM element information
         - associates actions with their extended versions
         - stores actions for later serialization and analysis
+        - initializes video recording on the first step
 
         Args:
             browser_state_summary (BrowserStateSummary): Current browser state information
             model_output (AgentOutput): Model output containing actions to be executed
         """
-        self._log_if_not_background("info", "🪝 BEFORE-Step hook called")
+        logger.bugninja_log("🪝 BEFORE-Step hook called")
+
+        current_page: Page = await self.browser_session.get_current_page()
+
+        # Initialize video recording on the first step only
+        if not hasattr(self, "_video_recording_initialized"):
+            self._video_recording_initialized = False
+
+        if not self._video_recording_initialized:
+            if self.video_recording_manager and self.browser_session.browser_context:
+                cdp_session = await self.browser_session.browser_context.new_cdp_session(current_page)  # type: ignore
+
+                # Start video recording
+                output_file = f"run_{self.run_id}"
+                await self.video_recording_manager.start_recording(output_file, cdp_session)
+
+                # Setup CDP screencast
+                await cdp_session.send(
+                    "Page.startScreencast",
+                    {
+                        "format": "jpeg",
+                        "quality": self.video_recording_manager.config.quality,
+                        "maxWidth": self.video_recording_manager.config.width,
+                        "maxHeight": self.video_recording_manager.config.height,
+                        "everyNthFrame": 1,
+                    },
+                )
+
+                # Setup frame handler
+                cdp_session.on(
+                    "Page.screencastFrame",
+                    lambda frame: asyncio.create_task(
+                        self._handle_screencast_frame(frame, cdp_session)
+                    ),
+                )
+
+                self._video_recording_initialized = True
+                logger.bugninja_log(f"🎥 Started video recording: {output_file}")
 
         # ? we create the brain state here since a single thought can belong to multiple actions
         brain_state_id: str = CUID().generate()
         self.agent_brain_states[brain_state_id] = model_output.current_state
-
-        current_page: Page = await self.browser_session.get_current_page()
 
         #! generating the alternative CSS and XPath selectors should happen BEFORE the actions are completed
         extended_taken_actions = await extend_agent_action_with_info(
@@ -239,9 +291,7 @@ class NavigatorAgent(BugninjaAgentBase):
 
             # Store screenshot filename with extended action
             extended_action.screenshot_filename = screenshot_filename
-            self._log_if_not_background(
-                "info", f"📸 Stored screenshot filename: {screenshot_filename}"
-            )
+            logger.bugninja_log(f"📸 Stored screenshot filename: {screenshot_filename}")
 
     def save_agent_actions(self, verbose: bool = False) -> Traversal:
         """Save the agent's traversal data to a JSON file for analysis and replay.
@@ -286,30 +336,29 @@ class NavigatorAgent(BugninjaAgentBase):
 
         actions: Dict[str, Any] = {}
 
-        self._log_if_not_background(
-            "info", f"👉 Number of actions: {len(self.agent_taken_actions)}"
-        )
-        self._log_if_not_background("info", f"🗨️ Number of thoughts: {len(self.agent_brain_states)}")
+        logger.bugninja_log(f"👉 Number of actions: {len(self.agent_taken_actions)}")
+        logger.bugninja_log(f"🗨️ Number of thoughts: {len(self.agent_brain_states)}")
 
         for idx, model_taken_action in enumerate(self.agent_taken_actions):
 
             if verbose:
-                self._log_if_not_background("info", f"Step {idx + 1}:")
-                self._log_if_not_background("info", "Log:")
-                self._log_if_not_background("info", str(model_taken_action))
+                logger.bugninja_log(f"Step {idx + 1}:")
+                logger.bugninja_log("Log:")
+                logger.bugninja_log(str(model_taken_action))
 
             # Log screenshot filename if present
             if model_taken_action.screenshot_filename:
-                self._log_if_not_background(
-                    "info",
-                    f"📸 Action {idx} has screenshot: {model_taken_action.screenshot_filename}",
+                logger.bugninja_log(
+                    f"📸 Action {idx} has screenshot: {model_taken_action.screenshot_filename}"
                 )
 
             actions[f"action_{idx}"] = model_taken_action.model_dump()
 
         traversal = Traversal(
             test_case=self.task,
-            browser_config=BugninjaBrowserConfig.from_browser_profile(self.browser_profile),
+            browser_config=BugninjaBrowserConfig.from_browser_profile(
+                self.browser_session.browser_profile
+            ),
             secrets=self.sensitive_data,
             brain_states=self.agent_brain_states,
             actions=actions,
@@ -326,21 +375,43 @@ class NavigatorAgent(BugninjaAgentBase):
         # Store the traversal object for later access
         self._traversal = traversal
 
-        # Only save to file if not in background mode
-        if not self.background:
-            with open(traversal_file, "w") as f:
-                json.dump(
-                    traversal.model_dump(),
-                    f,
-                    indent=4,
-                    ensure_ascii=False,
-                )
-            self._log_if_not_background(
-                "info", f"Traversal saved with ID: {timestamp}_{self.run_id}"
+        with open(traversal_file, "w") as f:
+            json.dump(
+                traversal.model_dump(),
+                f,
+                indent=4,
+                ensure_ascii=False,
             )
-        else:
-            self._log_if_not_background(
-                "info", f"Traversal created (not saved to file) with ID: {timestamp}_{self.run_id}"
-            )
+        logger.bugninja_log(f"Traversal saved with ID: {timestamp}_{self.run_id}")
 
         return traversal
+
+    async def _handle_screencast_frame(
+        self, frame: dict[str, Any], cdp_session: CDPSession
+    ) -> None:
+        """Handle incoming screencast frames for video recording.
+
+        Args:
+            frame: CDP screencast frame data
+            cdp_session: CDP session for acknowledgment
+        """
+        if self.video_recording_manager:
+            try:
+                img_data: bytes = base64.b64decode(frame["data"])
+                arr: np.ndarray = np.frombuffer(img_data, np.uint8)  # type: ignore
+                img: Optional[np.ndarray] = cv2.imdecode(arr, cv2.IMREAD_COLOR)  # type: ignore
+
+                if img is not None:
+                    img = cv2.resize(
+                        img,
+                        (
+                            self.video_recording_manager.config.width,
+                            self.video_recording_manager.config.height,
+                        ),
+                    )
+                    frame_bytes: bytes = img.tobytes()
+                    await self.video_recording_manager.add_frame(frame_bytes)
+            except Exception:
+                pass
+            finally:
+                await cdp_session.send("Page.screencastFrameAck", {"sessionId": frame["sessionId"]})

@@ -469,7 +469,7 @@ The API supports environment variable configuration:
 # LLM Configuration
 BUGNINJA_LLM_PROVIDER=azure_openai
 BUGNINJA_LLM_MODEL=gpt-4.1
-BUGNINJA_LLM_TEMPERATURE=0.001
+BUGNINJA_LLM_TEMPERATURE=0.0
 
 # Browser Configuration
 BUGNINJA_HEADLESS=true

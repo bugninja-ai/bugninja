@@ -31,22 +31,24 @@ results = await executor.execute_multiple_tasks(task_infos, headless=True)
 """
 
 import json
-import logging
+import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from rich.console import Console
 
-from bugninja.api import BugninjaTask
-from bugninja.api.models import BugninjaConfig, BugninjaTaskResult
-from bugninja.events import EventPublisherManager
-from bugninja.schemas.pipeline import Traversal
+from bugninja.utils.logging_config import logger
 
 from .task_manager import TaskInfo
 
+if TYPE_CHECKING:
+    from bugninja.api import BugninjaTask
+    from bugninja.api.models import BugninjaTaskResult
+    from bugninja.schemas.pipeline import Traversal
+
+
 console = Console()
-logger = logging.getLogger(__name__)
 
 
 class TaskExecutionResult:
@@ -71,7 +73,7 @@ class TaskExecutionResult:
         execution_time: float,
         traversal_path: Optional[Path] = None,
         error_message: Optional[str] = None,
-        result: Optional[BugninjaTaskResult] = None,
+        result: Optional["BugninjaTaskResult"] = None,
     ):
         self.task_info = task_info
         self.success = success
@@ -93,35 +95,46 @@ class TaskExecutor:
         client (Optional[BugninjaClient]): Bugninja client instance
     """
 
-    def __init__(self, project_root: Path, headless: bool = True):
+    def __init__(self, project_root: Path, headless: bool = True, enable_logging: bool = False):
         """Initialize the TaskExecutor with project root.
 
         Args:
             project_root (Path): Root directory of the Bugninja project
             headless (bool): Whether to run in headless mode (default: True)
+            enable_logging (bool): Whether to enable Bugninja logging (default: False)
         """
         self.project_root = project_root
         self.headless = headless
+        self.enable_logging = enable_logging
         from bugninja.api import BugninjaClient
 
         self.client: Optional[BugninjaClient] = None
 
     async def __aenter__(self) -> "TaskExecutor":
         """Async context manager entry."""
-        await self._initialize_client(headless=self.headless)
+        await self._initialize_client(headless=self.headless, enable_logging=self.enable_logging)
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:  # type:ignore
         """Async context manager exit with cleanup."""
         await self.cleanup()
 
-    async def _initialize_client(self, headless: bool = True) -> None:
+    async def _initialize_client(self, headless: bool = True, enable_logging: bool = False) -> None:
         """Initialize the Bugninja client.
 
         Args:
             headless (bool): Whether to run in headless mode
+            enable_logging (bool): Whether to enable Bugninja logging
         """
         try:
+            # Set logging environment variable before client initialization
+
+            os.environ["BUGNINJA_LOGGING_ENABLED"] = str(enable_logging).lower()
+
+            from bugninja.api import BugninjaClient
+            from bugninja.api.models import BugninjaConfig
+            from bugninja.events import EventPublisherManager
+
             # Create configuration with headless mode
             config = BugninjaConfig(headless=headless)
 
@@ -129,11 +142,11 @@ class TaskExecutor:
             event_manager = EventPublisherManager([])
 
             # Initialize client
-            from bugninja.api import BugninjaClient
-
             self.client = BugninjaClient(config=config, event_manager=event_manager)
 
-            logger.info(f"Bugninja client initialized successfully (headless: {headless})")
+            logger.bugninja_log(
+                f"Bugninja client initialized successfully (headless: {headless}, logging: {enable_logging})"
+            )
         except Exception as e:
             logger.error(f"Failed to initialize Bugninja client: {e}")
             raise
@@ -143,7 +156,7 @@ class TaskExecutor:
         if self.client:
             try:
                 await self.client.cleanup()
-                logger.info("Bugninja client cleaned up successfully")
+                logger.bugninja_log("Bugninja client cleaned up successfully")
             except Exception as e:
                 logger.error(f"Error during client cleanup: {e}")
 
@@ -245,7 +258,7 @@ class TaskExecutor:
         except Exception as e:
             raise ValueError(f"Failed to read task metadata from {metadata_path}: {e}")
 
-    def _create_bugninja_task(self, task_info: TaskInfo) -> BugninjaTask:
+    def _create_bugninja_task(self, task_info: TaskInfo) -> "BugninjaTask":
         """Create a BugninjaTask from task information.
 
         Args:
@@ -267,6 +280,7 @@ class TaskExecutor:
             # Read metadata for allowed domains
             metadata = self._read_task_metadata(task_info.metadata_path)
             allowed_domains = metadata.get("allowed_domains", [])
+            from bugninja.api import BugninjaTask
 
             # Create BugninjaTask
             task = BugninjaTask(
@@ -275,7 +289,7 @@ class TaskExecutor:
                 allowed_domains=allowed_domains if allowed_domains else None,
             )
 
-            logger.info(f"Created BugninjaTask for '{task_info.name}'")
+            logger.bugninja_log(f"Created BugninjaTask for '{task_info.name}'")
             return task
 
         except Exception as e:
@@ -316,7 +330,7 @@ class TaskExecutor:
             with open(task_info.metadata_path, "w", encoding="utf-8") as f:
                 json.dump(metadata, f, indent=2, ensure_ascii=False)
 
-            logger.info(f"Updated metadata for task '{task_info.name}'")
+            logger.bugninja_log(f"Updated metadata for task '{task_info.name}'")
 
         except Exception as e:
             logger.error(f"Failed to update metadata for task '{task_info.name}': {e}")

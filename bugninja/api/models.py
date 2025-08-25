@@ -36,9 +36,13 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+from browser_use import BrowserProfile, BrowserSession  # type: ignore
 from browser_use.browser.profile import BROWSERUSE_PROFILES_DIR  # type: ignore
+from cuid2 import Cuid as CUID
+from playwright._impl._api_structures import ViewportSize
 from pydantic import BaseModel, Field, field_validator
 
+from bugninja.config.video_recording import VideoRecordingConfig
 from bugninja.schemas.pipeline import Traversal
 
 
@@ -108,7 +112,9 @@ class BugninjaTask(BaseModel):
         ```
     """
 
-    run_id: Optional[str] = Field(default=None, description="Unique identifier for the task run")
+    run_id: str = Field(
+        default_factory=lambda: CUID().generate(), description="Unique identifier for the task run"
+    )
 
     description: str = Field(
         ...,
@@ -136,6 +142,10 @@ class BugninjaTask(BaseModel):
 
     secrets: Optional[Dict[str, Any]] = Field(
         default=None, description="Sensitive data for authentication and task execution"
+    )
+
+    extra_rules: List[str] = Field(
+        default_factory=list, description="List of extra rules for navigation"
     )
 
     @field_validator("description")
@@ -374,7 +384,7 @@ class BugninjaConfig(BaseModel):
     Attributes:
         llm_provider (str): LLM provider to use (default: "azure_openai")
         llm_model (str): LLM model to use (default: "gpt-4.1")
-        llm_temperature (float): Temperature for LLM responses (0.0-2.0, default: 0.001)
+        llm_temperature (float): Temperature for LLM responses (0.0-2.0, default: 0.0)
         headless (bool): Run browser in headless mode (default: False)
         viewport_width (int): Browser viewport width (800-3840, default: 1280)
         viewport_height (int): Browser viewport height (600-2160, default: 960)
@@ -388,6 +398,7 @@ class BugninjaConfig(BaseModel):
         verbose_logging (bool): Enable verbose logging (default: False)
         screenshots_dir (Path): Directory for storing screenshots (default: "./screenshots")
         traversals_dir (Path): Directory for storing traversal files (default: "./traversals")
+        video_recording (VideoRecordingConfig): Video recording configuration (default: disabled)
 
     Example:
         ```python
@@ -419,7 +430,7 @@ class BugninjaConfig(BaseModel):
     llm_model: str = Field(default="gpt-4.1", description="LLM model to use")
 
     llm_temperature: float = Field(
-        default=0.001, ge=0.0, le=2.0, description="Temperature for LLM responses"
+        default=0.0, ge=0.0, le=2.0, description="Temperature for LLM responses"
     )
 
     # Provider-specific LLM configuration
@@ -473,6 +484,12 @@ class BugninjaConfig(BaseModel):
         default=Path("./traversals"), description="Directory for storing traversal files"
     )
 
+    # Video Recording Configuration
+    video_recording: VideoRecordingConfig = Field(
+        default_factory=VideoRecordingConfig,
+        description="Video recording configuration for navigation sessions",
+    )
+
     @field_validator("screenshots_dir", "traversals_dir", "user_data_dir")
     @classmethod
     def create_directories_if_not_exist(cls, v: Path) -> Path:
@@ -502,6 +519,27 @@ class BugninjaConfig(BaseModel):
                 "strict_selectors": True,
             }
         }
+
+    def build_bugninja_session_from_config_for_run(self, run_id: str) -> BrowserSession:
+
+        # Override user_data_dir with run_id for browser isolation
+        base_dir = self.user_data_dir or Path("./data_dir")
+        if isinstance(base_dir, str):
+            base_dir = Path(base_dir)
+        isolated_dir = base_dir / f"run_{run_id}"
+
+        viewport = ViewportSize(width=self.viewport_width, height=self.viewport_height)
+
+        return BrowserSession(
+            browser_profile=BrowserProfile(
+                headless=self.headless,
+                viewport=viewport,
+                user_agent=self.user_agent,
+                strict_selectors=self.strict_selectors,
+                user_data_dir=isolated_dir,
+                args=["--no-sandbox", "--disable-setuid-sandbox"],
+            )
+        )
 
 
 class SessionInfo(BaseModel):

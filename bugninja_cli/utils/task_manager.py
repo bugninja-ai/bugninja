@@ -31,7 +31,6 @@ if task_manager.task_exists("Login Flow"):
 """
 
 import json
-import logging
 import re
 import unicodedata
 from datetime import datetime
@@ -41,8 +40,9 @@ from typing import Any, Dict, List, Optional
 from cuid2 import Cuid as CUID
 from rich.console import Console
 
+from bugninja.utils.logging_config import logger
+
 console = Console()
-logger = logging.getLogger(__name__)
 
 
 def name_to_snake_case(name: str) -> str:
