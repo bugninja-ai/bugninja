@@ -21,7 +21,7 @@ class LLMConfig:
 
     provider: LLMProvider
     model: str
-    temperature: float = 0.7
+    temperature: float = 0.0
     max_tokens: Optional[int] = None
     base_url: Optional[str] = None
     api_version: Optional[str] = None

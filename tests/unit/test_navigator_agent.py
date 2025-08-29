@@ -656,46 +656,6 @@ class TestNavigatorAgent:
         finally:
             os.chdir(original_cwd)
 
-    def test_save_agent_actions_verbose_logging(
-        self, navigator_agent: NavigatorAgent, tmp_path: Path, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """Test that `save_agent_actions` logs detailed information when verbose=True.
-
-        This test validates that the `save_agent_actions` method provides
-        detailed logging when verbose mode is enabled. This logging is
-        critical for debugging navigation sessions and understanding
-        the complete action sequence that was recorded.
-        """
-        # Change to temporary directory for isolated testing
-        original_cwd = os.getcwd()
-        os.chdir(tmp_path)
-
-        try:
-            # Create traversals directory
-            traversals_dir = Path("./traversals")
-            traversals_dir.mkdir(exist_ok=True)
-
-            # Initialize agent with realistic test data using Polyfactory
-            navigator_agent.agent_taken_actions = [BugninjaExtendedActionFactory.custom_build()]
-            navigator_agent.agent_brain_states = {"brain_1": AgentBrainFactory.custom_build()}
-
-            # Mock CUID and datetime for predictable testing
-            with patch("cuid2.Cuid.generate") as mock_cuid:
-                mock_cuid.return_value = "test_cuid_123"
-
-                with patch("datetime.datetime") as mock_datetime:
-                    mock_datetime.now.return_value = datetime(2023, 12, 1, 14, 30, 22)
-                    mock_datetime.strftime = datetime.strftime
-
-                    navigator_agent.save_agent_actions(verbose=True)
-
-                    # Verify verbose logging - essential for debugging navigation sessions
-                    assert "Step 1:" in caplog.text, "Should log step information"
-                    assert "Log:" in caplog.text, "Should log action details"
-
-        finally:
-            os.chdir(original_cwd)
-
     def test_save_agent_actions_no_actions(
         self, navigator_agent: NavigatorAgent, tmp_path: Path
     ) -> None:

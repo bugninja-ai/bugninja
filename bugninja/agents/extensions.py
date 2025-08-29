@@ -120,7 +120,6 @@ async def extend_agent_action_with_info(
         action_key: str = list(short_action_descriptor.keys())[-1]
 
         logger.bugninja_log(f"📄 Action: {short_action_descriptor}")
-        logger.bugninja_log(f"📄 Action key: {action_key}")
 
         #!! these values here were selected by hand, if necessary they can be extended with other actions as well
         if action_key in SELECTOR_ORIENTED_ACTIONS:
@@ -129,6 +128,16 @@ async def extend_agent_action_with_info(
             logger.bugninja_log(f"📄 {action_key} on {chosen_selector}")
 
             selector_data: Dict[str, Any] = chosen_selector.__json__()
+
+            #! here we only want to keep the first layer of children for specific element in order to avoid unnecessarily large data dump in JSON
+            ch: Dict[str, Any]
+
+            if "children" in selector_data:
+                sanitised_children: List[Dict[str, Any]] = []
+                for ch in selector_data["children"]:
+                    ch["children"] = []
+                    sanitised_children.append(ch)
+                selector_data["children"] = sanitised_children
 
             formatted_xpath: str = "//" + selector_data["xpath"].strip("/")
 
@@ -139,15 +148,10 @@ async def extend_agent_action_with_info(
                 page=current_page
             )
 
-            try:
-                factory = SelectorFactory(current_page_html)
-                selector_data[ALTERNATIVE_XPATH_SELECTORS_KEY] = (
-                    factory.generate_relative_xpaths_from_full_xpath(full_xpath=formatted_xpath)
-                )
-
-            except Exception as e:
-                logger.error(f"Error generating alternative selectors: {e}")
-                selector_data[ALTERNATIVE_XPATH_SELECTORS_KEY] = None
+            factory = SelectorFactory(current_page_html)
+            selector_data[ALTERNATIVE_XPATH_SELECTORS_KEY] = (
+                factory.generate_relative_xpaths_from_full_xpath(full_xpath=formatted_xpath)
+            )
 
             action_dictionary[DOM_ELEMENT_DATA_KEY] = selector_data
 

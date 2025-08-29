@@ -328,7 +328,7 @@ def get_default_config_template(project_name: str, **overrides: Dict[str, Any]) 
             "enable_rich_logging": True,
             "logging_enabled": False,
         },
-        "development": {"debug_mode": False, "enable_verbose_logging": False},
+        "development": {"debug_mode": False},
         "paths": {
             "traversals_dir": "./traversals",
             "screenshots_dir": "./screenshots",

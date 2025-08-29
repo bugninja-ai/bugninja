@@ -112,15 +112,14 @@ class BugninjaTask(BaseModel):
         ```
     """
 
-    run_id: str = Field(
-        default_factory=lambda: CUID().generate(), description="Unique identifier for the task run"
-    )
-
     description: str = Field(
         ...,
         min_length=1,
         max_length=1000,
         description="Human-readable description of the task to perform",
+    )
+    run_id: str = Field(
+        default_factory=lambda: CUID().generate(), description="Unique identifier for the task run"
     )
 
     max_steps: int = Field(
@@ -395,7 +394,6 @@ class BugninjaConfig(BaseModel):
         enable_screenshots (bool): Enable screenshot capture (default: True)
         enable_healing (bool): Enable self-healing capabilities (default: True)
         debug_mode (bool): Enable debug mode (default: False)
-        verbose_logging (bool): Enable verbose logging (default: False)
         screenshots_dir (Path): Directory for storing screenshots (default: "./screenshots")
         traversals_dir (Path): Directory for storing traversal files (default: "./traversals")
         video_recording (VideoRecordingConfig): Video recording configuration (default: disabled)
@@ -441,10 +439,10 @@ class BugninjaConfig(BaseModel):
     # Browser Configuration
     headless: bool = Field(default=False, description="Run browser in headless mode")
 
-    viewport_width: int = Field(default=1280, ge=800, le=3840, description="Browser viewport width")
+    viewport_width: int = Field(default=1920, ge=800, le=3840, description="Browser viewport width")
 
     viewport_height: int = Field(
-        default=960, ge=600, le=2160, description="Browser viewport height"
+        default=1080, ge=600, le=2160, description="Browser viewport height"
     )
 
     user_agent: Optional[str] = Field(
@@ -472,8 +470,6 @@ class BugninjaConfig(BaseModel):
 
     # Development Configuration
     debug_mode: bool = Field(default=False, description="Enable debug mode")
-
-    verbose_logging: bool = Field(default=False, description="Enable verbose logging")
 
     # File Paths
     screenshots_dir: Path = Field(
@@ -538,6 +534,8 @@ class BugninjaConfig(BaseModel):
                 strict_selectors=self.strict_selectors,
                 user_data_dir=isolated_dir,
                 args=["--no-sandbox", "--disable-setuid-sandbox"],
+                # record_video_dir="./recordings",
+                # record_video_size=viewport,
             )
         )
 

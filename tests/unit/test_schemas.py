@@ -1,5 +1,5 @@
 from typing import Any, Dict, List, Optional
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from browser_use.agent.views import AgentBrain  # type:ignore
@@ -1186,23 +1186,6 @@ class TestReplayWithHealingStateMachine:
         assert (
             result is True
         ), "Should stop replay when no remaining states - ensures the replay process stops when all states have been processed"
-
-    # ? VALID CASE
-    def test_replay_should_stop_with_verbose_logging(
-        self, state_machine: ReplayWithHealingStateMachine
-    ) -> None:
-        """Test replay_should_stop with verbose logging enabled.
-
-        This test validates that replay_should_stop correctly handles
-        verbose logging when enabled. Verbose logging is important for
-        debugging complex state machine scenarios and understanding
-        the decision-making process.
-        """
-        with patch("bugninja.schemas.logger") as mock_logger:
-            state_machine.replay_should_stop(healing_agent_reached_goal=False, verbose=True)
-
-            # Verify logging was called for debugging purposes - important for debugging complex state machine scenarios
-            mock_logger.bugninja_log.assert_called(), "Should log information when verbose mode is enabled"
 
     # ? VALID CASE
     def test_state_machine_with_empty_replay_data(self) -> None:

@@ -28,6 +28,7 @@ from browser_use import (  # type: ignore[import-untyped]
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from bugninja.agents import NavigatorAgent
+from bugninja.agents.bugninja_agent_base import BugninjaAgentBase
 from bugninja.api.exceptions import (
     BrowserError,
     BugninjaError,
@@ -58,7 +59,6 @@ from bugninja.events import EventPublisherManager
 from bugninja.replication import ReplicatorRun
 from bugninja.schemas.pipeline import Traversal
 from bugninja.utils.logging_config import logger
-from bugninja.utils.prompt_string_factories import AUTHENTICATION_HANDLING_EXTRA_PROMPT
 
 
 class ClientOperationType(Enum):
@@ -515,9 +515,9 @@ class BugninjaClient:
 
     async def _ensure_cleanup(
         self,
-        agent: Optional[Any] = None,
+        agent: Optional[BugninjaAgentBase] = None,
         browser_session: Optional[BrowserSession] = None,
-        replicator: Optional[Any] = None,
+        replicator: Optional[ReplicatorRun] = None,
     ) -> None:
         """Ensure consistent cleanup for all agent types and resources.
 
@@ -544,8 +544,6 @@ class BugninjaClient:
                 try:
                     if hasattr(agent, "close"):
                         await agent.close()
-                    elif hasattr(agent, "cleanup"):
-                        await agent.cleanup()
                 except Exception as e:
                     # Log cleanup error but don't raise to avoid masking original errors
                     logger.warning(f"Agent cleanup failed: {e}")
@@ -626,7 +624,7 @@ class BugninjaClient:
                 llm=llm,
                 browser_session=browser_session,
                 sensitive_data=task.secrets,
-                extend_planner_system_message=AUTHENTICATION_HANDLING_EXTRA_PROMPT,
+                extra_rules=task.extra_rules,
                 video_recording_config=self.config.video_recording,
             )
 
@@ -755,7 +753,7 @@ class BugninjaClient:
                     llm=self._create_llm(temperature=self.config.llm_temperature),
                     browser_session=browser_session,
                     sensitive_data=task.secrets,
-                    extend_planner_system_message=AUTHENTICATION_HANDLING_EXTRA_PROMPT,
+                    extra_rules=task.extra_rules,
                     video_recording_config=self.config.video_recording,
                 )
 

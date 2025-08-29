@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import List, Optional
 
 from browser_use.agent.views import (  # type: ignore
     AgentOutput,
@@ -10,6 +10,10 @@ from cuid2 import Cuid as CUID
 
 from bugninja.agents.bugninja_agent_base import BugninjaAgentBase
 from bugninja.agents.extensions import BugninjaController, extend_agent_action_with_info
+from bugninja.prompts.prompt_factory import (
+    BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
+    get_extra_rules_related_prompt,
+)
 from bugninja.utils.logging_config import logger
 from bugninja.utils.screenshot_manager import ScreenshotManager
 
@@ -64,7 +68,14 @@ class HealerAgent(BugninjaAgentBase):
     """
 
     def __init__(  # type:ignore
-        self, *args, parent_run_id: Optional[str] = None, **kwargs  # type:ignore
+        self,
+        *args,
+        parent_run_id: Optional[str] = None,
+        extra_rules: List[str] = [],
+        # TODO! healer agent should have its own system prompt, but for now we use the navigator one
+        override_system_message: str = BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
+        extend_planner_system_message: str = "",
+        **kwargs,  # type:ignore
     ) -> None:
         """Initialize HealerAgent with healing-specific functionality.
 
@@ -73,7 +84,16 @@ class HealerAgent(BugninjaAgentBase):
             parent_run_id (Optional[str]): ID of the parent run for event tracking continuity
             **kwargs: Keyword arguments passed to the parent BugninjaAgentBase class
         """
-        super().__init__(*args, **kwargs)
+        super().__init__(
+            *args,
+            override_system_message=override_system_message,
+            extend_planner_system_message=f"{get_extra_rules_related_prompt(
+                    extra_rule_list=extra_rules
+                )}\n"
+            + extend_planner_system_message,
+            extra_rules=extra_rules,
+            **kwargs,
+        )
 
         # Use parent's run_id if provided, otherwise keep the generated one
         if parent_run_id is not None:

@@ -62,12 +62,6 @@ __all__ = [
     "create_provider_model_from_settings",
     "create_llm_model_from_config",
     "create_llm_config_from_settings",
-    "azure_openai_model",
-    "openai_model",
-    "anthropic_model",
-    "google_gemini_model",
-    "deepseek_model",
-    "ollama_model",
     "ProviderRegistry",
     "ConfigurationErrorHandler",
 ]

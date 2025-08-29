@@ -1,3 +1,0 @@
-### HANDLING THIRD PARTY AUTHENTICATION
-
-It is very important that you are able to handle third-party authentication or the non-authentication software, such as applications or SMS verifications, in your action space. There is a declared action for this type of interaction, and you must not forget that you can handle this. In this scenario, you will wait for the user's response, and the user will be signaling when the third-party authentication is completed. After that is done, you must re-evaluate the updated state of the browser.

@@ -96,7 +96,6 @@ class ConfigurationFactory:
             "logging.enable_rich_logging": "enable_rich_logging",
             # Development configuration
             "development.debug_mode": "debug_mode",
-            "development.enable_verbose_logging": "enable_verbose_logging",
             # Paths configuration
             "paths.traversals_dir": "traversals_dir",
             "paths.screenshots_dir": "screenshots_dir",

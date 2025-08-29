@@ -4,7 +4,7 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import cv2
 import numpy as np
@@ -19,6 +19,11 @@ from playwright.async_api import CDPSession
 
 from bugninja.agents.bugninja_agent_base import BugninjaAgentBase
 from bugninja.agents.extensions import BugninjaController, extend_agent_action_with_info
+from bugninja.config.video_recording import VideoRecordingConfig
+from bugninja.prompts.prompt_factory import (
+    BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
+    get_extra_rules_related_prompt,
+)
 from bugninja.schemas.pipeline import (
     BugninjaBrowserConfig,
     Traversal,
@@ -77,6 +82,29 @@ class NavigatorAgent(BugninjaAgentBase):
             print(f"Traversal saved with {len(navigator._traversal.actions)} actions")
         ```
     """
+
+    def __init__(  # type:ignore
+        self,
+        *args,
+        run_id: str | None = None,
+        override_system_message: str = BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
+        extra_rules: List[str] = [],
+        extend_planner_system_message: str = "",
+        video_recording_config: VideoRecordingConfig | None = None,
+        **kwargs,  # type:ignore
+    ) -> None:
+        super().__init__(
+            *args,
+            run_id=run_id,
+            video_recording_config=video_recording_config,
+            override_system_message=override_system_message,
+            extend_planner_system_message=f"{get_extra_rules_related_prompt(
+                    extra_rule_list=extra_rules
+                )}\n"
+            + extend_planner_system_message,
+            extra_rules=extra_rules,
+            **kwargs,
+        )
 
     async def _before_run_hook(self) -> None:
         """Initialize navigation session with event tracking and screenshot management.
@@ -356,6 +384,7 @@ class NavigatorAgent(BugninjaAgentBase):
 
         traversal = Traversal(
             test_case=self.task,
+            extra_rules=self.extra_rules,
             browser_config=BugninjaBrowserConfig.from_browser_profile(
                 self.browser_session.browser_profile
             ),

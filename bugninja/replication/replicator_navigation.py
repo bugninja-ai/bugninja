@@ -20,6 +20,7 @@ from browser_use.agent.views import AgentBrain  # type: ignore
 from cuid2 import Cuid as CUID
 from patchright.async_api import BrowserContext as PatchrightBrowserContext
 from patchright.async_api import Page
+from pydantic import Field
 
 from bugninja.replication.errors import ActionError, ReplicatorError, SelectorError
 from bugninja.schemas.pipeline import BugninjaExtendedAction, Traversal
@@ -70,7 +71,7 @@ def get_user_input() -> str:
 
 
 class ReplicatorNavigator(ABC):
-    secrets: Dict[str, str]
+    secrets: Optional[Dict[str, str]] = Field(default_factory=dict)
 
     @staticmethod
     def _load_traversal_from_json(json_path: str) -> Traversal:
@@ -139,7 +140,8 @@ class ReplicatorNavigator(ABC):
             # Apply browser configuration if available
             **self.replay_traversal.browser_config.model_dump(exclude_none=True),
             args=["--no-sandbox", "--disable-setuid-sandbox"],
-            record_video_dir="./recordings",  # Directory to save .webm video files
+            # record_video_dir="./recordings",  # Directory to save .webm video files
+            # record_video_size=self.replay_traversal.browser_config.viewport,
         )
 
         # Override user_data_dir with run_id for browser isolation
@@ -190,6 +192,8 @@ class ReplicatorNavigator(ABC):
 
         if not element_info:
             raise ActionError("No element information provided for event 'fill'!")
+
+        await self._execute_with_fallback("click", element_info)
 
         await self._execute_with_fallback(
             "fill", element_info, {"text": action["input_text"]["text"]}
@@ -527,7 +531,7 @@ class ReplicatorNavigator(ABC):
             # Get element and verify its state
             element = page.locator(selector)
 
-            await element.wait_for(state="attached", timeout=1000)
+            # await element.wait_for(state="attached", timeout=500)
 
             element_count = await element.count()
             logger.bugninja_log(f"Found '{element_count}' elements for selector")
@@ -542,16 +546,23 @@ class ReplicatorNavigator(ABC):
             if action == "click":
                 await element.click()
             elif action == "fill":
+
+                # ? we place click element here before filling to make sure that the element is visible,
+                # ? and if there is any attached functionality to clicking on the input field, we should trigger it as well
+                # ? (this is the normal human behavior)
+                await element.click()
+
                 value: Optional[str] = kwargs.get("text")  # type:ignore
 
                 if value is None:
                     logger.warning(f"⚠️ No value provided for {action} action")
                     return False, "No value provided for fill action"
 
-                for key, secret_value in self.secrets.items():
-                    secret_key = f"<secret>{key}</secret>"
-                    if secret_key in value:
-                        value = value.replace(f"<secret>{key}</secret>", secret_value)
+                if self.secrets:
+                    for key, secret_value in self.secrets.items():
+                        secret_key = f"<secret>{key}</secret>"
+                        if secret_key in value:
+                            value = value.replace(f"<secret>{key}</secret>", secret_value)
 
                 await element.fill(value)
             return True, None

@@ -124,9 +124,10 @@ class Traversal(BaseModel):
 
     test_case: str
     browser_config: BugninjaBrowserConfig
-    secrets: Dict[str, str]
     brain_states: Dict[str, AgentBrain]
     actions: Dict[str, BugninjaExtendedAction]
+    extra_rules: List[str] = Field(default_factory=list)
+    secrets: Optional[Dict[str, str]] = Field(default_factory=dict)
 
     class Config:
         arbitrary_types_allowed = True

@@ -104,6 +104,7 @@ class BugninjaAgentBase(Agent, ABC):
         self,
         *args,
         run_id: Optional[str] = None,
+        extra_rules: List[str] = [],
         video_recording_config: Optional[VideoRecordingConfig] = None,
         **kwargs,  # type:ignore
     ) -> None:
@@ -121,6 +122,7 @@ class BugninjaAgentBase(Agent, ABC):
 
         # Generate run_id at creation time for consistency across all agents
         self.run_id: str = CUID().generate()
+        self.extra_rules = extra_rules
 
         if run_id is not None:
             self.run_id = run_id
@@ -433,6 +435,7 @@ class BugninjaAgentBase(Agent, ABC):
                 plan = await self._run_planner()
                 # add plan before last state message
                 self._message_manager.add_plan(plan, position=-1)
+
             if step_info and step_info.is_last_step():
                 # Add last step warning if needed
                 msg = 'Now comes your last step. Use only the "done" action now. No other actions - so here your action sequence must have length 1.'
@@ -441,6 +444,7 @@ class BugninjaAgentBase(Agent, ABC):
                 msg += "\nInclude everything you found out for the ultimate task in the done text."
                 logger.info("Last step finishing up")
                 self._message_manager._add_message_with_tokens(HumanMessage(content=msg))
+
                 self.AgentOutput = self.DoneAgentOutput
             input_messages = self._message_manager.get_messages()
             tokens = self._message_manager.state.history.current_tokens
@@ -495,6 +499,7 @@ class BugninjaAgentBase(Agent, ABC):
                 # check again if Ctrl+C was pressed before we commit the output to history
                 await self._raise_if_stopped_or_paused()
                 self._message_manager.add_model_output(model_output)
+
             except asyncio.CancelledError:
                 # Task was cancelled due to Ctrl+C
                 self._message_manager._remove_last_state_message()

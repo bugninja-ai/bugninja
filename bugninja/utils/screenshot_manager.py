@@ -76,8 +76,6 @@ class ScreenshotManager:
         if coordinates:
             self._draw_rectangle_on_screenshot(self.screenshots_dir / filename, coordinates)
 
-        logger.bugninja_log(f"📸 Screenshot: {filename}")
-
         # Return full relative path
         return f"screenshots/{self.screenshots_dir.name}/{filename}"
 

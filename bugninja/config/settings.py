@@ -116,7 +116,6 @@ class BugninjaSettings(BaseSettings):
 
     # Development Configuration (from TOML)
     debug_mode: bool = Field(default=False, description="Enable debug mode")
-    enable_verbose_logging: bool = Field(default=False, description="Enable verbose logging")
 
     # Project Configuration (from TOML)
     project_name: str = Field(default="bugninja", description="Project name")

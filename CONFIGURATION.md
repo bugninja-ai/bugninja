@@ -39,7 +39,6 @@ enable_rich_logging = true
 
 [development]
 debug_mode = false
-enable_verbose_logging = false
 
 [paths]
 traversals_dir = "./traversals"
