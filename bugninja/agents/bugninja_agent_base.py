@@ -657,7 +657,7 @@ class BugninjaAgentBase(Agent, ABC):
                 if results[-1].is_done or results[-1].error or i == len(actions) - 1:
                     break
 
-                await asyncio.sleep(self.browser_profile.wait_between_actions)
+                await asyncio.sleep(self.browser_session.browser_profile.wait_between_actions)
                 # hash all elements. if it is a subset of cached_state its fine - else break (new elements on page)
 
             except asyncio.CancelledError:

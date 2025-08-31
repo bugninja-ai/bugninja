@@ -215,6 +215,8 @@ class NavigatorAgent(BugninjaAgentBase):
 
         current_page: Page = await self.browser_session.get_current_page()
 
+        await current_page.wait_for_load_state("load")
+
         # Initialize video recording on the first step only
         if not hasattr(self, "_video_recording_initialized"):
             self._video_recording_initialized = False
@@ -385,6 +387,7 @@ class NavigatorAgent(BugninjaAgentBase):
         traversal = Traversal(
             test_case=self.task,
             extra_rules=self.extra_rules,
+            # TODO! saving here does not seem proper
             browser_config=BugninjaBrowserConfig.from_browser_profile(
                 self.browser_session.browser_profile
             ),

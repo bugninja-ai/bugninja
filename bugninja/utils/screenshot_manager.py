@@ -118,6 +118,8 @@ class ScreenshotManager:
                 )
                 return coordinates
 
+        # TODO! this here is likely bullshit, has to be removed in the future
+
         # NEW: Enhanced popup detection and fallback
         logger.debug("All XPaths failed, attempting popup-specific detection")
         popup_coordinates = await self._try_popup_specific_selectors(page)
@@ -515,7 +517,7 @@ class ScreenshotManager:
         """
         # Always use page.screenshot with full_page=True for consistent behavior
         # This ensures popups, modals, and overlays are captured
-        await page.screenshot(path=str(self.screenshots_dir / filename), full_page=True)
+        await page.screenshot(path=str(self.screenshots_dir / filename), full_page=False)
 
     def _draw_rectangle_on_screenshot(
         self, screenshot_path: Path, coordinates: Dict[str, float]

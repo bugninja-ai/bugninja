@@ -129,18 +129,6 @@ class BugninjaSettings(BaseSettings):
     )
     tasks_dir: Path = Field(default=Path("./tasks"), description="Directory for task files")
 
-    # Browser Configuration (from TOML)
-    browser_config: Dict[str, Any] = Field(
-        default_factory=lambda: {
-            "viewport_width": 1280,
-            "viewport_height": 960,
-            "user_agent": "",
-            "device_scale_factor": 0.0,
-            "timeout": 30000,
-        },
-        description="Browser configuration settings",
-    )
-
     # Agent Configuration (from TOML)
     agent_config: Dict[str, Any] = Field(
         default_factory=lambda: {

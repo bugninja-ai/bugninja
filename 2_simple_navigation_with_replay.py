@@ -1,13 +1,9 @@
 import asyncio
 
-from faker import Faker
 from rich import print as rich_print
 
 from bugninja.api.client import BugninjaClient
-from bugninja.api.models import BugninjaTask
-
-# to generate a random fake name
-fake = Faker()
+from bugninja.api.models import BugninjaConfig, BugninjaTask
 
 METEOBLUE_NAVIGATION_PROMPT = """
 Navigate to meteoblue.com, and search for New York City!
@@ -15,16 +11,17 @@ Access the settings, toggle temperature units twice (from Celsius → to Fahrenh
 """.strip()
 
 
-async def simple_example() -> None:
+async def simple_navigation_with_replay() -> None:
 
     task = BugninjaTask(description=METEOBLUE_NAVIGATION_PROMPT)
 
-    client = BugninjaClient()
+    client = BugninjaClient(config=BugninjaConfig(viewport_width=1920, viewport_height=1080))
 
     # Execute the task
     result = await client.run_task(task=task)
 
     if not result.traversal:
+        rich_print(result)
         raise Exception("Task execution failed")
 
     rich_print(list(result.traversal.brain_states.values())[-1])
@@ -38,4 +35,4 @@ async def simple_example() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(simple_example())
+    asyncio.run(simple_navigation_with_replay())

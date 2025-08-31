@@ -81,7 +81,7 @@ class SelectorFactory:
         nodes: List[Element] = self.tree.xpath(full_xpath)
 
         if len(nodes) == 0:
-            raise ValueError("No element found for the provided XPath.")
+            raise ValueError(f"No element found for the provided XPath: `{full_xpath}`")
         elif len(nodes) > 1:
             raise ValueError("Multiple elements found for the provided XPath.")
 
@@ -129,9 +129,4 @@ class SelectorFactory:
             if len(all_collected_xpath) > 100:
                 break
 
-        # except Exception as e:
-        #     rich_print(e)
-
-        rich_print("COLLECTED XPATHS:")
-        rich_print(all_collected_xpath)
         return all_collected_xpath

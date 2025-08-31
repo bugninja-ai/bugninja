@@ -21,7 +21,7 @@ If successful log out and close the browser!
 """.strip()
 
 
-async def simple_example() -> None:
+async def simple_navigation() -> None:
     task = BugninjaTask(description=BACPREP_NAVIGATION_PROMPT)
 
     # Execute the task
@@ -32,4 +32,4 @@ async def simple_example() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(simple_example())
+    asyncio.run(simple_navigation())

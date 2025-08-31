@@ -439,11 +439,9 @@ class BugninjaConfig(BaseModel):
     # Browser Configuration
     headless: bool = Field(default=False, description="Run browser in headless mode")
 
-    viewport_width: int = Field(default=1920, ge=800, le=3840, description="Browser viewport width")
+    viewport_width: int = Field(default=1920, description="Browser viewport width")
 
-    viewport_height: int = Field(
-        default=1080, ge=600, le=2160, description="Browser viewport height"
-    )
+    viewport_height: int = Field(default=1080, description="Browser viewport height")
 
     user_agent: Optional[str] = Field(
         default=None,
@@ -461,7 +459,7 @@ class BugninjaConfig(BaseModel):
 
     # BugninjaTask Configuration
     default_max_steps: int = Field(
-        default=100, ge=1, le=1000, description="Default maximum steps for tasks"
+        default=100, ge=1, le=200, description="Default maximum steps for tasks"
     )
 
     enable_screenshots: bool = Field(default=True, description="Enable screenshot capture")
@@ -524,12 +522,13 @@ class BugninjaConfig(BaseModel):
             base_dir = Path(base_dir)
         isolated_dir = base_dir / f"run_{run_id}"
 
-        viewport = ViewportSize(width=self.viewport_width, height=self.viewport_height)
+        viewport_size = ViewportSize(width=self.viewport_width, height=self.viewport_height)
 
         return BrowserSession(
             browser_profile=BrowserProfile(
                 headless=self.headless,
-                viewport=viewport,
+                viewport=viewport_size,
+                window_size=viewport_size,
                 user_agent=self.user_agent,
                 strict_selectors=self.strict_selectors,
                 user_data_dir=isolated_dir,

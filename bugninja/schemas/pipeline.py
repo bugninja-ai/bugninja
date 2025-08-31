@@ -49,6 +49,12 @@ class BugninjaBrowserConfig(BaseModel):
         default=ViewportSize(width=1280, height=960),
         description="Viewport dimensions for browser automation",
     )
+
+    window_size: ViewportSize = Field(
+        default=ViewportSize(width=1280, height=960),
+        description="Window size for browser automation",
+    )
+
     channel: BrowserChannel
     user_data_dir: Optional[str] = Field(
         default_factory=lambda: (BROWSERUSE_PROFILES_DIR / "default").as_posix(),
@@ -67,12 +73,6 @@ class BugninjaBrowserConfig(BaseModel):
     timeout: float = Field(default=30_000)
     headers: Optional[Dict[str, str]] = Field(default=None)
     allowed_domains: Optional[List[str]] = Field(default=None)
-
-    @staticmethod
-    def default_factory() -> "BugninjaBrowserConfig":
-        return BugninjaBrowserConfig(
-            viewport=ViewportSize(width=1280, height=960), channel=BrowserChannel.CHROMIUM
-        )
 
     @staticmethod
     def from_browser_profile(browser_profile: BrowserProfile) -> "BugninjaBrowserConfig":
@@ -98,7 +98,8 @@ class BugninjaBrowserConfig(BaseModel):
             channel=browser_profile.channel,
             user_data_dir=user_data_dir_str,
             user_agent=browser_profile.user_agent,
-            viewport=browser_profile.viewport or ViewportSize(width=1280, height=960),
+            viewport=browser_profile.window_size,  #! hard monkeypatch bacause of browseruse bullshit
+            window_size=browser_profile.window_size,
             device_scale_factor=browser_profile.device_scale_factor,
             color_scheme=browser_profile.color_scheme,
             accept_downloads=browser_profile.accept_downloads,

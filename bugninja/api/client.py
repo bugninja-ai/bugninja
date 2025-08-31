@@ -50,7 +50,6 @@ from bugninja.api.models import (
     SessionInfo,
 )
 from bugninja.config import (
-    ConfigurationFactory,
     create_llm_model_from_config,
     create_provider_model_from_settings,
 )
@@ -191,9 +190,6 @@ class BugninjaClient:
 
             # Store LLM configuration (use provided or create from settings)
             self._llm_config = llm_config
-
-            # Initialize internal configuration
-            self._settings = ConfigurationFactory.get_settings()
 
             # Store event manager
             self._event_manager = event_manager
@@ -610,6 +606,7 @@ class BugninjaClient:
                 )
 
             browser_session = self.config.build_bugninja_session_from_config_for_run(task.run_id)
+
             # TODO! this is extremely ugly and a strong antipattern, but it works for now, has to get rid of it later
             browser_session.browser_profile.allowed_domains = task.allowed_domains
             self._active_sessions.append(browser_session)
@@ -623,6 +620,7 @@ class BugninjaClient:
                 task=task.description,
                 llm=llm,
                 browser_session=browser_session,
+                browser_profile=browser_session.browser_profile,
                 sensitive_data=task.secrets,
                 extra_rules=task.extra_rules,
                 video_recording_config=self.config.video_recording,

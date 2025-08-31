@@ -88,19 +88,11 @@ disallow_untyped_defs = true
 
 #? Development related commands
 
-[tool.poe.tasks.run]
-help   = "Start test traversal agent interaction"
-shell = "uv run python main.py"
-
-[tool.poe.tasks.test]
-help   = "Run tests on the project"
-shell = "uv run pytest tests"
-
 [tool.poe.tasks.replay]
 help   = "Replay (and potentially heal if necessary) the last saved traversal"
 shell = "uv run python replay.py"
 
 [tool.poe.tasks.lint]
 help   = "Lints the whole project searching for inefficiencies in the code"
-shell = "uv run ruff check --fix bugninja tests bugninja_cli . && uv run isort bugninja tests bugninja_cli . && uv run black bugninja tests bugninja_cli . && uv run mypy main.py bugninja tests bugninja_cli"
+shell = "uv run ruff check --fix bugninja bugninja_cli . && uv run isort bugninja bugninja_cli . && uv run black bugninja bugninja_cli . && uv run mypy bugninja bugninja_cli"
 
