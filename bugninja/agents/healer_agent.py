@@ -7,13 +7,17 @@ from browser_use.browser.session import Page  # type: ignore
 from browser_use.browser.views import BrowserStateSummary  # type: ignore
 from browser_use.controller.registry.views import ActionModel  # type: ignore
 from cuid2 import Cuid as CUID
+from rich import print as rich_print
+from rich.markdown import Markdown
 
 from bugninja.agents.bugninja_agent_base import BugninjaAgentBase
 from bugninja.agents.extensions import BugninjaController, extend_agent_action_with_info
 from bugninja.prompts.prompt_factory import (
     BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
-    get_extra_rules_related_prompt,
+    HEALDER_AGENT_EXTRA_SYSTEM_PROMPT,
+    get_passed_brainstates_related_prompt,
 )
+from bugninja.schemas.pipeline import BugninjaBrainState
 from bugninja.utils.logging_config import logger
 from bugninja.utils.screenshot_manager import ScreenshotManager
 
@@ -70,11 +74,12 @@ class HealerAgent(BugninjaAgentBase):
     def __init__(  # type:ignore
         self,
         *args,
+        task: str,
         parent_run_id: Optional[str] = None,
-        extra_rules: List[str] = [],
-        # TODO! healer agent should have its own system prompt, but for now we use the navigator one
+        extra_instructions: List[str] = [],
         override_system_message: str = BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
-        extend_planner_system_message: str = "",
+        extend_system_message: str | None = None,
+        already_completed_brainstates: List[BugninjaBrainState] = [],
         **kwargs,  # type:ignore
     ) -> None:
         """Initialize HealerAgent with healing-specific functionality.
@@ -84,20 +89,27 @@ class HealerAgent(BugninjaAgentBase):
             parent_run_id (Optional[str]): ID of the parent run for event tracking continuity
             **kwargs: Keyword arguments passed to the parent BugninjaAgentBase class
         """
+
+        task += f"\n\n{get_passed_brainstates_related_prompt(completed_brain_states=already_completed_brainstates)}"
+
+        system_message_to_extend_by: str = extend_system_message if extend_system_message else ""
+
         super().__init__(
             *args,
             override_system_message=override_system_message,
-            extend_planner_system_message=f"{get_extra_rules_related_prompt(
-                    extra_rule_list=extra_rules
-                )}\n"
-            + extend_planner_system_message,
-            extra_rules=extra_rules,
+            extend_system_message=system_message_to_extend_by
+            + f"\n\n{HEALDER_AGENT_EXTRA_SYSTEM_PROMPT}",
+            extra_instructions=extra_instructions,
+            task=task,
             **kwargs,
         )
 
         # Use parent's run_id if provided, otherwise keep the generated one
         if parent_run_id is not None:
             self.run_id = parent_run_id
+
+        rich_print("--> Formatted task provided to the agent:")
+        rich_print(Markdown(self.task))
 
     async def _before_run_hook(self) -> None:
         """Initialize healing session with event tracking and screenshot management.

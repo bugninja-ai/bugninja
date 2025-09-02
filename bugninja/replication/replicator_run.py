@@ -201,9 +201,8 @@ class ReplicatorRun(ReplicatorNavigator):
             browser_session=self.browser_session,
             sensitive_data=self.secrets,
             parent_run_id=self.run_id,  # Pass parent's run_id to maintain consistency
-            # TODO! experiment with adding the proper state from previous runs for the brain to be aware what is happening
-            # injected_agent_state=self.create_agent_state_from_traversal_json(cut_after=at_idx),
-            extra_rules=self.replay_traversal.extra_rules,
+            extra_instructions=self.replay_traversal.extra_instructions,
+            already_completed_brainstates=self.replay_state_machine.passed_brain_states,
         )
 
         # Share screenshot directory and counter with healing agent

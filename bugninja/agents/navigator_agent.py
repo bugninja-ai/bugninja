@@ -16,13 +16,14 @@ from browser_use.browser.views import BrowserStateSummary  # type: ignore
 from browser_use.controller.registry.views import ActionModel  # type: ignore
 from cuid2 import Cuid as CUID
 from playwright.async_api import CDPSession
+from rich import print as rich_print
+from rich.markdown import Markdown
 
 from bugninja.agents.bugninja_agent_base import BugninjaAgentBase
 from bugninja.agents.extensions import BugninjaController, extend_agent_action_with_info
 from bugninja.config.video_recording import VideoRecordingConfig
 from bugninja.prompts.prompt_factory import (
     BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
-    get_extra_rules_related_prompt,
 )
 from bugninja.schemas.pipeline import (
     BugninjaBrowserConfig,
@@ -86,9 +87,10 @@ class NavigatorAgent(BugninjaAgentBase):
     def __init__(  # type:ignore
         self,
         *args,
+        task: str,
         run_id: str | None = None,
         override_system_message: str = BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
-        extra_rules: List[str] = [],
+        extra_instructions: List[str] = [],
         extend_planner_system_message: str = "",
         video_recording_config: VideoRecordingConfig | None = None,
         **kwargs,  # type:ignore
@@ -98,13 +100,14 @@ class NavigatorAgent(BugninjaAgentBase):
             run_id=run_id,
             video_recording_config=video_recording_config,
             override_system_message=override_system_message,
-            extend_planner_system_message=f"{get_extra_rules_related_prompt(
-                    extra_rule_list=extra_rules
-                )}\n"
-            + extend_planner_system_message,
-            extra_rules=extra_rules,
+            extend_planner_system_message=extend_planner_system_message,
+            extra_instructions=extra_instructions,
+            task=task,
             **kwargs,
         )
+
+        rich_print("--> Formatted task provided to the agent:")
+        rich_print(Markdown(self.task))
 
     async def _before_run_hook(self) -> None:
         """Initialize navigation session with event tracking and screenshot management.
@@ -385,8 +388,8 @@ class NavigatorAgent(BugninjaAgentBase):
             actions[f"action_{idx}"] = model_taken_action.model_dump()
 
         traversal = Traversal(
-            test_case=self.task,
-            extra_rules=self.extra_rules,
+            test_case=self.raw_task,
+            extra_instructions=self.extra_instructions,
             # TODO! saving here does not seem proper
             browser_config=BugninjaBrowserConfig.from_browser_profile(
                 self.browser_session.browser_profile

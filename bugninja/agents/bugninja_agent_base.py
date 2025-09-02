@@ -23,6 +23,7 @@ from browser_use.utils import time_execution_async  # type: ignore
 from cuid2 import Cuid as CUID
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage
+from rich import print as rich_print
 
 from bugninja.config import (
     create_llm_model_from_config,
@@ -31,6 +32,7 @@ from bugninja.config import (
 from bugninja.config.llm_config import LLMConfig
 from bugninja.config.video_recording import VideoRecordingConfig
 from bugninja.events import EventPublisherManager
+from bugninja.prompts.prompt_factory import get_extra_instructions_related_prompt
 from bugninja.schemas.pipeline import BugninjaExtendedAction
 from bugninja.utils.logging_config import logger
 from bugninja.utils.video_recording_manager import VideoRecordingManager
@@ -103,8 +105,11 @@ class BugninjaAgentBase(Agent, ABC):
     def __init__(  # type:ignore
         self,
         *args,
+        task: str,
         run_id: Optional[str] = None,
-        extra_rules: List[str] = [],
+        extra_instructions: List[str] = [],
+        override_system_message: str | None = None,
+        extend_system_message: str | None = None,
         video_recording_config: Optional[VideoRecordingConfig] = None,
         **kwargs,  # type:ignore
     ) -> None:
@@ -115,14 +120,22 @@ class BugninjaAgentBase(Agent, ABC):
             video_recording_config (Optional[VideoRecordingConfig]): Video recording configuration
             **kwargs: Keyword arguments passed to the parent Agent class
         """
-        super().__init__(*args, **kwargs)
+        self.raw_task: str = task
+        self.extra_instructions = extra_instructions
+
+        if extra_instructions:
+            extra_instructions_prompt: str = get_extra_instructions_related_prompt(
+                extra_instruction_list=extra_instructions
+            )
+            task += f"\n\n{extra_instructions_prompt}"
+
+        super().__init__(*args, **kwargs, task=task)
         # Initialize extended actions storage
         self.current_step_extended_actions: List["BugninjaExtendedAction"] = []
         self._action_to_extended_index: Dict[int, int] = {}
 
         # Generate run_id at creation time for consistency across all agents
         self.run_id: str = CUID().generate()
-        self.extra_rules = extra_rules
 
         if run_id is not None:
             self.run_id = run_id
@@ -358,6 +371,13 @@ class BugninjaAgentBase(Agent, ABC):
         await self._before_run_hook()
         results = await super().run(max_steps=max_steps, on_step_start=None, on_step_end=None)
         await self._after_run_hook()
+
+        cleaned_history_elements = results.history
+        for h in cleaned_history_elements:
+            h.state.screenshot = None
+
+        rich_print(cleaned_history_elements)
+
         return results
 
     @time_execution_async("--step (agent)")

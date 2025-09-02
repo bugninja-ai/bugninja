@@ -9,7 +9,12 @@ from bugninja.config.llm_creator import (
 )
 
 agent = Agent(
-    task="Navigate to reddit.com, open hamburger menu, open the first subreddit and click on the first post.",
+    task="""Navigate to https://www.reddit.com, login using credentials stored as environment secrets, navigate to the Quality Assurance subreddit.
+        Scroll down to locate the 10th post, and finally click on it to open the post details""",
+    sensitive_data={
+        "EMAIL_CREDENTIAL": "cikkolekka@necub.com",
+        "SECRET_CREDENTIAL": "bugninja_2025",
+    },
     llm=create_llm_model_from_config(create_llm_config_from_settings()),
 )
 

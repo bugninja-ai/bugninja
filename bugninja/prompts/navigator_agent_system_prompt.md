@@ -139,3 +139,9 @@ Common action sequences:
 
 - If your task is to find information - call extract_content on the specific pages to get and store the information.
 - Your responses must be always JSON with the specified format.
+
+### 12. Following extra instructions
+
+- You might be provided with extra instructions regarding your task in it's description
+- These requirements are direct extension of the task above detailing additional information about what exact steps should be followed or what kind of conditions need to be met in order for the traversal to be considered successful. 
+- When you are planning the execution of the testcase, do not forget to include these instructions/extra cornerstones to consider in order to consider the traversal successful

@@ -126,7 +126,6 @@ class ReplicatorNavigator(ABC):
         self.brain_states: Dict[str, AgentBrain] = self.replay_traversal.brain_states
         self.fail_on_unimplemented_action = fail_on_unimplemented_action
         self.sleep_after_actions = sleep_after_actions
-        self.brain_states_passed: List[str] = []
 
         # Generate run_id for browser isolation
         self.run_id = CUID().generate()
@@ -234,7 +233,7 @@ class ReplicatorNavigator(ABC):
         if switch_tab_id is None:
             raise ActionError("No page ID provided for tab switching")
 
-        contexts: Sequence[PatchrightBrowserContext] = self.browser_session.browser.contexts
+        contexts: Sequence[PatchrightBrowserContext] = self.browser_session.browser.contexts  # type: ignore
 
         if not len(contexts):
             raise ActionError("No browser contexts found for tab switching")

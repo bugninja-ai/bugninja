@@ -622,7 +622,7 @@ class BugninjaClient:
                 browser_session=browser_session,
                 browser_profile=browser_session.browser_profile,
                 sensitive_data=task.secrets,
-                extra_rules=task.extra_rules,
+                extra_instructions=task.extra_instructions,
                 video_recording_config=self.config.video_recording,
             )
 
@@ -751,7 +751,7 @@ class BugninjaClient:
                     llm=self._create_llm(temperature=self.config.llm_temperature),
                     browser_session=browser_session,
                     sensitive_data=task.secrets,
-                    extra_rules=task.extra_rules,
+                    extra_instructions=task.extra_instructions,
                     video_recording_config=self.config.video_recording,
                 )
 

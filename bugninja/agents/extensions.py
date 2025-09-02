@@ -13,7 +13,6 @@ from browser_use.browser.views import BrowserStateSummary  # type: ignore
 from browser_use.controller.service import Controller  # type: ignore
 from browser_use.controller.views import ScrollAction  # type: ignore
 from pydantic import BaseModel
-from rich import print as rich_print
 
 from bugninja.agents.bugninja_agent_base import BugninjaAgentBase
 from bugninja.schemas.pipeline import BugninjaExtendedAction
@@ -144,9 +143,10 @@ async def extend_agent_action_with_info(
 
         unformatted_xpath: str = selector_data["xpath"]
 
-        rich_print(f"X-Path of element: `{unformatted_xpath}`")
-        rich_print("Selector data")
-        rich_print(selector_data)
+        # TODO! reenable for debugging
+        # rich_print(f"X-Path of element: `{unformatted_xpath}`")
+        # rich_print("Selector data")
+        # rich_print(selector_data)
 
         formatted_xpath: str = "//" + unformatted_xpath.strip("/")
 

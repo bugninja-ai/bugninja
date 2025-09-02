@@ -13,7 +13,6 @@ from browser_use.browser.profile import (  # type: ignore
     ViewportSize,
 )
 from pydantic import BaseModel, Field, NonNegativeFloat
-from rich import print as rich_print
 
 from bugninja.utils.logging_config import logger
 
@@ -127,7 +126,7 @@ class Traversal(BaseModel):
     browser_config: BugninjaBrowserConfig
     brain_states: Dict[str, AgentBrain]
     actions: Dict[str, BugninjaExtendedAction]
-    extra_rules: List[str] = Field(default_factory=list)
+    extra_instructions: List[str] = Field(default_factory=list)
     secrets: Optional[Dict[str, str]] = Field(default_factory=dict)
 
     class Config:
@@ -192,8 +191,8 @@ class ReplayWithHealingStateMachine(BaseModel):
         updates to the next action, and triggers brain state completion
         if the action belongs to a different brain state.
         """
-        rich_print("Current action BEFORE update")
-        rich_print(self.current_action)
+        # rich_print("Current action BEFORE update")
+        # rich_print(self.current_action)
 
         # Add the current action to the passed list
         self.passed_actions.append(self.current_action)
@@ -201,8 +200,8 @@ class ReplayWithHealingStateMachine(BaseModel):
         # Update to the next action
         self.current_action = self.replay_actions.pop(0)
 
-        rich_print("Current action AFTER update")
-        rich_print(self.current_action)
+        # rich_print("Current action AFTER update")
+        # rich_print(self.current_action)
 
         if self.current_action.brain_state_id != self.current_brain_state.id:
             self.complete_current_brain_state()

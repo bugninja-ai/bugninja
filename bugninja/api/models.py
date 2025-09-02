@@ -118,6 +118,11 @@ class BugninjaTask(BaseModel):
         max_length=1000,
         description="Human-readable description of the task to perform",
     )
+
+    extra_instructions: List[str] = Field(
+        default_factory=list, description="List of extra instruction for navigation"
+    )
+
     run_id: str = Field(
         default_factory=lambda: CUID().generate(), description="Unique identifier for the task run"
     )
@@ -141,10 +146,6 @@ class BugninjaTask(BaseModel):
 
     secrets: Optional[Dict[str, Any]] = Field(
         default=None, description="Sensitive data for authentication and task execution"
-    )
-
-    extra_rules: List[str] = Field(
-        default_factory=list, description="List of extra rules for navigation"
     )
 
     @field_validator("description")
