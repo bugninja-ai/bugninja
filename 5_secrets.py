@@ -5,7 +5,7 @@ from rich import print as rich_print
 from bugninja.api.client import BugninjaClient
 from bugninja.api.models import BugninjaTask
 
-BACPREP_NAVIGATION_PROMPT = """
+LOGIN_PRACTICE_PROMPT = """
 Go to practicetestautomation.com/practice-test-login/ and with the provided credentials, try to log in!
 Verify the successful login, and after that log out and close the browser!
 """.strip()
@@ -13,7 +13,7 @@ Verify the successful login, and after that log out and close the browser!
 
 async def secrets() -> None:
     task = BugninjaTask(
-        description=BACPREP_NAVIGATION_PROMPT,
+        description=LOGIN_PRACTICE_PROMPT,
         #! secrets stored this way are not visible by the model directly
         secrets={"EMAIL_SECRET": "student", "PASSWORD_SECRET": "Password123"},
         #! when we are using secrets, it is also beneficial to provide the allowed domains,

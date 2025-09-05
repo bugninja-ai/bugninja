@@ -1,7 +1,8 @@
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from browser_use.agent.views import (  # type: ignore
     AgentOutput,
+    DOMElementNode,
 )
 from browser_use.browser.session import Page  # type: ignore
 from browser_use.browser.views import BrowserStateSummary  # type: ignore
@@ -11,7 +12,10 @@ from rich import print as rich_print
 from rich.markdown import Markdown
 
 from bugninja.agents.bugninja_agent_base import BugninjaAgentBase
-from bugninja.agents.extensions import BugninjaController, extend_agent_action_with_info
+from bugninja.agents.extensions import (
+    BugninjaController,
+    extend_action_with_info,
+)
 from bugninja.prompts.prompt_factory import (
     BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
     HEALDER_AGENT_EXTRA_SYSTEM_PROMPT,
@@ -194,26 +198,6 @@ class HealerAgent(BugninjaAgentBase):
         brain_state_id: str = CUID().generate()
         self.agent_brain_states[brain_state_id] = model_output.current_state
 
-        current_page: Page = await self.browser_session.get_current_page()
-
-        #! generating the alternative CSS and XPath selectors should happen BEFORE the actions are completed
-        extended_taken_actions = await extend_agent_action_with_info(
-            brain_state_id=brain_state_id,
-            current_page=current_page,
-            model_output=model_output,
-            browser_state_summary=browser_state_summary,
-        )
-
-        # Store extended actions for hook access
-        self.current_step_extended_actions = extended_taken_actions
-
-        # Associate each action with its corresponding extended action index
-        for i, action in enumerate(model_output.action):
-            self._associate_action_with_extended_action(action, i)
-
-        # ? adding the taken actions to the list of agent actions
-        self.agent_taken_actions.extend(extended_taken_actions)
-
     async def _after_step_hook(
         self, browser_state_summary: BrowserStateSummary, model_output: AgentOutput
     ) -> None:
@@ -229,15 +213,29 @@ class HealerAgent(BugninjaAgentBase):
         # Clear action mapping to prevent memory accumulation
         self._clear_action_mapping()
 
-    async def _before_action_hook(self, action: ActionModel) -> None:
+    async def _before_action_hook(
+        self,
+        page_before_action: Page,
+        action_idx_in_brain_state: int,
+        selector_map: Dict[int, DOMElementNode],
+        action: ActionModel,
+    ) -> None:
         """Hook called before each action (no-op implementation).
 
         Args:
             action (ActionModel): The action about to be executed
         """
-        ...
+        logger.info(
+            msg=f"🪝 BEFORE-Action hook called for action #{len(self.agent_taken_actions)+1} in traversal"
+        )
 
-    async def _after_action_hook(self, action: ActionModel) -> None:
+    async def _after_action_hook(
+        self,
+        page_before_action: Page,
+        action_idx_in_brain_state: int,
+        selector_map: Dict[int, DOMElementNode],
+        action: ActionModel,
+    ) -> None:
         """Capture screenshot after action execution for debugging.
 
         This hook takes a screenshot after each action is completed,
@@ -247,20 +245,28 @@ class HealerAgent(BugninjaAgentBase):
         Args:
             action (ActionModel): The action that was just executed
         """
+
+        logger.info(
+            msg=f"🪝 AFTER-Action hook called for action #{len(self.agent_taken_actions)+1}"
+        )
+
         await self.browser_session.remove_highlights()
 
-        current_page = await self.browser_session.get_current_page()
+        extended_action = await extend_action_with_info(
+            brain_state_id=list(self.agent_brain_states.keys())[-1],
+            action=action,
+            current_page=page_before_action,
+            chosen_selector=selector_map[action_idx_in_brain_state],
+            action_idx=action_idx_in_brain_state,
+        )
 
-        # Get the extended action for screenshot with highlighting
-        extended_action = self._find_matching_extended_action(action)
-
-        if not extended_action:
-            raise Exception("Extended action not found for screenshot")
-
+        # Take screenshot and get filename
         screenshot_filename = await self.screenshot_manager.take_screenshot(
-            current_page, extended_action, self.browser_session
+            page_before_action, extended_action, self.browser_session
         )
 
         # Store screenshot filename with extended action
         extended_action.screenshot_filename = screenshot_filename
         logger.bugninja_log(f"📸 Stored screenshot filename: {screenshot_filename}")
+
+        self.agent_taken_actions.append(extended_action)

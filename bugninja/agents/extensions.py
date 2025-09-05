@@ -1,8 +1,8 @@
 import asyncio
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
-from browser_use import BrowserSession  # type: ignore
+from browser_use import ActionModel, BrowserSession  # type: ignore
 from browser_use.agent.views import ActionResult  # type: ignore
 from browser_use.agent.views import (  # type: ignore
     AgentOutput,
@@ -69,7 +69,79 @@ async def get_user_input_async() -> UserInputResponse:
         return UserInputResponse(user_input=user_input, user_input_type=UserInputTypeEnum.TEXT)
 
 
-async def extend_agent_action_with_info(
+async def extend_action_with_info(
+    brain_state_id: str,
+    action: ActionModel,
+    current_page: Page,
+    chosen_selector: DOMElementNode,
+    action_idx: int = 0,
+) -> BugninjaExtendedAction:
+
+    short_action_descriptor: Dict[str, Any] = action.model_dump(exclude_none=True)
+    logger.bugninja_log(f"📄 Action: {short_action_descriptor}")
+
+    action_to_be_taken: BugninjaExtendedAction = BugninjaExtendedAction.model_validate(
+        {
+            "brain_state_id": brain_state_id,
+            "action": action.model_dump(),
+            "idx_in_brainstate": action_idx,
+            DOM_ELEMENT_DATA_KEY: None,
+        }
+    )
+
+    action_key: str = list(short_action_descriptor.keys())[-1]
+
+    #!! these values here were selected by hand, if necessary they can be extended with other actions as well
+    if action_key in SELECTOR_ORIENTED_ACTIONS:
+        logger.bugninja_log(f"📄 {action_key} on {chosen_selector}")
+        clean_xpath, alternative_xpaths = await _get_xpath_data_extension(
+            chosen_selector=chosen_selector, current_page=current_page
+        )
+        selector_data: Dict[str, Any] = chosen_selector.__json__()
+
+        selector_data["xpath"] = clean_xpath
+        selector_data[ALTERNATIVE_XPATH_SELECTORS_KEY] = alternative_xpaths
+
+        action_to_be_taken.dom_element_data = selector_data
+
+    return action_to_be_taken
+
+
+async def _get_xpath_data_extension(
+    chosen_selector: DOMElementNode, current_page: Page
+) -> Tuple[str, List[str]]:
+
+    selector_data: Dict[str, Any] = chosen_selector.__json__()
+
+    #! here we only want to keep the first layer of children for specific element in order to avoid unnecessarily large data dump in JSON
+    ch: Dict[str, Any]
+
+    if "children" in selector_data:
+        sanitized_children: List[Dict[str, Any]] = []
+        for ch in selector_data["children"]:
+            ch["children"] = []
+            sanitized_children.append(ch)
+        selector_data["children"] = sanitized_children
+
+    unformatted_xpath: str = selector_data["xpath"]
+
+    # TODO! reenable for debugging
+    # rich_print(f"X-Path of element: `{unformatted_xpath}`")
+    # rich_print("Selector data")
+    # rich_print(selector_data)
+
+    formatted_xpath: str = "//" + unformatted_xpath.strip("/")
+
+    current_page_html: str = await BugninjaAgentBase.get_raw_html_of_playwright_page(
+        page=current_page
+    )
+
+    return formatted_xpath, SelectorFactory(
+        html_content=current_page_html
+    ).generate_relative_xpaths_from_full_xpath(full_xpath=formatted_xpath)
+
+
+async def extend_model_output_with_info(
     brain_state_id: str,
     current_page: Page,
     model_output: AgentOutput,
@@ -105,65 +177,17 @@ async def extend_agent_action_with_info(
         - Non-selector-oriented actions are included in the result but without DOM element data
         - The function handles exceptions during selector generation gracefully, setting alternative selectors to None if generation fails
     """
-    currently_taken_actions: List["BugninjaExtendedAction"] = []
 
-    for action_idx, action in enumerate(model_output.action):
-        short_action_descriptor: Dict[str, Any] = action.model_dump(exclude_none=True)
-        logger.bugninja_log(f"📄 Action: {short_action_descriptor}")
-
-        action_dictionary: Dict[str, Any] = {
-            "brain_state_id": brain_state_id,
-            "action": action.model_dump(),
-            "idx_in_brainstate": action_idx,
-            DOM_ELEMENT_DATA_KEY: None,
-        }
-
-        action_key: str = list(short_action_descriptor.keys())[-1]
-        currently_taken_actions.append(BugninjaExtendedAction.model_validate(action_dictionary))
-
-        #!! these values here were selected by hand, if necessary they can be extended with other actions as well
-        if action_key not in SELECTOR_ORIENTED_ACTIONS:
-            continue
-
-        action_index = short_action_descriptor[action_key]["index"]
-        chosen_selector: DOMElementNode = browser_state_summary.selector_map[action_index]
-        logger.bugninja_log(f"📄 {action_key} on {chosen_selector}")
-
-        selector_data: Dict[str, Any] = chosen_selector.__json__()
-
-        #! here we only want to keep the first layer of children for specific element in order to avoid unnecessarily large data dump in JSON
-        ch: Dict[str, Any]
-
-        if "children" in selector_data:
-            sanitised_children: List[Dict[str, Any]] = []
-            for ch in selector_data["children"]:
-                ch["children"] = []
-                sanitised_children.append(ch)
-            selector_data["children"] = sanitised_children
-
-        unformatted_xpath: str = selector_data["xpath"]
-
-        # TODO! reenable for debugging
-        # rich_print(f"X-Path of element: `{unformatted_xpath}`")
-        # rich_print("Selector data")
-        # rich_print(selector_data)
-
-        formatted_xpath: str = "//" + unformatted_xpath.strip("/")
-
-        #! adding the raw XPath to the short action descriptor (even though it is not part of the model output)
-        short_action_descriptor[action_key]["xpath"] = formatted_xpath
-
-        current_page_html: str = await BugninjaAgentBase.get_raw_html_of_playwright_page(
-            page=current_page
+    return [
+        await extend_action_with_info(
+            brain_state_id=brain_state_id,
+            action_idx=action_idx,
+            action=action,
+            current_page=current_page,
+            chosen_selector=browser_state_summary.selector_map[action_idx],
         )
-
-        selector_data[ALTERNATIVE_XPATH_SELECTORS_KEY] = SelectorFactory(
-            html_content=current_page_html
-        ).generate_relative_xpaths_from_full_xpath(full_xpath=formatted_xpath)
-
-        currently_taken_actions[-1].dom_element_data = selector_data
-
-    return currently_taken_actions
+        for action_idx, action in enumerate(model_output.action)
+    ]
 
 
 class BugninjaController(Controller):

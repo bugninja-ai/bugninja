@@ -530,8 +530,6 @@ class ReplicatorNavigator(ABC):
             # Get element and verify its state
             element = page.locator(selector)
 
-            # await element.wait_for(state="attached", timeout=500)
-
             element_count = await element.count()
             logger.bugninja_log(f"Found '{element_count}' elements for selector")
 
