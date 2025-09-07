@@ -1,8 +1,7 @@
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from browser_use.agent.views import (  # type: ignore
     AgentOutput,
-    DOMElementNode,
 )
 from browser_use.browser.session import Page  # type: ignore
 from browser_use.browser.views import BrowserStateSummary  # type: ignore
@@ -14,7 +13,7 @@ from rich.markdown import Markdown
 from bugninja.agents.bugninja_agent_base import BugninjaAgentBase
 from bugninja.agents.extensions import (
     BugninjaController,
-    extend_action_with_info,
+    extend_model_output_with_info,
 )
 from bugninja.prompts.prompt_factory import (
     BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
@@ -198,6 +197,23 @@ class HealerAgent(BugninjaAgentBase):
         brain_state_id: str = CUID().generate()
         self.agent_brain_states[brain_state_id] = model_output.current_state
 
+        current_page: Page = await self.browser_session.get_current_page()
+
+        #! generating the alternative CSS and XPath selectors should happen BEFORE the actions are completed
+        extended_taken_actions = await extend_model_output_with_info(
+            brain_state_id=brain_state_id,
+            current_page=current_page,
+            model_output=model_output,
+            browser_state_summary=browser_state_summary,
+        )
+
+        # Store extended actions for hook access
+        self.current_step_extended_actions = extended_taken_actions
+
+        # Associate each action with its corresponding extended action index
+        for i, action in enumerate(model_output.action):
+            self._associate_action_with_extended_action(action, i)
+
     async def _after_step_hook(
         self, browser_state_summary: BrowserStateSummary, model_output: AgentOutput
     ) -> None:
@@ -215,9 +231,7 @@ class HealerAgent(BugninjaAgentBase):
 
     async def _before_action_hook(
         self,
-        page_before_action: Page,
-        action_idx_in_brain_state: int,
-        selector_map: Dict[int, DOMElementNode],
+        action_idx_in_step: int,
         action: ActionModel,
     ) -> None:
         """Hook called before each action (no-op implementation).
@@ -231,9 +245,7 @@ class HealerAgent(BugninjaAgentBase):
 
     async def _after_action_hook(
         self,
-        page_before_action: Page,
-        action_idx_in_brain_state: int,
-        selector_map: Dict[int, DOMElementNode],
+        action_idx_in_step: int,
         action: ActionModel,
     ) -> None:
         """Capture screenshot after action execution for debugging.
@@ -250,23 +262,5 @@ class HealerAgent(BugninjaAgentBase):
             msg=f"🪝 AFTER-Action hook called for action #{len(self.agent_taken_actions)+1}"
         )
 
-        await self.browser_session.remove_highlights()
-
-        extended_action = await extend_action_with_info(
-            brain_state_id=list(self.agent_brain_states.keys())[-1],
-            action=action,
-            current_page=page_before_action,
-            chosen_selector=selector_map[action_idx_in_brain_state],
-            action_idx=action_idx_in_brain_state,
-        )
-
-        # Take screenshot and get filename
-        screenshot_filename = await self.screenshot_manager.take_screenshot(
-            page_before_action, extended_action, self.browser_session
-        )
-
-        # Store screenshot filename with extended action
-        extended_action.screenshot_filename = screenshot_filename
-        logger.bugninja_log(f"📸 Stored screenshot filename: {screenshot_filename}")
-
-        self.agent_taken_actions.append(extended_action)
+        # ? adding the taken action to the list of agent actions
+        self.agent_taken_actions.append(self.current_step_extended_actions[action_idx_in_step])

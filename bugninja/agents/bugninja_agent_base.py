@@ -14,7 +14,6 @@ from browser_use.agent.views import (  # type: ignore
     AgentBrain,
     AgentHistoryList,
     AgentOutput,
-    DOMElementNode,
     StepMetadata,
 )
 from browser_use.browser.session import Page  # type: ignore
@@ -311,9 +310,7 @@ class BugninjaAgentBase(Agent, ABC):
     @abstractmethod
     async def _before_action_hook(
         self,
-        page_before_action: Page,
-        action_idx_in_brain_state: int,
-        selector_map: Dict[int, DOMElementNode],
+        action_idx_in_step: int,
         action: ActionModel,
     ) -> None:
         """Hook called BEFORE an action is taken.
@@ -329,9 +326,7 @@ class BugninjaAgentBase(Agent, ABC):
     @abstractmethod
     async def _after_action_hook(
         self,
-        page_before_action: Page,
-        action_idx_in_brain_state: int,
-        selector_map: Dict[int, DOMElementNode],
+        action_idx_in_step: int,
         action: ActionModel,
     ) -> None:
         """Hook called AFTER an action is taken.
@@ -399,17 +394,18 @@ class BugninjaAgentBase(Agent, ABC):
         Args:
             step_info (AgentStepInfo | None): Information about the current step
         """
+        browser_state_summary = None
         model_output = None
         result: List[ActionResult] = []
         step_start_time = time.time()
         tokens = 0
 
         try:
-            self.browser_state_summary = await self.browser_session.get_state_summary(
+            browser_state_summary = await self.browser_session.get_state_summary(
                 cache_clickable_elements_hashes=True
             )
             current_page = await self.browser_session.get_current_page()
-            self._log_step_context(current_page, self.browser_state_summary)
+            self._log_step_context(current_page, browser_state_summary)
             # generate procedural memory if needed
             if (
                 self.enable_memory
@@ -446,7 +442,7 @@ class BugninjaAgentBase(Agent, ABC):
                     updated_context = f"Available actions: {all_actions}"
                 self._message_manager.settings.message_context = updated_context
             self._message_manager.add_state_message(
-                browser_state_summary=self.browser_state_summary,
+                browser_state_summary=browser_state_summary,
                 result=self.state.last_result,
                 step_info=step_info,
                 use_vision=self.settings.use_vision,
@@ -505,11 +501,11 @@ class BugninjaAgentBase(Agent, ABC):
                 if self.register_new_step_callback:
                     if inspect.iscoroutinefunction(self.register_new_step_callback):
                         await self.register_new_step_callback(
-                            self.browser_state_summary, model_output, self.state.n_steps
+                            browser_state_summary, model_output, self.state.n_steps
                         )
                     else:
                         self.register_new_step_callback(
-                            self.browser_state_summary, model_output, self.state.n_steps
+                            browser_state_summary, model_output, self.state.n_steps
                         )
                 if self.settings.save_conversation_path:
                     target = self.settings.save_conversation_path + f"_{self.state.n_steps}.txt"
@@ -538,7 +534,7 @@ class BugninjaAgentBase(Agent, ABC):
                 raise e
 
             await self._before_step_hook(
-                browser_state_summary=self.browser_state_summary, model_output=model_output
+                browser_state_summary=browser_state_summary, model_output=model_output
             )
 
             result = await self.multi_act(model_output.action)
@@ -549,7 +545,7 @@ class BugninjaAgentBase(Agent, ABC):
             self.state.consecutive_failures = 0
 
             await self._after_step_hook(
-                browser_state_summary=self.browser_state_summary, model_output=model_output
+                browser_state_summary=browser_state_summary, model_output=model_output
             )
 
         except InterruptedError:
@@ -574,16 +570,14 @@ class BugninjaAgentBase(Agent, ABC):
         finally:
             step_end_time = time.time()
             if result:
-                if self.browser_state_summary:
+                if browser_state_summary:
                     metadata = StepMetadata(
                         step_number=self.state.n_steps,
                         step_start_time=step_start_time,
                         step_end_time=step_end_time,
                         input_tokens=tokens,
                     )
-                    self._make_history_item(
-                        model_output, self.browser_state_summary, result, metadata
-                    )
+                    self._make_history_item(model_output, browser_state_summary, result, metadata)
                 # Log step completion summary
                 self._log_step_completion_summary(step_start_time, result)
 
@@ -645,14 +639,7 @@ class BugninjaAgentBase(Agent, ABC):
             try:
                 await self._raise_if_stopped_or_paused()
 
-                page_before_action: Page = await self.browser_session.get_current_page()
-
-                await self._before_action_hook(
-                    page_before_action=page_before_action,
-                    action_idx_in_brain_state=i,
-                    selector_map=cached_selector_map,
-                    action=action,
-                )
+                await self._before_action_hook(action_idx_in_step=i, action=action)
 
                 result = await self.controller.act(
                     action=action,
@@ -663,12 +650,7 @@ class BugninjaAgentBase(Agent, ABC):
                     context=self.context,
                 )
 
-                await self._after_action_hook(
-                    page_before_action=page_before_action,
-                    action_idx_in_brain_state=i,
-                    selector_map=cached_selector_map,
-                    action=action,
-                )
+                await self._after_action_hook(action_idx_in_step=i, action=action)
 
                 results.append(result)
 

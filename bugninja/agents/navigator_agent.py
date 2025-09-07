@@ -10,7 +10,6 @@ import cv2
 import numpy as np
 from browser_use.agent.views import (  # type: ignore
     AgentOutput,
-    DOMElementNode,
 )
 from browser_use.browser.session import Page  # type: ignore
 from browser_use.browser.views import BrowserStateSummary  # type: ignore
@@ -19,7 +18,7 @@ from cuid2 import Cuid as CUID
 from playwright.async_api import CDPSession
 
 from bugninja.agents.bugninja_agent_base import BugninjaAgentBase
-from bugninja.agents.extensions import BugninjaController, extend_action_with_info
+from bugninja.agents.extensions import BugninjaController, extend_model_output_with_info
 from bugninja.config.video_recording import VideoRecordingConfig
 from bugninja.prompts.prompt_factory import (
     BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
@@ -255,6 +254,21 @@ class NavigatorAgent(BugninjaAgentBase):
         brain_state_id: str = CUID().generate()
         self.agent_brain_states[brain_state_id] = model_output.current_state
 
+        #! generating the alternative CSS and XPath selectors should happen BEFORE the actions are completed
+        extended_taken_actions = await extend_model_output_with_info(
+            brain_state_id=brain_state_id,
+            current_page=current_page,
+            model_output=model_output,
+            browser_state_summary=browser_state_summary,
+        )
+
+        # Store extended actions for hook access
+        self.current_step_extended_actions = extended_taken_actions
+
+        # Associate each action with its corresponding extended action index
+        for i, action in enumerate(model_output.action):
+            self._associate_action_with_extended_action(action, i)
+
     async def _after_step_hook(
         self, browser_state_summary: BrowserStateSummary, model_output: AgentOutput
     ) -> None:
@@ -272,9 +286,7 @@ class NavigatorAgent(BugninjaAgentBase):
 
     async def _before_action_hook(
         self,
-        page_before_action: Page,
-        action_idx_in_brain_state: int,
-        selector_map: Dict[int, DOMElementNode],
+        action_idx_in_step: int,
         action: ActionModel,
     ) -> None:
         """Hook called before each action (no-op implementation).
@@ -288,9 +300,7 @@ class NavigatorAgent(BugninjaAgentBase):
 
     async def _after_action_hook(
         self,
-        page_before_action: Page,
-        action_idx_in_brain_state: int,
-        selector_map: Dict[int, DOMElementNode],
+        action_idx_in_step: int,
         action: ActionModel,
     ) -> None:
         """Capture screenshot after action execution for navigation recording.
@@ -306,28 +316,8 @@ class NavigatorAgent(BugninjaAgentBase):
         logger.info(
             msg=f"🪝 AFTER-Action hook called for action #{len(self.agent_taken_actions)+1} in traversal"
         )
-        await self.browser_session.remove_highlights()
-
-        current_page = await self.browser_session.get_current_page()
-
-        extended_action = await extend_action_with_info(
-            brain_state_id=list(self.agent_brain_states.keys())[-1],
-            action=action,
-            current_page=current_page,
-            chosen_selector=selector_map[action_idx_in_brain_state],
-            action_idx=action_idx_in_brain_state,
-        )
-
-        # Take screenshot and get filename
-        screenshot_filename = await self.screenshot_manager.take_screenshot(
-            current_page, extended_action, self.browser_session
-        )
-
-        # Store screenshot filename with extended action
-        extended_action.screenshot_filename = screenshot_filename
-        logger.bugninja_log(f"📸 Stored screenshot filename: {screenshot_filename}")
-
-        self.agent_taken_actions.append(extended_action)
+        # ? adding the taken action to the list of agent actions
+        self.agent_taken_actions.append(self.current_step_extended_actions[action_idx_in_step])
 
     def save_agent_actions(self, verbose: bool = False) -> Traversal:
         """Save the agent's traversal data to a JSON file for analysis and replay.
