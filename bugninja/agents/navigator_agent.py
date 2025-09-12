@@ -18,7 +18,6 @@ from cuid2 import Cuid as CUID
 from playwright.async_api import CDPSession
 
 from bugninja.agents.bugninja_agent_base import BugninjaAgentBase
-from bugninja.agents.extensions import BugninjaController, extend_model_output_with_info
 from bugninja.config.video_recording import VideoRecordingConfig
 from bugninja.prompts.prompt_factory import (
     BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
@@ -93,6 +92,7 @@ class NavigatorAgent(BugninjaAgentBase):
         video_recording_config: VideoRecordingConfig | None = None,
         **kwargs,  # type:ignore
     ) -> None:
+
         super().__init__(
             *args,
             run_id=run_id,
@@ -109,7 +109,6 @@ class NavigatorAgent(BugninjaAgentBase):
 
         This hook sets up the navigation environment by:
         - initializing action and brain state tracking
-        - overriding the default controller with BugninjaController
         - setting up screenshot manager for navigation recording
         - initializing event tracking for navigation operations
         - logging the start of the navigation session
@@ -129,9 +128,6 @@ class NavigatorAgent(BugninjaAgentBase):
             logger.bugninja_log(f"🔒 Using isolated browser directory: {isolated_dir}")
 
         self._traversal: Optional[Traversal] = None  # Store traversal after successful run
-
-        #! we override the default controller with our own
-        self.controller = BugninjaController()
 
         # Initialize screenshot manager
         self.screenshot_manager = ScreenshotManager(run_id=self.run_id, folder_prefix="traversal")
@@ -255,7 +251,7 @@ class NavigatorAgent(BugninjaAgentBase):
         self.agent_brain_states[brain_state_id] = model_output.current_state
 
         #! generating the alternative CSS and XPath selectors should happen BEFORE the actions are completed
-        extended_taken_actions = await extend_model_output_with_info(
+        extended_taken_actions = await self.extend_model_output_with_info(
             brain_state_id=brain_state_id,
             current_page=current_page,
             model_output=model_output,

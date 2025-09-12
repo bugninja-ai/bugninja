@@ -136,7 +136,7 @@ class BugninjaSettings(BaseSettings):
             "planner_interval": 5,
             "enable_vision": True,
             "enable_memory": False,
-            "wait_between_actions": 0.1,
+            "wait_between_actions": 1,
         },
         description="Agent configuration settings",
     )

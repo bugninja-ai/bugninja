@@ -11,10 +11,6 @@ from rich import print as rich_print
 from rich.markdown import Markdown
 
 from bugninja.agents.bugninja_agent_base import BugninjaAgentBase
-from bugninja.agents.extensions import (
-    BugninjaController,
-    extend_model_output_with_info,
-)
 from bugninja.prompts.prompt_factory import (
     BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
     HEALDER_AGENT_EXTRA_SYSTEM_PROMPT,
@@ -118,15 +114,11 @@ class HealerAgent(BugninjaAgentBase):
         """Initialize healing session with event tracking and screenshot management.
 
         This hook sets up the healing environment by:
-        - overriding the default controller with BugninjaController
         - initializing screenshot manager for debugging
         - setting up event tracking for healing operations
         - logging the start of the healing intervention
         """
         logger.bugninja_log("🏁 BEFORE-Run hook called")
-
-        #! we override the default controller with our own
-        self.controller = BugninjaController()
 
         # Initialize screenshot manager (will be overridden if shared from replay)
         if not hasattr(self, "screenshot_manager"):
@@ -200,7 +192,7 @@ class HealerAgent(BugninjaAgentBase):
         current_page: Page = await self.browser_session.get_current_page()
 
         #! generating the alternative CSS and XPath selectors should happen BEFORE the actions are completed
-        extended_taken_actions = await extend_model_output_with_info(
+        extended_taken_actions = await self.extend_model_output_with_info(
             brain_state_id=brain_state_id,
             current_page=current_page,
             model_output=model_output,

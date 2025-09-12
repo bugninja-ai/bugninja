@@ -346,7 +346,7 @@ def get_default_config_template(project_name: str, **overrides: Dict[str, Any]) 
             "planner_interval": 5,
             "enable_vision": True,
             "enable_memory": False,
-            "wait_between_actions": 0.1,
+            "wait_between_actions": 1,
         },
         "replicator": {
             "sleep_after_actions": 1.0,

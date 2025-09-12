@@ -17,6 +17,7 @@ from typing import (
 
 from browser_use import BrowserProfile, BrowserSession  # type: ignore
 from browser_use.agent.views import AgentBrain  # type: ignore
+from browser_use.browser.views import BrowserError  # type: ignore
 from cuid2 import Cuid as CUID
 from patchright.async_api import BrowserContext as PatchrightBrowserContext
 from patchright.async_api import Page
@@ -178,6 +179,7 @@ class ReplicatorNavigator(ABC):
 
     async def _handle_click(self, element_info: Optional[Dict[str, Any]]) -> None:
         """Handle clicking an element."""
+        logger.bugninja_log("🖱️ Click requested")
 
         if not element_info:
             raise ActionError("No element information provided for event 'click'!")
@@ -188,11 +190,10 @@ class ReplicatorNavigator(ABC):
         self, action: Dict[str, Any], element_info: Optional[Dict[str, Any]]
     ) -> None:
         """Handle text input."""
+        logger.bugninja_log("📝 Input text requested")
 
         if not element_info:
             raise ActionError("No element information provided for event 'fill'!")
-
-        await self._execute_with_fallback("click", element_info)
 
         await self._execute_with_fallback(
             "fill", element_info, {"text": action["input_text"]["text"]}
@@ -303,10 +304,18 @@ class ReplicatorNavigator(ABC):
         logger.bugninja_log("📝 Dropdown options requested")
         await self.__handle_not_implemented_action("Dropdown options")
 
-    async def _handle_select_dropdown_option(self) -> None:
+    async def _handle_select_dropdown_option(
+        self, action: Dict[str, Any], element_info: Optional[Dict[str, Any]]
+    ) -> None:
         """Handle selecting dropdown option."""
         logger.bugninja_log("✅ Dropdown selection requested")
-        await self.__handle_not_implemented_action("Dropdown selection")
+
+        if not element_info:
+            raise ActionError("No element information provided for event 'select_dropdown_option'!")
+
+        await self._execute_with_fallback(
+            "select_option", element_info, {"text": action["select_dropdown_option"]["text"]}
+        )
 
     async def _handle_drag_drop(self) -> None:
         """Handle drag and drop."""
@@ -486,7 +495,9 @@ class ReplicatorNavigator(ABC):
             "send_keys": self._handle_send_keys,
             "scroll_to_text": self._handle_scroll_to_text,
             "get_dropdown_options": self._handle_get_dropdown_options,
-            "select_dropdown_option": self._handle_select_dropdown_option,
+            "select_dropdown_option": lambda: self._handle_select_dropdown_option(
+                action=interaction.action, element_info=element_info
+            ),
             "drag_drop": self._handle_drag_drop,
             "done": self._handle_done,
         }
@@ -542,26 +553,85 @@ class ReplicatorNavigator(ABC):
 
             if action == "click":
                 await element.click()
+            elif action == "double_click":
+                await element.dblclick()
             elif action == "fill":
+                text: Optional[str] = kwargs.get("text")  # type:ignore
 
-                # ? we place click element here before filling to make sure that the element is visible,
-                # ? and if there is any attached functionality to clicking on the input field, we should trigger it as well
-                # ? (this is the normal human behavior)
-                await element.click()
+                if text is None:
+                    raise ValueError("No text provided for fill action")
 
-                value: Optional[str] = kwargs.get("text")  # type:ignore
-
-                if value is None:
+                if text is None:
                     logger.warning(f"⚠️ No value provided for {action} action")
                     return False, "No value provided for fill action"
 
                 if self.secrets:
                     for key, secret_value in self.secrets.items():
                         secret_key = f"<secret>{key}</secret>"
-                        if secret_key in value:
-                            value = value.replace(f"<secret>{key}</secret>", secret_value)
+                        if secret_key in text:
+                            text = text.replace(f"<secret>{key}</secret>", secret_value)
 
-                await element.fill(value)
+                try:
+                    # Highlight before typing
+                    # if element_node.highlight_index is not None:
+                    # 	await self._update_state(focus_element=element_node.highlight_index)
+
+                    element_handle = await page.query_selector(selector)
+
+                    if element_handle is None:
+                        raise BrowserError(f"Element with selector: {selector} not found")
+
+                    # Ensure element is ready for input
+                    try:
+                        await element_handle.wait_for_element_state("stable", timeout=1000)
+                        is_visible = await self.browser_session._is_visible(element_handle)  # type: ignore
+                        if is_visible:
+                            await element_handle.scroll_into_view_if_needed(timeout=1000)
+                    except Exception:
+                        pass
+
+                    # Get element properties to determine input method
+                    tag_handle = await element_handle.get_property("tagName")
+                    tag_name = (await tag_handle.json_value()).lower()
+                    is_contenteditable = await element_handle.get_property("isContentEditable")
+                    readonly_handle = await element_handle.get_property("readOnly")
+                    disabled_handle = await element_handle.get_property("disabled")
+
+                    readonly = await readonly_handle.json_value() if readonly_handle else False
+                    disabled = await disabled_handle.json_value() if disabled_handle else False
+
+                    # always click the element first to make sure it's in the focus
+                    await element_handle.click()
+
+                    #! Bugninja edit: we not only click, but setting the value of the input text and empty string first to clear any pre-existing text
+                    await element_handle.press("Control+A")
+                    await element_handle.press("Delete")
+
+                    await asyncio.sleep(0.1)
+
+                    try:
+                        if (await is_contenteditable.json_value() or tag_name == "input") and not (
+                            readonly or disabled
+                        ):
+                            await element_handle.evaluate(
+                                'el => {el.textContent = ""; el.value = "";}'
+                            )
+                            await element_handle.type(text, delay=5)
+                        else:
+                            await element_handle.fill(text)
+                    except Exception:
+                        # last resort fallback, assume it's already focused after we clicked on it,
+                        # just simulate keypresses on the entire page
+                        page = await self.browser_session.get_current_page()  # type: ignore
+                        await page.keyboard.type(text)
+
+                except Exception:
+                    pass
+
+            elif action == "select_option":
+                value: Optional[str] = kwargs.get("text")  # type:ignore
+
+                await element.nth(0).select_option(label=value, timeout=1000)
             return True, None
         except Exception as e:
             error_msg = f"Failed to {action} with selector {selector}: {str(e)}"

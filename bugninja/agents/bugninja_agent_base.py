@@ -2,7 +2,7 @@ import asyncio
 import inspect
 import time
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from browser_use.agent.message_manager.utils import save_conversation  # type: ignore
 from browser_use.agent.service import (  # type: ignore
@@ -24,6 +24,7 @@ from cuid2 import Cuid as CUID
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage
 
+from bugninja.agents.extensions import BugninjaController
 from bugninja.config import (
     create_llm_model_from_config,
     create_provider_model_from_settings,
@@ -34,6 +35,7 @@ from bugninja.events import EventPublisherManager
 from bugninja.prompts.prompt_factory import get_extra_instructions_related_prompt
 from bugninja.schemas.pipeline import BugninjaExtendedAction
 from bugninja.utils.logging_config import logger
+from bugninja.utils.selector_factory import SelectorFactory
 from bugninja.utils.video_recording_manager import VideoRecordingManager
 
 
@@ -48,6 +50,19 @@ def hook_missing_error(hook_name: str, class_val: type) -> NotImplementedError:
         NotImplementedError: Standardized error message for missing hooks
     """
     return NotImplementedError(f"The '{hook_name}' is not implemented for '{class_val.__name__}'!")
+
+
+SELECTOR_ORIENTED_ACTIONS: List[str] = [
+    "click_element_by_index",
+    "input_text",
+    "get_dropdown_options",
+    "select_dropdown_option",
+    "drag_drop",
+]
+
+ALTERNATIVE_XPATH_SELECTORS_KEY: str = "alternative_relative_xpaths"
+DOM_ELEMENT_DATA_KEY: str = "dom_element_data"
+BRAINSTATE_IDX_DATA_KEY: str = "idx_in_brainstate"
 
 
 class BugninjaAgentBase(Agent, ABC):
@@ -127,7 +142,9 @@ class BugninjaAgentBase(Agent, ABC):
             )
             task += f"\n\n{extra_instructions_prompt}"
 
-        super().__init__(*args, **kwargs, task=task)
+        custom_controller = BugninjaController()
+
+        super().__init__(*args, **kwargs, task=task, controller=custom_controller)
         # Initialize extended actions storage
         self.current_step_extended_actions: List["BugninjaExtendedAction"] = []
         self._action_to_extended_index: Dict[int, int] = {}
@@ -693,3 +710,117 @@ class BugninjaAgentBase(Agent, ABC):
                 raise InterruptedError("Action cancelled by user")
 
         return results
+
+    @staticmethod
+    async def extend_action_model(
+        brain_state_id: str,
+        action_idx: int,
+        current_page: Page,
+        browser_state_summary: BrowserStateSummary,
+        action: ActionModel,
+    ) -> BugninjaExtendedAction:
+        short_action_descriptor: Dict[str, Any] = action.model_dump(exclude_none=True)
+        logger.bugninja_log(f"📄 Action: {short_action_descriptor}")
+
+        bugninja_action = BugninjaExtendedAction.model_validate(
+            {
+                "brain_state_id": brain_state_id,
+                "action": action.model_dump(),
+                "idx_in_brainstate": action_idx,
+                DOM_ELEMENT_DATA_KEY: None,
+            }
+        )
+
+        action_key: str = list(short_action_descriptor.keys())[-1]
+
+        #!! these values here were selected by hand, if necessary they can be extended with other actions as well
+        if action_key in SELECTOR_ORIENTED_ACTIONS:
+            selector_data: Dict[str, Any] = browser_state_summary.selector_map[
+                short_action_descriptor[action_key]["index"]
+            ].__json__()
+
+            formatted_xpath: str = "//" + selector_data["xpath"].strip("/")
+            #! adding the raw XPath to the short action descriptor (even though it is not part of the model output)
+            short_action_descriptor[action_key]["xpath"] = formatted_xpath
+            logger.bugninja_log(f"📄 {action_key} on {formatted_xpath}")
+
+            bugninja_action.dom_element_data = await BugninjaAgentBase.__extend_action_with_data(
+                selector_data=selector_data,
+                formatted_xpath=formatted_xpath,
+                current_page=current_page,
+            )
+
+        return bugninja_action
+
+    @staticmethod
+    async def __extend_action_with_data(
+        selector_data: Dict[str, Any], formatted_xpath: str, current_page: Page
+    ) -> Dict[str, Any]:
+
+        #! here we only want to keep the first layer of children for specific element in order to avoid unnecessarily large data dump in JSON
+        ch: Dict[str, Any]
+
+        if "children" in selector_data:
+            sanitised_children: List[Dict[str, Any]] = []
+            for ch in selector_data["children"]:
+                ch["children"] = []
+                sanitised_children.append(ch)
+            selector_data["children"] = sanitised_children
+
+        current_page_html: str = await BugninjaAgentBase.get_raw_html_of_playwright_page(
+            page=current_page
+        )
+
+        selector_data[ALTERNATIVE_XPATH_SELECTORS_KEY] = SelectorFactory(
+            html_content=current_page_html
+        ).generate_relative_xpaths_from_full_xpath(full_xpath=formatted_xpath)
+
+        return selector_data
+
+    @staticmethod
+    async def extend_model_output_with_info(
+        brain_state_id: str,
+        current_page: Page,
+        model_output: AgentOutput,
+        browser_state_summary: BrowserStateSummary,
+    ) -> List["BugninjaExtendedAction"]:
+        """Extend agent actions with additional DOM element information and alternative selectors.
+
+        This function processes agent actions and enriches them with detailed DOM element data,
+        including XPath selectors and alternative relative XPath selectors for selector-oriented
+        actions. It's designed to enhance action tracking and debugging capabilities by providing
+        comprehensive element identification information.
+
+        Args:
+            brain_state_id (str): Unique identifier for the current brain state/agent session
+            current_page (Page): Playwright page object representing the current browser page
+            model_output (AgentOutput): The output from the agent model containing actions to be processed
+            browser_state_summary (BrowserStateSummary): Summary of the current browser state including selector mappings
+
+        Returns:
+            List[BugninjaExtendedAction]: List of extended actions with enriched DOM element data
+
+        Raises:
+            Exception: Propagates any exceptions from SelectorFactory operations
+
+        Notes:
+            - Only selector-oriented actions (defined in SELECTOR_ORIENTED_ACTIONS) are enriched with DOM element data
+            - For selector-oriented actions, the function:
+            1. Extracts the element index from the action
+            2. Retrieves the corresponding DOM element from browser_state_summary
+            3. Formats the XPath selector
+            4. Generates alternative relative XPath selectors using SelectorFactory
+            5. Adds all this data to the action dictionary
+            - Non-selector-oriented actions are included in the result but without DOM element data
+            - The function handles exceptions during selector generation gracefully, setting alternative selectors to None if generation fails
+        """
+        return [
+            await BugninjaAgentBase.extend_action_model(
+                brain_state_id=brain_state_id,
+                action_idx=action_idx,
+                current_page=current_page,
+                action=action,
+                browser_state_summary=browser_state_summary,
+            )
+            for action_idx, action in enumerate(model_output.action)
+        ]

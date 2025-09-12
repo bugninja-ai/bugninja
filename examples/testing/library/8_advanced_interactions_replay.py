@@ -7,18 +7,21 @@ from rich import print as rich_print
 from bugninja.api.client import BugninjaClient
 from bugninja.api.models import BugninjaTask
 
-load_dotenv(dotenv_path="example_9.env")
+load_dotenv(dotenv_path="example_8.env")
+
+# tocewe3429 @ dextrago.com
+# test_case_2025
 
 
 async def advanced_interactions_replay() -> None:
     task = BugninjaTask(
-        description="Navigate to Trello, login using credentials and create a new board with custom instructions",
+        description="Navigate to Google Sheets, login using the account credentials stored as environment secrets, create a new spreadsheet and follow the additional instructions",
         extra_instructions=[
-            "Create a new board titled 'QA Testing Board'",
-            "Add three lists: 'To Do', 'In Progress', 'Done'",
-            "Create cards in 'To Do' list: 'Write test cases', 'Execute tests', 'Report bugs'",
-            "Move the first card to 'In Progress' list",
-            "Add a due date to the moved card",
+            'Create a new blank spreadsheet with title "Currency Converter"',
+            'Set up cell A1 with header name "USD Amount" and A2 with a static value of 1000',
+            'Set up column B1 with header name "HUF Amount"',
+            "In cell B2, enter a formula to convert USD to Hungarian Forint (multiply by current exchange rate)",
+            "Save the spreadsheet before completing the test",
         ],
         secrets={
             "EMAIL_CREDENTIAL": os.getenv("EMAIL_CREDENTIAL"),

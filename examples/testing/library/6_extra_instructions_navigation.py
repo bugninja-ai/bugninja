@@ -10,9 +10,9 @@ async def extra_rules_navigation() -> None:
     task = BugninjaTask(
         description='Navigate to Amazon homepage, search for "wireless headphones", browse through product listings',
         extra_instructions=[
-            "Check the description of exactly three separate products",
-            "Read individual user reviews for each product",
-            "Compare review quality across all three products",
+            "Open exactly three separate products’ pages after each other"
+            "On the product’s page read its average rating",
+            "Compare ratings quality across all three products",
             "Navigate back to previously viewed products if necessary",
             "Add the product with the best single user review to the cart",
         ],
