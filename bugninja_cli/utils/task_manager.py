@@ -40,8 +40,6 @@ from typing import Any, Dict, List, Optional
 from cuid2 import Cuid as CUID
 from rich.console import Console
 
-from bugninja.utils.logging_config import logger
-
 console = Console()
 
 
@@ -246,6 +244,8 @@ class TaskManager:
             self._create_task_description(task_dir, name)
             self._create_task_metadata(task_dir, name, task_id)
             self._create_task_env(task_dir)
+
+            from bugninja.utils.logging_config import logger
 
             logger.info(f"Created task '{name}' with ID: {task_id} in folder: {folder_name}")
             return task_id

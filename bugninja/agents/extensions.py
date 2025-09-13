@@ -69,6 +69,7 @@ class BugninjaController(Controller):
     2. **scroll_up()** -> `ActionResult`: - Scroll up the page by specified amount
     3. **wait()** -> `ActionResult`: - Wait for specified number of seconds
     4. **third_party_authentication_wait()** -> `ActionResult`: - Wait for user authentication completion
+    5. **input_text()** -> `ActionResult`: - Enhanced text input with element clearing and focus management
     """
 
     def __init__(
@@ -82,7 +83,7 @@ class BugninjaController(Controller):
         Args:
             exclude_actions (list[str]): List of action names to exclude from the controller
             output_model (type[BaseModel] | None): Optional output model for action results
-            verbose (bool): Whether to enable verbose logging
+            verbose (bool): Whether to enable verbose logging for controller operations
         """
         super().__init__(exclude_actions=exclude_actions, output_model=output_model)
         self.verbose = verbose

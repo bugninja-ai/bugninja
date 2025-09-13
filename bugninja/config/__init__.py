@@ -17,7 +17,10 @@ This module provides **comprehensive configuration management** with:
 4. **LLMProvider** - Enumeration of supported LLM providers
 5. **LLMConfig** - Unified LLM configuration dataclass
 6. **ModelRegistry** - Provider-specific model validation and defaults
-7. **create_llm_model_from_config** - Unified LLM model creation
+7. **LLMFactoryRegistry** - Registry for LLM factory creation
+8. **ProviderRegistry** - Provider-specific configuration registry
+9. **ConfigurationErrorHandler** - Centralized configuration error handling
+10. **create_llm_model_from_config** - Unified LLM model creation
 
 ## Usage Examples
 
@@ -58,6 +61,7 @@ __all__ = [
     "LLMProvider",
     "LLMConfig",
     "ModelRegistry",
+    "LLMFactoryRegistry",
     "TOMLConfigLoader",
     "create_provider_model_from_settings",
     "create_llm_model_from_config",

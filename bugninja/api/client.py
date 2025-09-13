@@ -171,7 +171,7 @@ class BugninjaClient:
                    default configuration with environment variable support
             event_manager (Optional[EventPublisherManager]): Optional event publisher manager for tracking
             background (bool): Whether to run in background mode (disables console logging and enforces headless mode)
-            llm_provider (Optional[LLMProvider]): Optional LLM provider to use (overrides config default)
+            llm_config (Optional[LLMConfig]): Optional LLM configuration to use (overrides config default)
 
         Raises:
             ConfigurationError: If configuration is invalid or initialization fails

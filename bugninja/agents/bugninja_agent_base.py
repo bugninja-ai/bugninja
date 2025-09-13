@@ -130,6 +130,11 @@ class BugninjaAgentBase(Agent, ABC):
 
         Args:
             *args: Arguments passed to the parent Agent class
+            task (str): The task description for the agent to execute
+            run_id (Optional[str]): Unique identifier for the current run. If None, generates a new CUID
+            extra_instructions (List[str]): Additional instructions to append to the task
+            override_system_message (str | None): System message to override the default
+            extend_system_message (str | None): Additional system message to extend the default
             video_recording_config (Optional[VideoRecordingConfig]): Video recording configuration
             **kwargs: Keyword arguments passed to the parent Agent class
         """

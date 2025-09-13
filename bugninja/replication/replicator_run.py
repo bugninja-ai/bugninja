@@ -53,13 +53,44 @@ class UserInterruptionError(ReplicatorError):
 
 
 class ReplicatorRun(ReplicatorNavigator):
-    """
-    A class that replicates browser interactions from a JSON log file.
+    """Main session replay orchestrator for Bugninja framework.
 
-    This class reads a JSON file containing browser interaction steps and
-    executes them sequentially using Patchright. Each interaction is processed
-    and the corresponding browser action is performed with fallback mechanisms
-    for element selection.
+    This class provides comprehensive session replication capabilities, reading
+    browser interaction steps from JSON files or Traversal objects and executing
+    them sequentially using Patchright. It includes self-healing mechanisms,
+    interactive replay features, and comprehensive error handling.
+
+    Key Features:
+    - **Session Replay**: Execute recorded browser interactions step by step
+    - **Self-Healing**: Automatic recovery when actions fail using HealerAgent
+    - **Interactive Mode**: Pause after each step for user inspection
+    - **Parallel Support**: Handle multiple session replays concurrently
+    - **Error Recovery**: Comprehensive error handling and recovery mechanisms
+
+    Attributes:
+        traversal_source (Union[str, Traversal]): Source of traversal data
+        run_id (Optional[str]): Unique identifier for the replication run
+        fail_on_unimplemented_action (bool): Whether to fail on unimplemented actions
+        sleep_after_actions (float): Time to sleep after each action
+        pause_after_each_step (bool): Whether to pause after each step
+        enable_healing (bool): Whether to enable self-healing mechanisms
+        event_manager (Optional[EventPublisherManager]): Event publisher manager
+        healing_llm_config (Optional[LLMConfig]): LLM configuration for healing
+
+    Example:
+        ```python
+        from bugninja.replication import ReplicatorRun
+
+        # Create replicator for session replay from file
+        replicator = ReplicatorRun(
+            traversal_source="./traversals/session.json",
+            enable_healing=True,
+            pause_after_each_step=False
+        )
+
+        # Execute replay
+        await replicator.start()
+        ```
     """
 
     def __init__(
@@ -73,17 +104,35 @@ class ReplicatorRun(ReplicatorNavigator):
         event_manager: Optional[EventPublisherManager] = None,
         healing_llm_config: Optional[LLMConfig] = None,
     ):
-        """
-        Initialize the ReplicatorRun with a JSON file path or Traversal object.
+        """Initialize the ReplicatorRun with comprehensive configuration.
 
         Args:
-            traversal_source: Path to the JSON file containing interaction steps or Traversal object
-            fail_on_unimplemented_action: Whether to fail on unimplemented actions
-            sleep_after_actions: Time to sleep after each action
-            pause_after_each_step: Whether to pause and wait for Enter key after each step
-            enable_healing: Whether to enable healing when actions fail (default: True)
-            event_manager: Optional event publisher manager for tracking
-            healing_llm_config: Optional LLM configuration for healing agent (uses default if None)
+            traversal_source (Union[str, Traversal]): Path to the JSON file containing interaction steps or Traversal object
+            run_id (Optional[str]): Unique identifier for the replication run (generates new if None)
+            fail_on_unimplemented_action (bool): Whether to fail on unimplemented actions
+            sleep_after_actions (float): Time to sleep after each action in seconds
+            pause_after_each_step (bool): Whether to pause and wait for Enter key after each step
+            enable_healing (bool): Whether to enable healing when actions fail (default: True)
+            event_manager (Optional[EventPublisherManager]): Optional event publisher manager for tracking
+            healing_llm_config (Optional[LLMConfig]): Optional LLM configuration for healing agent (uses default if None)
+
+        Raises:
+            ReplicatorError: If traversal source is invalid or loading fails
+
+        Example:
+            ```python
+            # Basic usage
+            replicator = ReplicatorRun("./traversals/session.json")
+
+            # Advanced configuration
+            replicator = ReplicatorRun(
+                traversal_source="./traversals/session.json",
+                run_id="custom_run_123",
+                enable_healing=True,
+                pause_after_each_step=False,
+                sleep_after_actions=2.0
+            )
+            ```
         """
 
         super().__init__(

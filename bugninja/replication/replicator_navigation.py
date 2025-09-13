@@ -1,3 +1,32 @@
+"""
+Replicator navigation base class for Bugninja framework.
+
+This module provides the base navigation functionality for session replication,
+including traversal loading, browser interaction, and element selection. It serves
+as the foundation for the ReplicatorRun class and handles the core navigation
+logic during session replay.
+
+## Key Components
+
+1. **ReplicatorNavigator** - Abstract base class for navigation during replay
+2. **get_user_input()** - Utility function for user interaction during replay
+3. **Traversal Loading** - Functions for loading traversal data from various sources
+
+## Usage Examples
+
+```python
+from bugninja.replication.replicator_navigation import ReplicatorNavigator
+
+class CustomReplicator(ReplicatorNavigator):
+    def __init__(self, traversal_source):
+        super().__init__(traversal_source)
+
+    async def start(self):
+        # Custom replication logic
+        pass
+```
+"""
+
 import asyncio
 import gc
 import json
@@ -29,8 +58,22 @@ from bugninja.utils.logging_config import logger
 
 
 def get_user_input() -> str:
-    """
-    Robust input method that forces stdin to work.
+    """Get user input with robust stdin handling.
+
+    This function provides a robust input method that forces stdin to work
+    even in environments where stdin might not be available or working properly.
+    It includes fallback mechanisms for various input scenarios.
+
+    Returns:
+        str: User input string, or empty string if input is not available
+
+    Example:
+        ```python
+        user_input = get_user_input()
+        if user_input.lower() == 'q':
+            # Quit the application
+            pass
+        ```
     """
     logger.bugninja_log("⏸️ Press Enter to continue, or enter 'q' to quit...")
 
@@ -72,15 +115,49 @@ def get_user_input() -> str:
 
 
 class ReplicatorNavigator(ABC):
+    """Abstract base class for navigation during session replication.
+
+    This class provides the foundation for session replication functionality,
+    including traversal loading, browser interaction, and element selection.
+    It serves as the base class for ReplicatorRun and handles core navigation
+    logic during session replay.
+
+    Attributes:
+        secrets (Optional[Dict[str, str]]): Dictionary of secrets for authentication
+
+    Example:
+        ```python
+        from bugninja.replication.replicator_navigation import ReplicatorNavigator
+
+        class CustomReplicator(ReplicatorNavigator):
+            def __init__(self, traversal_source):
+                super().__init__(traversal_source)
+
+            async def start(self):
+                # Custom replication logic
+                pass
+        ```
+    """
+
     secrets: Optional[Dict[str, str]] = Field(default_factory=dict)
 
     @staticmethod
     def _load_traversal_from_json(json_path: str) -> Traversal:
-        """
-        Load and parse the JSON file containing interaction steps.
+        """Load and parse the JSON file containing interaction steps.
+
+        Args:
+            json_path (str): Path to the JSON file containing traversal data
 
         Returns:
-            Dict containing the parsed JSON data
+            Traversal: Parsed traversal object containing interaction steps
+
+        Raises:
+            ReplicatorError: If the JSON file cannot be loaded or is invalid
+
+        Example:
+            ```python
+            traversal = ReplicatorNavigator._load_traversal_from_json("./traversals/session.json")
+            ```
         """
         try:
             with open(json_path, "r") as f:
@@ -93,14 +170,45 @@ class ReplicatorNavigator(ABC):
 
     @staticmethod
     def _load_traversal_from_source(traversal_source: Union[str, Traversal]) -> Traversal:
-        """
-        Load traversal from either a JSON file path or a Traversal object.
+        """Load traversal from either a JSON file path or a Traversal object.
 
         Args:
-            traversal_source: Either a JSON file path (str) or a Traversal object
+            traversal_source (Union[str, Traversal]): Either a JSON file path (str) or a Traversal object
 
         Returns:
-            Traversal: The loaded or provided traversal object
+            Traversal: The traversal object
+
+        Raises:
+            ReplicatorError: If the traversal source is invalid
+
+        Example:
+            ```python
+            # From file path
+            traversal = ReplicatorNavigator._load_traversal_from_source("./traversals/session.json")
+
+            # From Traversal object
+            traversal = ReplicatorNavigator._load_traversal_from_source(traversal_obj)
+            ```
+        """
+        if isinstance(traversal_source, str):
+            return ReplicatorNavigator._load_traversal_from_json(traversal_source)
+        elif isinstance(traversal_source, Traversal):
+            return traversal_source
+        else:
+            raise ReplicatorError(f"Invalid traversal source type: {type(traversal_source)}")
+
+    def __init__(
+        self,
+        traversal_source: Union[str, Traversal],
+        fail_on_unimplemented_action: bool = False,
+        sleep_after_actions: float = 1.0,
+    ) -> None:
+        """Initialize the ReplicatorNavigator.
+
+        Args:
+            traversal_source (Union[str, Traversal]): Either a JSON file path or a Traversal object
+            fail_on_unimplemented_action (bool): Whether to fail on unimplemented actions
+            sleep_after_actions (float): Time to sleep after each action
 
         Raises:
             ReplicatorError: If loading fails or source is invalid

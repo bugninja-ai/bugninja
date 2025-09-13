@@ -1,3 +1,32 @@
+"""
+Screenshot management utilities for Bugninja framework.
+
+This module provides comprehensive screenshot capture and management functionality
+for browser automation sessions, including element highlighting, coordinate extraction,
+and organized file storage with automatic naming and timestamping.
+
+## Key Components
+
+1. **ScreenshotManager** - Main class for screenshot capture and management
+2. **Element Highlighting** - Automatic highlighting of target elements
+3. **Coordinate Extraction** - XPath-based element coordinate detection
+4. **File Organization** - Automatic folder structure and naming
+
+## Usage Examples
+
+```python
+from bugninja.utils import ScreenshotManager
+
+# Create screenshot manager
+screenshot_manager = ScreenshotManager(run_id="test_run")
+
+# Take screenshot with element highlighting
+filename = await screenshot_manager.take_screenshot(
+    page, action, browser_session
+)
+```
+"""
+
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
@@ -13,14 +42,39 @@ if TYPE_CHECKING:
 
 
 class ScreenshotManager:
-    """Unified screenshot management for all agents and replay sessions."""
+    """Unified screenshot management for all agents and replay sessions.
+
+    This class provides comprehensive screenshot capture functionality including
+    element highlighting, coordinate extraction, and organized file storage.
+    It automatically creates folder structures, generates descriptive filenames,
+    and handles element highlighting for better debugging and analysis.
+
+    Attributes:
+        folder_prefix (str): Prefix for screenshot folders
+        run_id (str): Unique identifier for the current run
+        screenshots_dir (Path): Directory where screenshots are stored
+        screenshot_counter (int): Counter for sequential screenshot naming
+
+    Example:
+        ```python
+        from bugninja.utils import ScreenshotManager
+
+        # Create screenshot manager
+        screenshot_manager = ScreenshotManager(run_id="test_run")
+
+        # Take screenshot with element highlighting
+        filename = await screenshot_manager.take_screenshot(
+            page, action, browser_session
+        )
+        ```
+    """
 
     def __init__(self, run_id: str, folder_prefix: str = "traversal"):
-        """
-        Initialize screenshot manager.
+        """Initialize screenshot manager.
 
         Args:
-            folder_prefix: Prefix for screenshot folders (traversal, replay, etc.)
+            run_id (str): Unique identifier for the current run
+            folder_prefix (str): Prefix for screenshot folders (traversal, replay, etc.)
         """
         self.folder_prefix = folder_prefix
         self.run_id = run_id
@@ -30,8 +84,11 @@ class ScreenshotManager:
         logger.bugninja_log(f"📸 Screenshots will be saved to: {self.screenshots_dir}")
 
     def _get_screenshots_dir(self) -> Path:
-        """Get the screenshots directory for current session"""
+        """Get the screenshots directory for current session.
 
+        Returns:
+            Path: Path to the screenshots directory for the current run
+        """
         base_dir = Path("./screenshots")
         base_dir.mkdir(exist_ok=True)
 
@@ -43,16 +100,23 @@ class ScreenshotManager:
         action: "BugninjaExtendedAction",
         browser_session: Optional[BrowserSession] = None,
     ) -> str:
-        """
-        Take screenshot and return filename.
+        """Take screenshot with element highlighting and return filename.
 
         Args:
-            page: Playwright page object (used to get context)
-            action: Extended action containing DOM element data
-            browser_session: Browser session object for taking screenshots
+            page (Page): Playwright page object (used to get context)
+            action (BugninjaExtendedAction): Extended action containing DOM element data
+            browser_session (Optional[BrowserSession]): Browser session object for taking screenshots
 
         Returns:
-            Full relative path to screenshot file
+            str: Full relative path to screenshot file
+
+        Example:
+            ```python
+            filename = await screenshot_manager.take_screenshot(
+                page, action, browser_session
+            )
+            print(f"Screenshot saved: {filename}")
+            ```
         """
         self.screenshot_counter += 1
 

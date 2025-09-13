@@ -1,3 +1,31 @@
+"""
+Logging configuration utilities for Bugninja framework.
+
+This module provides comprehensive logging configuration for the Bugninja framework,
+including custom logging levels, telemetry suppression, and module-specific logging
+configuration. It ensures clean, organized logging output while preventing telemetry
+from third-party libraries.
+
+## Key Components
+
+1. **BugninjaLogger** - Custom logger class with Bugninja-specific logging methods
+2. **configure_logging()** - Function to configure logging for all Bugninja modules
+3. **Telemetry Suppression** - Environment variable setup to disable telemetry
+4. **Custom Logging Level** - BUGNINJA_LOGGING_LEVEL (35) for framework-specific messages
+
+## Usage Examples
+
+```python
+from bugninja.utils import logger, configure_logging
+
+# Use custom logging
+logger.bugninja_log("Custom log message")
+
+# Configure logging (usually done automatically)
+configure_logging()
+```
+"""
+
 import logging
 import os
 from typing import Any
@@ -32,16 +60,30 @@ class BugninjaLogger(logging.Logger):
     """Custom logger class for Bugninja with additional logging methods.
 
     This logger extends the standard Python logger with a custom `bugninja_log`
-    method that uses the BUGNINJA_LOGGING_LEVEL (35).
+    method that uses the BUGNINJA_LOGGING_LEVEL (35). It provides a clean interface
+    for Bugninja-specific logging messages.
+
+    Example:
+        ```python
+        from bugninja.utils import logger
+
+        # Use custom logging
+        logger.bugninja_log("Custom log message")
+        ```
     """
 
     def bugninja_log(self, msg: str, *args: Any, **kwargs: Any) -> None:
         """Log a message with the custom Bugninja logging level.
 
         Args:
-            msg: The message to log
-            *args: Additional arguments for string formatting
-            **kwargs: Additional keyword arguments for logging
+            msg (str): The message to log
+            *args (Any): Additional arguments for string formatting
+            **kwargs (Any): Additional keyword arguments for logging
+
+        Example:
+            ```python
+            logger.bugninja_log("Processing action: %s", action_name)
+            ```
         """
         if self.isEnabledFor(BUGNINJA_LOGGING_LEVEL):
             self._log(BUGNINJA_LOGGING_LEVEL, msg, args, **kwargs)
@@ -54,10 +96,23 @@ logging.setLoggerClass(BugninjaLogger)
 def configure_logging() -> None:
     """Configure logging based on BUGNINJA_LOGGING_ENABLED environment variable.
 
-    This function:
-    1. Sets the root logger to ACTUAL_LEVEL (BUGNINJA_LOGGING_LEVEL or 100)
+    This function provides comprehensive logging configuration for the Bugninja framework:
+    1. Sets the root logger to ACTUAL_LEVEL (BUGNINJA_LOGGING_LEVEL or 999)
     2. Configures all bugninja module loggers to ACTUAL_LEVEL
     3. Disables propagation to prevent interference
+    4. Removes existing handlers to avoid duplicates
+    5. Adds proper formatters for clean output
+
+    The function is automatically called when the module is imported, but can be
+    called manually to reconfigure logging if needed.
+
+    Example:
+        ```python
+        from bugninja.utils import configure_logging
+
+        # Manually configure logging (usually done automatically)
+        configure_logging()
+        ```
     """
     # Configure root logger
     logging.basicConfig(

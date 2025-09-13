@@ -16,7 +16,14 @@ class ConfigurationErrorHandler:
 
     @staticmethod
     def get_missing_env_error(provider: LLMProvider) -> str:
-        """Generate appropriate error message for missing environment variables."""
+        """Generate appropriate error message for missing environment variables.
+
+        Args:
+            provider (LLMProvider): The provider to generate error message for
+
+        Returns:
+            str: Formatted error message for missing environment variables
+        """
         config = ProviderRegistry.get_config(provider)
         if not config.required_env_vars:
             return f"Configuration error for {config.name}"
@@ -26,7 +33,15 @@ class ConfigurationErrorHandler:
 
     @staticmethod
     def validate_provider_config(provider: LLMProvider, settings: BugninjaSettings) -> None:
-        """Validate provider configuration and raise appropriate error if invalid."""
+        """Validate provider configuration and raise appropriate error if invalid.
+
+        Args:
+            provider (LLMProvider): The provider to validate configuration for
+            settings (BugninjaSettings): Settings instance to validate
+
+        Raises:
+            ValueError: If the provider configuration is invalid
+        """
         config = ProviderRegistry.get_config(provider)
 
         if not config.validate_requirements(settings):
@@ -34,7 +49,14 @@ class ConfigurationErrorHandler:
 
     @staticmethod
     def get_provider_validation_errors(settings: BugninjaSettings) -> Dict[LLMProvider, List[str]]:
-        """Get validation errors for all providers."""
+        """Get validation errors for all providers.
+
+        Args:
+            settings (BugninjaSettings): Settings instance to validate
+
+        Returns:
+            Dict[LLMProvider, List[str]]: Dictionary mapping providers to their validation errors
+        """
         errors: Dict[LLMProvider, List[str]] = {}
 
         for provider in ProviderRegistry.get_supported_providers():
@@ -52,7 +74,14 @@ class ConfigurationErrorHandler:
 
     @staticmethod
     def get_working_providers(settings: BugninjaSettings) -> List[LLMProvider]:
-        """Get list of providers that have valid configuration."""
+        """Get list of providers that have valid configuration.
+
+        Args:
+            settings (BugninjaSettings): Settings instance to validate
+
+        Returns:
+            List[LLMProvider]: List of providers with valid configuration
+        """
         working_providers = []
 
         for provider in ProviderRegistry.get_supported_providers():
@@ -64,7 +93,14 @@ class ConfigurationErrorHandler:
 
     @staticmethod
     def format_configuration_summary(settings: BugninjaSettings) -> str:
-        """Format a summary of configuration status for all providers."""
+        """Format a summary of configuration status for all providers.
+
+        Args:
+            settings (BugninjaSettings): Settings instance to summarize
+
+        Returns:
+            str: Formatted summary of configuration status
+        """
         working_providers = ConfigurationErrorHandler.get_working_providers(settings)
         validation_errors = ConfigurationErrorHandler.get_provider_validation_errors(settings)
 

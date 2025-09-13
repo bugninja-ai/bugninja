@@ -38,8 +38,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from rich.console import Console
 
-from bugninja.utils.logging_config import logger
-
 from .task_manager import TaskInfo
 
 if TYPE_CHECKING:
@@ -107,8 +105,11 @@ class TaskExecutor:
         self.headless = headless
         self.enable_logging = enable_logging
         from bugninja.api import BugninjaClient
+        from bugninja.utils.logging_config import logger as bugninja_logger
 
         self.client: Optional[BugninjaClient] = None
+
+        self.logger = bugninja_logger
 
     async def __aenter__(self) -> "TaskExecutor":
         """Async context manager entry."""
@@ -144,11 +145,11 @@ class TaskExecutor:
             # Initialize client
             self.client = BugninjaClient(config=config, event_manager=event_manager)
 
-            logger.bugninja_log(
+            self.logger.bugninja_log(
                 f"Bugninja client initialized successfully (headless: {headless}, logging: {enable_logging})"
             )
         except Exception as e:
-            logger.error(f"Failed to initialize Bugninja client: {e}")
+            self.logger.error(f"Failed to initialize Bugninja client: {e}")
             raise
 
     async def cleanup(self) -> None:
@@ -156,9 +157,9 @@ class TaskExecutor:
         if self.client:
             try:
                 await self.client.cleanup()
-                logger.bugninja_log("Bugninja client cleaned up successfully")
+                self.logger.bugninja_log("Bugninja client cleaned up successfully")
             except Exception as e:
-                logger.error(f"Error during client cleanup: {e}")
+                self.logger.error(f"Error during client cleanup: {e}")
 
     def _parse_env_file(self, env_path: Path) -> Dict[str, Any]:
         """Parse environment variables from .env file.
@@ -201,7 +202,7 @@ class TaskExecutor:
 
                         secrets[key] = value
                     else:
-                        logger.warning(f"Invalid line {line_num} in {env_path}: {line}")
+                        self.logger.warning(f"Invalid line {line_num} in {env_path}: {line}")
 
         except Exception as e:
             raise ValueError(f"Failed to parse environment file {env_path}: {e}")
@@ -289,7 +290,7 @@ class TaskExecutor:
                 allowed_domains=allowed_domains if allowed_domains else None,
             )
 
-            logger.bugninja_log(f"Created BugninjaTask for '{task_info.name}'")
+            self.logger.bugninja_log(f"Created BugninjaTask for '{task_info.name}'")
             return task
 
         except Exception as e:
@@ -330,10 +331,10 @@ class TaskExecutor:
             with open(task_info.metadata_path, "w", encoding="utf-8") as f:
                 json.dump(metadata, f, indent=2, ensure_ascii=False)
 
-            logger.bugninja_log(f"Updated metadata for task '{task_info.name}'")
+            self.logger.bugninja_log(f"Updated metadata for task '{task_info.name}'")
 
         except Exception as e:
-            logger.error(f"Failed to update metadata for task '{task_info.name}': {e}")
+            self.logger.error(f"Failed to update metadata for task '{task_info.name}': {e}")
 
     async def execute_task(self, task_info: TaskInfo, headless: bool = True) -> TaskExecutionResult:
         """Execute a single task.

@@ -52,7 +52,7 @@ class TOMLConfigLoader:
         """Load and parse TOML configuration file.
 
         Returns:
-            Parsed TOML configuration
+            Dict[str, Any]: Parsed TOML configuration
 
         Raises:
             ValueError: If TOML file is invalid
@@ -67,11 +67,11 @@ class TOMLConfigLoader:
         """Flatten nested configuration for easier access.
 
         Args:
-            config: Nested configuration dictionary
-            prefix: Current key prefix for nested values
+            config (Dict[str, Any]): Nested configuration dictionary
+            prefix (str): Current key prefix for nested values
 
         Returns:
-            Flattened configuration dictionary
+            Dict[str, Any]: Flattened configuration dictionary
         """
         flattened = {}
 
@@ -91,11 +91,22 @@ class TOMLConfigLoader:
         """Get a specific configuration value.
 
         Args:
-            key: Configuration key (supports dot notation for nested keys)
-            default: Default value if key doesn't exist
+            key (str): Configuration key (supports dot notation for nested keys)
+            default (Any): Default value if key doesn't exist
 
         Returns:
-            Configuration value or default
+            Any: Configuration value or default
+
+        Example:
+            ```python
+            loader = TOMLConfigLoader()
+
+            # Get simple value
+            value = loader.get_value("llm.provider")
+
+            # Get nested value with default
+            value = loader.get_value("llm.azure_openai.api_version", "2024-02-15-preview")
+            ```
         """
         config = self.load_config()
 
@@ -111,5 +122,9 @@ class TOMLConfigLoader:
             return default
 
     def reload(self) -> None:
-        """Clear configuration cache to force reload on next access."""
+        """Clear configuration cache to force reload on next access.
+
+        This method clears the internal configuration cache, forcing the
+        configuration to be reloaded from the TOML file on the next access.
+        """
         self._config_cache = None

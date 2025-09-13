@@ -1,3 +1,11 @@
+"""
+Rich terminal event publisher for Bugninja framework.
+
+This module provides a rich terminal-based event publisher that displays
+browser automation operations, run states, and action events with colored
+output using the Rich library.
+"""
+
 import uuid
 from typing import Any, Dict, Optional
 
@@ -13,10 +21,41 @@ from bugninja.schemas.pipeline import BugninjaExtendedAction
 
 
 class RichTerminalPublisher(EventPublisher):
-    """Rich terminal-based event publisher with colored output."""
+    """Rich terminal-based event publisher with colored output.
+
+    This publisher provides real-time visual feedback for browser automation
+    operations using the Rich library for enhanced terminal output. It displays
+    run initialization, state updates, action events, and completion status
+    with colored text and emojis for better user experience.
+
+    Attributes:
+        console (Console): Rich console instance for output
+        _available (bool): Whether the publisher is available
+        style (str): Color style for output messages
+
+    Example:
+        ```python
+        from bugninja.events.publishers import RichTerminalPublisher
+
+        # Create publisher
+        publisher = RichTerminalPublisher()
+
+        # Initialize a run
+        run_id = await publisher.initialize_run("navigation", {"task": "test"})
+
+        # Update run state
+        await publisher.update_run_state(run_id, RunState(current_action="click"))
+
+        # Complete the run
+        await publisher.complete_run(run_id, success=True)
+        ```
+    """
 
     def __init__(self) -> None:
-        """Initialize the rich terminal publisher."""
+        """Initialize the rich terminal publisher.
+
+        Sets up the Rich console and default styling for output messages.
+        """
         self.console = Console()
         self._available = True
         self.style = "bright_blue"
@@ -105,7 +144,28 @@ class RichTerminalPublisher(EventPublisher):
         actual_brain_state: AgentBrain,
         action_result_data: BugninjaExtendedAction,
     ) -> None:
+        """Publish action event with rich terminal output.
 
+        Args:
+            run_id (str): ID of the run this action belongs to
+            brain_state_id (str): ID of the brain state for this action
+            actual_brain_state (AgentBrain): The actual brain state from the agent
+            action_result_data (BugninjaExtendedAction): Extended action data with results
+
+        Raises:
+            PublisherUnavailableError: If publisher is not available
+
+        Example:
+            ```python
+            # This method is typically called internally by the event system
+            await publisher.publish_action_event(
+                run_id="run_123",
+                brain_state_id="state_456",
+                actual_brain_state=brain_state,
+                action_result_data=action_data
+            )
+            ```
+        """
         if not self.is_available():
             raise PublisherUnavailableError("Rich terminal publisher is not available")
 

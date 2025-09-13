@@ -370,10 +370,6 @@ class BulkBugninjaTaskResult(BaseModel):
     error_summary: Optional[Dict[BugninjaErrorType, int]] = None
 
 
-# Backward compatibility alias
-BugninjaTaskResult = BugninjaTaskResult
-
-
 class BugninjaConfig(BaseModel):
     """Configuration for Bugninja client with comprehensive validation.
 
@@ -516,6 +512,24 @@ class BugninjaConfig(BaseModel):
         }
 
     def build_bugninja_session_from_config_for_run(self, run_id: str) -> BrowserSession:
+        """Build a browser session from configuration with run isolation.
+
+        This method creates a `BrowserSession` instance configured with the current
+        configuration settings and isolated browser data directory for the specific run.
+
+        Args:
+            run_id (str): Unique identifier for the run to create isolated browser data
+
+        Returns:
+            BrowserSession: Configured browser session with isolated data directory
+
+        Example:
+            ```python
+            config = BugninjaConfig()
+            session = config.build_bugninja_session_from_config_for_run("run_123")
+            # Session is now configured with isolated browser data in ./data_dir/run_run_123/
+            ```
+        """
 
         # Override user_data_dir with run_id for browser isolation
         base_dir = self.user_data_dir or Path("./data_dir")

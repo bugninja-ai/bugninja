@@ -38,6 +38,7 @@ class NavigatorAgent(BugninjaAgentBase):
     - natural language task interpretation and execution
     - comprehensive action tracking and recording
     - screenshot capture for debugging and analysis
+    - video recording of browser sessions for replay analysis
     - traversal data serialization for replay scenarios
     - event publishing for operation monitoring
 
@@ -92,6 +93,18 @@ class NavigatorAgent(BugninjaAgentBase):
         video_recording_config: VideoRecordingConfig | None = None,
         **kwargs,  # type:ignore
     ) -> None:
+        """Initialize NavigatorAgent with navigation-specific functionality.
+
+        Args:
+            *args: Arguments passed to the parent BugninjaAgentBase class
+            task (str): The navigation task description for the agent to execute
+            run_id (str | None): Unique identifier for the current run. If None, generates a new CUID
+            override_system_message (str): System message to override the default (defaults to navigator prompt)
+            extra_instructions (List[str]): Additional instructions to append to the task
+            extend_planner_system_message (str): Additional system message to extend the planner prompt
+            video_recording_config (VideoRecordingConfig | None): Video recording configuration for session recording
+            **kwargs: Keyword arguments passed to the parent BugninjaAgentBase class
+        """
 
         super().__init__(
             *args,

@@ -20,9 +20,6 @@ from bugninja.schemas.pipeline import BugninjaBrainState
 from bugninja.utils.logging_config import logger
 from bugninja.utils.screenshot_manager import ScreenshotManager
 
-#! keep in mind that the HealerAgent is not inherited from BugninjaAgentBase but from the NavigatorAgent directly
-#! for this reason it inherits the NavigatorAgent hooks as well
-
 
 class HealerAgent(BugninjaAgentBase):
     """Self-healing agent for browser automation intervention and recovery.
@@ -85,7 +82,12 @@ class HealerAgent(BugninjaAgentBase):
 
         Args:
             *args: Arguments passed to the parent BugninjaAgentBase class
+            task (str): The healing task description for the agent to execute
             parent_run_id (Optional[str]): ID of the parent run for event tracking continuity
+            extra_instructions (List[str]): Additional instructions to append to the task
+            override_system_message (str): System message to override the default (defaults to navigator prompt)
+            extend_system_message (str | None): Additional system message to extend the default
+            already_completed_brainstates (List[BugninjaBrainState]): Previously completed brain states for context
             **kwargs: Keyword arguments passed to the parent BugninjaAgentBase class
         """
 
