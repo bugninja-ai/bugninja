@@ -45,6 +45,7 @@ from .pipeline import (
     ReplayWithHealingStateMachine,
 )
 from .progress import RunProgressState, RunType, RunStatus
+from .cli_schemas import TaskInfo, TaskRunConfig, BugninjaTaskResult, TaskExecutionResult
 
 __all__ = [
     "BugninjaExtendedAction",
@@ -55,4 +56,8 @@ __all__ = [
     "RunProgressState",
     "RunType",
     "RunStatus",
+    "TaskInfo",
+    "TaskRunConfig",
+    "BugninjaTaskResult",
+    "TaskExecutionResult",
 ]

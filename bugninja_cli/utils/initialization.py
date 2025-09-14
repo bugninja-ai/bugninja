@@ -335,8 +335,8 @@ def get_default_config_template(project_name: str, **overrides: Dict[str, Any]) 
             "tasks_dir": "./tasks",
         },
         "browser": {
-            "viewport_width": 1280,
-            "viewport_height": 960,
+            "viewport_width": 1920,
+            "viewport_height": 1080,
             "user_agent": "",
             "device_scale_factor": 0.0,
             "timeout": 30000,

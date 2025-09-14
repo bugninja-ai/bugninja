@@ -6,7 +6,7 @@ from typing import Any, Dict
 from rich import print as rich_print
 
 from bugninja.api.client import BugninjaClient
-from bugninja.api.models import BugninjaTask
+from bugninja.schemas.models import BugninjaTask
 
 
 def corrupt_traversal_file(traversal_file_path: Path, action_to_corrupt: str) -> Path:

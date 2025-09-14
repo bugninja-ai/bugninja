@@ -13,10 +13,10 @@ from faker import Faker
 
 # Import the new high-level API
 from bugninja.api import BugninjaClient, BugninjaTask
-from bugninja.api.models import BugninjaConfig
 from bugninja.config import ConfigurationFactory
 from bugninja.events import EventPublisherManager
 from bugninja.events.publishers.rich_terminal_publisher import RichTerminalPublisher
+from bugninja.schemas.models import BugninjaConfig
 
 # Initialize faker for generating test data
 fake = Faker()

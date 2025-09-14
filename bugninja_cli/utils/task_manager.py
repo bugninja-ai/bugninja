@@ -30,15 +30,20 @@ if task_manager.task_exists("Login Flow"):
 ```
 """
 
-import json
+from __future__ import annotations
+
 import re
 import unicodedata
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
+import tomli
 from cuid2 import Cuid as CUID
 from rich.console import Console
+
+if TYPE_CHECKING:
+    from bugninja.schemas import TaskInfo
 
 console = Console()
 
@@ -135,41 +140,6 @@ def validate_folder_name(folder_name: str) -> bool:
     return True
 
 
-class TaskInfo:
-    """Information about a Bugninja task.
-
-    This class represents the metadata and structure of a Bugninja task,
-    including its location, metadata, and file paths.
-
-    Attributes:
-        name (str): Human-readable task name
-        task_id (str): Unique CUID2 identifier for the task
-        folder_name (str): Snake case folder name
-        task_path (Path): Path to the task directory
-        metadata_path (Path): Path to the task metadata file
-        description_path (Path): Path to the task description file
-        env_path (Path): Path to the task environment file
-    """
-
-    def __init__(
-        self,
-        name: str,
-        task_id: str,
-        folder_name: str,
-        task_path: Path,
-        metadata_path: Path,
-        description_path: Path,
-        env_path: Path,
-    ):
-        self.name = name
-        self.task_id = task_id
-        self.folder_name = folder_name
-        self.task_path = task_path
-        self.metadata_path = metadata_path
-        self.description_path = description_path
-        self.env_path = env_path
-
-
 class TaskManager:
     """Manager for Bugninja task operations.
 
@@ -241,9 +211,8 @@ class TaskManager:
             task_dir.mkdir(parents=False, exist_ok=False)
 
             # Create task files
-            self._create_task_description(task_dir, name)
-            self._create_task_metadata(task_dir, name, task_id)
-            self._create_task_env(task_dir)
+            self._create_task_toml(task_dir, name, task_id)
+            self._create_task_env(task_dir, name)
 
             from bugninja.utils.logging_config import logger
 
@@ -299,24 +268,29 @@ class TaskManager:
             if not task_dir.is_dir():
                 continue
 
-            metadata_file = task_dir / "metadata.json"
-            if not metadata_file.exists():
+            toml_file = task_dir / f"task_{task_dir.name}.toml"
+            if not toml_file.exists():
                 continue
 
             try:
-                with open(metadata_file, "r") as f:
-                    metadata = json.load(f)
-                    if metadata.get("task_identifier") == task_id:
-                        return TaskInfo(
-                            name=metadata.get("task_name", "Unknown"),
-                            task_id=task_id,
-                            folder_name=task_dir.name,
-                            task_path=task_dir,
-                            metadata_path=metadata_file,
-                            description_path=task_dir / "task.md",
-                            env_path=task_dir / ".env",
-                        )
-            except (json.JSONDecodeError, KeyError):
+
+                with open(toml_file, "rb") as f:
+                    config = tomli.load(f)
+
+                metadata_section = config.get("metadata", {})
+                if metadata_section.get("task_id") == task_id:
+                    from bugninja.schemas import TaskInfo
+
+                    task_section = config.get("task", {})
+                    return TaskInfo(
+                        name=task_section.get("name", "Unknown"),
+                        task_id=task_id,
+                        folder_name=task_dir.name,
+                        task_path=task_dir,
+                        toml_path=toml_file,
+                        env_path=task_dir / f"task_{task_dir.name}.env",
+                    )
+            except (tomli.TOMLDecodeError, KeyError, FileNotFoundError):
                 continue
 
         return None
@@ -336,23 +310,28 @@ class TaskManager:
         if not task_dir.exists() or not task_dir.is_dir():
             return None
 
-        metadata_file = task_dir / "metadata.json"
-        if not metadata_file.exists():
+        toml_file = task_dir / f"task_{folder_name}.toml"
+        if not toml_file.exists():
             return None
 
         try:
-            with open(metadata_file, "r") as f:
-                metadata = json.load(f)
-                return TaskInfo(
-                    name=metadata.get("task_name", "Unknown"),
-                    task_id=metadata.get("task_identifier", "Unknown"),
-                    folder_name=folder_name,
-                    task_path=task_dir,
-                    metadata_path=metadata_file,
-                    description_path=task_dir / "task.md",
-                    env_path=task_dir / ".env",
-                )
-        except (json.JSONDecodeError, KeyError):
+
+            with open(toml_file, "rb") as f:
+                config = tomli.load(f)
+
+            task_section = config.get("task", {})
+            metadata_section = config.get("metadata", {})
+            from bugninja.schemas import TaskInfo
+
+            return TaskInfo(
+                name=task_section.get("name", "Unknown"),
+                task_id=metadata_section.get("task_id", "Unknown"),
+                folder_name=folder_name,
+                task_path=task_dir,
+                toml_path=toml_file,
+                env_path=task_dir / f"task_{folder_name}.env",
+            )
+        except (tomli.TOMLDecodeError, KeyError, FileNotFoundError):
             return None
 
     def list_tasks(self) -> List[TaskInfo]:
@@ -367,25 +346,29 @@ class TaskManager:
             if not task_dir.is_dir():
                 continue
 
-            metadata_file = task_dir / "metadata.json"
-            if not metadata_file.exists():
+            toml_file = task_dir / f"task_{task_dir.name}.toml"
+            if not toml_file.exists():
                 continue
 
             try:
-                with open(metadata_file, "r") as f:
-                    metadata = json.load(f)
+
+                with open(toml_file, "rb") as f:
+                    config = tomli.load(f)
+
+                task_section = config.get("task", {})
+                metadata_section = config.get("metadata", {})
+                from bugninja.schemas import TaskInfo
 
                 task_info = TaskInfo(
-                    name=metadata.get("task_name", "Unknown"),
-                    task_id=metadata.get("task_identifier", "Unknown"),
+                    name=task_section.get("name", "Unknown"),
+                    task_id=metadata_section.get("task_id", "Unknown"),
                     folder_name=task_dir.name,
                     task_path=task_dir,
-                    metadata_path=metadata_file,
-                    description_path=task_dir / "task.md",
-                    env_path=task_dir / ".env",
+                    toml_path=toml_file,
+                    env_path=task_dir / f"task_{task_dir.name}.env",
                 )
                 tasks.append(task_info)
-            except (json.JSONDecodeError, KeyError):
+            except (tomli.TOMLDecodeError, KeyError, FileNotFoundError):
                 continue
 
         return tasks
@@ -416,90 +399,73 @@ class TaskManager:
 
         return True
 
-    def _create_task_description(self, task_dir: Path, name: str) -> None:
-        """Create the task description file.
-
-        Args:
-            task_dir (Path): Task directory path
-            name (str): Task name
-        """
-        description_file = task_dir / "task.md"
-        content = self._get_task_markdown_template(name)
-
-        with open(description_file, "w", encoding="utf-8") as f:
-            f.write(content)
-
-    def _create_task_metadata(self, task_dir: Path, name: str, task_id: str) -> None:
-        """Create the task metadata file.
+    def _create_task_toml(self, task_dir: Path, name: str, task_id: str) -> None:
+        """Create the task TOML configuration file.
 
         Args:
             task_dir (Path): Task directory path
             name (str): Task name
             task_id (str): Task CUID2 identifier
         """
-        metadata_file = task_dir / "metadata.json"
-        metadata = self._get_task_metadata_template(name, task_id)
+        toml_file = task_dir / f"task_{name_to_snake_case(name)}.toml"
+        content = self._get_task_toml_template(name, task_id)
 
-        with open(metadata_file, "w", encoding="utf-8") as f:
-            json.dump(metadata, f, indent=2, ensure_ascii=False)
+        with open(toml_file, "w", encoding="utf-8") as f:
+            f.write(content)
 
-    def _create_task_env(self, task_dir: Path) -> None:
+    def _create_task_env(self, task_dir: Path, name: str) -> None:
         """Create the task environment file.
 
         Args:
             task_dir (Path): Task directory path
+            name (str): Task name
         """
-        env_file = task_dir / ".env"
+        env_file = task_dir / f"task_{name_to_snake_case(name)}.env"
         content = self._get_task_env_template()
 
         with open(env_file, "w", encoding="utf-8") as f:
             f.write(content)
 
-    def _get_task_markdown_template(self, name: str) -> str:
-        """Get the task markdown template.
-
-        Args:
-            name (str): Task name
-
-        Returns:
-            str: Markdown template content
-        """
-        return f"""# {name}
-
-Describe your task here...
-
-## Task Description
-
-Add a detailed description of what this task should accomplish.
-
-## Expected Behavior
-
-Describe the expected outcome of this task.
-
-## Notes
-
-Add any additional notes or requirements here.
-"""
-
-    def _get_task_metadata_template(self, name: str, task_id: str) -> Dict[str, Any]:
-        """Get the task metadata template.
+    def _get_task_toml_template(self, name: str, task_id: str) -> str:
+        """Get the task TOML template.
 
         Args:
             name (str): Task name
             task_id (str): Task CUID2 identifier
 
         Returns:
-            Dict[str, Any]: Metadata template dictionary
+            str: TOML template content
         """
-        return {
-            "task_name": name,
-            "task_identifier": task_id,
-            "created_date": datetime.utcnow().isoformat() + "Z",
-            "allowed_domains": [],
-            "latest_run_path": None,
-            "latest_run_status": None,
-            "priority": "medium",
-        }
+        return f"""# Task Configuration for: {name}
+# This file contains task-specific configuration including description, run settings, and metadata
+
+[task]
+name = "{name}"
+description = "Describe your task here..."
+extra_instructions = [
+    "Add specific instructions for this task",
+    "Each instruction should be on a separate line"
+]
+allowed_domains = []  # Optional: List of allowed domains for web tasks
+
+[run_config]
+# CLI-specific runtime configuration
+viewport_width = 1920
+viewport_height = 1080
+user_agent = ""
+wait_between_actions = 1
+enable_vision = true
+enable_memory = true
+enable_healing = true
+headless = false
+
+[metadata]
+task_id = "{task_id}"
+created_date = "{datetime.now(UTC).isoformat()}Z"
+# latest_run_path = ""
+# latest_run_status = ""
+# latest_run_timestamp = ""
+"""
 
     def _get_task_env_template(self) -> str:
         """Get the task environment template.
@@ -507,10 +473,13 @@ Add any additional notes or requirements here.
         Returns:
             str: Environment template content
         """
-        return """SECRET_KEY=secret_value
-
+        return """# Task-specific secrets
 # Add your task-specific secrets here
-# Example:
+# Variables listed in secret_variables in the TOML file
+
+SECRET_KEY=secret_value
+
+# Example secrets:
 # USERNAME=your_username
 # PASSWORD=your_password
 # API_KEY=your_api_key

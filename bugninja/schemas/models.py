@@ -44,6 +44,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from bugninja.config.video_recording import VideoRecordingConfig
 from bugninja.schemas.pipeline import Traversal
+from rich import print as rich_print
 
 
 class OperationType(Enum):
@@ -78,11 +79,14 @@ class BugninjaTask(BaseModel):
     """Represents a browser automation task with comprehensive validation.
 
     This model defines a task to be executed by the Bugninja automation engine.
-    It includes **validation for all fields** and provides comprehensive documentation
-    for task configuration and execution parameters.
+    It supports both **config file-based tasks** and **direct parameter tasks** for
+    maximum flexibility. It includes validation for all fields and provides comprehensive
+    documentation for task configuration and execution parameters.
 
     Attributes:
+        task_config_path (Optional[Path]): Path to task_{name}.toml configuration file
         description (str): Human-readable description of the task to perform (1-1000 chars)
+        extra_instructions (List[str]): List of extra instructions for navigation
         max_steps (int): Maximum number of steps to execute (1-1000, default: 100)
         enable_healing (bool): Enable self-healing capabilities for replay tasks (default: True)
         custom_config (Optional[Dict[str, Any]]): Custom configuration overrides
@@ -92,8 +96,12 @@ class BugninjaTask(BaseModel):
     Example:
         ```python
         from bugninja.api.models import BugninjaTask
+        from pathlib import Path
 
-        # Basic task
+        # Task from config file (NEW)
+        task = BugninjaTask(task_config_path=Path("tasks/login_flow/task_login_flow.toml"))
+
+        # Direct task (backward compatibility)
         task = BugninjaTask(
             description="Navigate to example.com and click login"
         )
@@ -101,6 +109,7 @@ class BugninjaTask(BaseModel):
         # Advanced task with all options
         task = BugninjaTask(
             description="Complete user registration flow",
+            extra_instructions=["Take screenshot after each step"],
             max_steps=75,
             enable_healing=True,
             allowed_domains=["example.com", "api.example.com"],
@@ -112,9 +121,15 @@ class BugninjaTask(BaseModel):
         ```
     """
 
+    # Config file support (NEW)
+    task_config_path: Optional[Path] = Field(
+        default=None, description="Path to task_{name}.toml configuration file"
+    )
+
+    # Task description and instructions
     description: str = Field(
-        ...,
-        min_length=1,
+        default="",
+        min_length=0,
         max_length=1000,
         description="Human-readable description of the task to perform",
     )
@@ -123,6 +138,7 @@ class BugninjaTask(BaseModel):
         default_factory=list, description="List of extra instruction for navigation"
     )
 
+    # Task execution settings
     run_id: str = Field(
         default_factory=lambda: CUID().generate(), description="Unique identifier for the task run"
     )
@@ -136,6 +152,7 @@ class BugninjaTask(BaseModel):
         description="Enable self-healing capabilities. Only holds meaning for replay tasks",
     )
 
+    # Legacy fields (for backward compatibility)
     custom_config: Optional[Dict[str, Any]] = Field(
         default=None, description="Custom configuration overrides"
     )
@@ -162,9 +179,71 @@ class BugninjaTask(BaseModel):
         Raises:
             ValueError: If description is empty or whitespace-only
         """
-        if not v.strip():
+        if v and not v.strip():
             raise ValueError("BugninjaTask description cannot be empty or whitespace-only")
-        return v.strip()
+        return v.strip() if v else ""
+
+    def model_post_init(self, __context: Any) -> None:
+        """Post-initialization to load configuration from file if provided."""
+        if self.task_config_path:
+            self._load_from_config_file()
+
+    def _load_from_config_file(self) -> None:
+        """Load task configuration from TOML file.
+
+        This method loads task-specific configuration from the provided TOML file,
+        including task description, agent settings, and secrets from the corresponding
+        ENV file.
+
+        Raises:
+            FileNotFoundError: If task config file doesn't exist
+            ValueError: If TOML file is malformed or invalid
+        """
+
+        if not self.task_config_path or not self.task_config_path.exists():
+            raise FileNotFoundError(f"Task config file not found: {self.task_config_path}")
+
+        from bugninja.config.factory import ConfigurationFactory
+
+        try:
+            # Load task configuration from TOML
+            task_config = ConfigurationFactory.load_task_config(self.task_config_path)
+
+            # Load task secrets from ENV file (optional)
+            task_env_path = self.task_config_path.with_suffix(".env")
+            task_secrets: Optional[Dict[str, Any]] = ConfigurationFactory.load_task_secrets(
+                task_env_path
+            )
+
+            # Update task properties from config
+            self._update_from_config(task_config, task_secrets)
+
+        except Exception as e:
+            raise ValueError(f"Configuration error: {str(e)}")
+
+    def _update_from_config(
+        self,
+        task_config: Dict[str, Any],
+        task_secrets: Optional[Dict[str, Any]],
+    ) -> None:
+        """Update task properties from configuration data.
+
+        Args:
+            task_config: Task-specific configuration from TOML (flattened)
+            task_secrets: Task-specific secrets from ENV
+        """
+        # Update task description and instructions (config is flattened)
+        self.description = task_config.get("task.description", "")
+        self.extra_instructions = task_config.get("task.extra_instructions", [])
+
+        # Update secrets
+        self.secrets = task_secrets
+
+        # Update allowed domains if present
+        if "task.allowed_domains" in task_config:
+            allowed_domains: Optional[List[str]] = task_config.get("task.allowed_domains")
+            if allowed_domains and len(allowed_domains):
+                self.allowed_domains = allowed_domains
 
     class Config:
         """Pydantic configuration for BugninjaTask model."""
@@ -382,8 +461,8 @@ class BugninjaConfig(BaseModel):
         llm_model (str): LLM model to use (default: "gpt-4.1")
         llm_temperature (float): Temperature for LLM responses (0.0-2.0, default: 0.0)
         headless (bool): Run browser in headless mode (default: False)
-        viewport_width (int): Browser viewport width (800-3840, default: 1280)
-        viewport_height (int): Browser viewport height (600-2160, default: 960)
+        viewport_width (int): Browser viewport width (800-3840, default: 1920)
+        viewport_height (int): Browser viewport height (600-2160, default: 1080)
         user_agent (Optional[str]): Browser user agent string
         strict_selectors (bool): Use strict selectors for element identification (default: True)
         user_data_dir (Optional[Union[Path, str]]): Directory for browser user data

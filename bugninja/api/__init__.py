@@ -30,7 +30,7 @@ result = await client.replay_session(session_file, enable_healing=True)
 """
 
 from bugninja.api.client import BugninjaClient
-from bugninja.api.models import (
+from bugninja.schemas.models import (
     BugninjaTask,
     BugninjaTaskResult,
     BulkBugninjaTaskResult,

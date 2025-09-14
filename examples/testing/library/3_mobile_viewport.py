@@ -3,7 +3,7 @@ import asyncio
 from rich import print as rich_print
 
 from bugninja.api.client import BugninjaClient
-from bugninja.api.models import BugninjaConfig, BugninjaTask
+from bugninja.schemas.models import BugninjaConfig, BugninjaTask
 
 REDDIT_MOBILE_NAVIGATION_PROMPT = """
 Navigate to ebay and search for home surveillance.

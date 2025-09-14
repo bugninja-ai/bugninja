@@ -1,0 +1,70 @@
+# Bugninja Configuration
+# This file contains all non-sensitive project configuration
+# Sensitive data (API keys, passwords) should be stored in .env file
+
+[project]
+name = "test_init"
+
+[llm]
+provider = "azure_openai"
+model = "gpt-4.1"
+temperature = 0.0
+
+[logging]
+level = "INFO"
+format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+enable_rich_logging = true
+logging_enabled = false
+
+[development]
+debug_mode = false
+
+[paths]
+traversals_dir = "./traversals"
+screenshots_dir = "./screenshots"
+tasks_dir = "./tasks"
+
+[browser]
+viewport_width = 1280
+viewport_height = 960
+user_agent = ""
+device_scale_factor = 0.0
+timeout = 30000
+
+[agent]
+max_steps = 100
+planner_interval = 5
+enable_vision = true
+enable_memory = false
+wait_between_actions = 1
+
+[replicator]
+sleep_after_actions = 1.0
+pause_after_each_step = true
+fail_on_unimplemented_action = false
+max_retries = 2
+retry_delay = 0.5
+
+[screenshot]
+format = "png"
+
+[events]
+publishers = ["null"]
+
+[llm.azure_openai]
+api_version = "2024-02-15-preview"
+
+[llm.openai]
+base_url = "https://api.openai.com/v1"
+
+[llm.anthropic]
+base_url = "https://api.anthropic.com"
+
+[llm.google_gemini]
+base_url = "https://generativelanguage.googleapis.com"
+
+[llm.deepseek]
+base_url = "https://api.deepseek.com"
+
+[llm.ollama]
+base_url = "http://localhost:11434"

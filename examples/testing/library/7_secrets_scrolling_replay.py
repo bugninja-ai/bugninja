@@ -4,7 +4,7 @@ import os
 from dotenv import load_dotenv
 
 from bugninja.api.client import BugninjaClient
-from bugninja.api.models import BugninjaTask
+from bugninja.schemas.models import BugninjaTask
 
 load_dotenv(dotenv_path="example_7.env")
 

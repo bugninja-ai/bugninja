@@ -40,6 +40,9 @@ from bugninja.config import (
     create_llm_config_from_settings,
 )
 
+import warnings
+
+
 # High-level API
 from bugninja.api import (
     BugninjaClient,
@@ -50,6 +53,11 @@ from bugninja.api import (
     SessionReplayError,
     ConfigurationError,
     LLMError,
+)
+
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="faiss.loader")
+warnings.filterwarnings(
+    "ignore", message="builtin type .* has no __module__ attribute", category=DeprecationWarning
 )
 
 __version__ = "0.1.0"

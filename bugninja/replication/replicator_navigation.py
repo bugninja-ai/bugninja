@@ -200,34 +200,6 @@ class ReplicatorNavigator(ABC):
     def __init__(
         self,
         traversal_source: Union[str, Traversal],
-        fail_on_unimplemented_action: bool = False,
-        sleep_after_actions: float = 1.0,
-    ) -> None:
-        """Initialize the ReplicatorNavigator.
-
-        Args:
-            traversal_source (Union[str, Traversal]): Either a JSON file path or a Traversal object
-            fail_on_unimplemented_action (bool): Whether to fail on unimplemented actions
-            sleep_after_actions (float): Time to sleep after each action
-
-        Raises:
-            ReplicatorError: If loading fails or source is invalid
-        """
-        if isinstance(traversal_source, str):
-            # Load from JSON file
-            return ReplicatorNavigator._load_traversal_from_json(traversal_source)
-        elif isinstance(traversal_source, Traversal):
-            # Use provided Traversal object directly
-            return traversal_source
-        else:
-            raise ReplicatorError(
-                f"Invalid traversal source type: {type(traversal_source)}. "
-                "Expected str (file path) or Traversal object."
-            )
-
-    def __init__(
-        self,
-        traversal_source: Union[str, Traversal],
         fail_on_unimplemented_action: bool = True,
         sleep_after_actions: float = 1.0,
     ):

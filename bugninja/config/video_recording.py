@@ -39,8 +39,8 @@ class VideoRecordingConfig(BaseModel):
 
         # Custom configuration
         config = VideoRecordingConfig(
-            width=1280,
-            height=720,
+            width=1920,
+            height=1080,
             fps=30,
             quality=80,
             output_format="webm"

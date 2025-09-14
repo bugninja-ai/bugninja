@@ -45,12 +45,12 @@ class BugninjaBrowserConfig(BaseModel):
     """
 
     viewport: ViewportSize = Field(
-        default=ViewportSize(width=1280, height=960),
+        default=ViewportSize(width=1920, height=1080),
         description="Viewport dimensions for browser automation",
     )
 
     window_size: ViewportSize = Field(
-        default=ViewportSize(width=1280, height=960),
+        default=ViewportSize(width=1920, height=1080),
         description="Window size for browser automation",
     )
 

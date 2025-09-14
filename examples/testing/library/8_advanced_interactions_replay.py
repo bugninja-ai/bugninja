@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from rich import print as rich_print
 
 from bugninja.api.client import BugninjaClient
-from bugninja.api.models import BugninjaTask
+from bugninja.schemas.models import BugninjaTask
 
 load_dotenv(dotenv_path="example_8.env")
 

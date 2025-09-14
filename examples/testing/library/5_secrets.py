@@ -3,7 +3,7 @@ import asyncio
 from rich import print as rich_print
 
 from bugninja.api.client import BugninjaClient
-from bugninja.api.models import BugninjaTask
+from bugninja.schemas.models import BugninjaTask
 
 LOGIN_PRACTICE_PROMPT = """
 Go to practicetestautomation.com/practice-test-login/ and with the provided credentials, try to log in!

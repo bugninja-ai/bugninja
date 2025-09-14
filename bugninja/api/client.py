@@ -38,7 +38,14 @@ from bugninja.api.exceptions import (
     TaskExecutionError,
     ValidationError,
 )
-from bugninja.api.models import (
+from bugninja.config import (
+    create_llm_model_from_config,
+    create_provider_model_from_settings,
+)
+from bugninja.config.llm_config import LLMConfig
+from bugninja.events import EventPublisherManager
+from bugninja.replication import ReplicatorRun
+from bugninja.schemas.models import (
     BugninjaConfig,
     BugninjaErrorType,
     BugninjaTask,
@@ -49,13 +56,6 @@ from bugninja.api.models import (
     OperationType,
     SessionInfo,
 )
-from bugninja.config import (
-    create_llm_model_from_config,
-    create_provider_model_from_settings,
-)
-from bugninja.config.llm_config import LLMConfig
-from bugninja.events import EventPublisherManager
-from bugninja.replication import ReplicatorRun
 from bugninja.schemas.pipeline import Traversal
 from bugninja.utils.logging_config import logger
 

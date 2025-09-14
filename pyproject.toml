@@ -44,6 +44,7 @@ dependencies = [
     "rich-click>=1.8.9",
     "ruff==0.11.13",
     "tomli>=2.2.1",
+    "tomli-w>=1.2.0",
     "typer>=0.16.0",
     "types-lxml==2025.3.30",
     "types-pillow==10.2.0.20240822",
