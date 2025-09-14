@@ -1,6 +1,5 @@
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import rich_click as click
 from rich.console import Console
@@ -222,7 +221,7 @@ def replay(
     if task_name or traversal_id:
         try:
             # Import here to avoid circular imports
-            from bugninja.schemas import TaskRunConfig, TaskExecutionResult
+            from bugninja.schemas import TaskExecutionResult, TaskRunConfig
             from bugninja_cli.utils.task_executor import TaskExecutor
 
             # Create TaskExecutor with default config (will be overridden by traversal config)

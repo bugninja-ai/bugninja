@@ -44,7 +44,6 @@ from pydantic import BaseModel, Field, field_validator
 
 from bugninja.config.video_recording import VideoRecordingConfig
 from bugninja.schemas.pipeline import Traversal
-from rich import print as rich_print
 
 
 class OperationType(Enum):
@@ -546,6 +545,11 @@ class BugninjaConfig(BaseModel):
     debug_mode: bool = Field(default=False, description="Enable debug mode")
 
     # File Paths
+    output_base_dir: Optional[Path] = Field(
+        default=None,
+        description="Base directory for all output files (traversals, screenshots, videos)",
+    )
+
     screenshots_dir: Path = Field(
         default=Path("./screenshots"), description="Directory for storing screenshots"
     )
@@ -574,6 +578,36 @@ class BugninjaConfig(BaseModel):
         if v is not None:
             v.mkdir(parents=True, exist_ok=True)
         return v
+
+    def get_effective_screenshots_dir(self) -> Path:
+        """Get the effective screenshots directory based on output_base_dir.
+
+        Returns:
+            Path: The screenshots directory to use
+        """
+        if self.output_base_dir:
+            return self.output_base_dir / "screenshots"
+        return self.screenshots_dir
+
+    def get_effective_traversals_dir(self) -> Path:
+        """Get the effective traversals directory based on output_base_dir.
+
+        Returns:
+            Path: The traversals directory to use
+        """
+        if self.output_base_dir:
+            return self.output_base_dir / "traversals"
+        return self.traversals_dir
+
+    def get_effective_video_dir(self) -> Path:
+        """Get the effective video directory based on output_base_dir.
+
+        Returns:
+            Path: The video directory to use
+        """
+        if self.output_base_dir:
+            return self.output_base_dir / "screen_recordings"
+        return Path(self.video_recording.output_dir)
 
     class Config:
         """Pydantic configuration for BugninjaConfig model."""

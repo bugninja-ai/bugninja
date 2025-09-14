@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import List, Optional
 
 from browser_use.agent.views import (  # type: ignore
@@ -76,6 +77,7 @@ class HealerAgent(BugninjaAgentBase):
         override_system_message: str = BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
         extend_system_message: str | None = None,
         already_completed_brainstates: List[BugninjaBrainState] = [],
+        output_base_dir: Optional[Path] = None,
         **kwargs,  # type:ignore
     ) -> None:
         """Initialize HealerAgent with healing-specific functionality.
@@ -88,6 +90,7 @@ class HealerAgent(BugninjaAgentBase):
             override_system_message (str): System message to override the default (defaults to navigator prompt)
             extend_system_message (str | None): Additional system message to extend the default
             already_completed_brainstates (List[BugninjaBrainState]): Previously completed brain states for context
+            output_base_dir (Optional[Path]): Base directory for all output files (traversals, screenshots, videos)
             **kwargs: Keyword arguments passed to the parent BugninjaAgentBase class
         """
 
@@ -104,6 +107,9 @@ class HealerAgent(BugninjaAgentBase):
             task=task,
             **kwargs,
         )
+
+        # Store output base directory
+        self.output_base_dir = output_base_dir
 
         # Use parent's run_id if provided, otherwise keep the generated one
         if parent_run_id is not None:
@@ -124,7 +130,9 @@ class HealerAgent(BugninjaAgentBase):
 
         # Initialize screenshot manager (will be overridden if shared from replay)
         if not hasattr(self, "screenshot_manager"):
-            self.screenshot_manager = ScreenshotManager(run_id=self.run_id, folder_prefix="healing")
+            self.screenshot_manager = ScreenshotManager(
+                run_id=self.run_id, base_dir=self.output_base_dir
+            )
 
         # Initialize event tracking for healing run (if event_manager is provided)
         if self.event_manager and self.event_manager.has_publishers():

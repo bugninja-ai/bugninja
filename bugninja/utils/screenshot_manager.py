@@ -69,29 +69,31 @@ class ScreenshotManager:
         ```
     """
 
-    def __init__(self, run_id: str, folder_prefix: str = "traversal"):
+    def __init__(self, run_id: str, base_dir: Optional[Path] = None):
         """Initialize screenshot manager.
 
         Args:
             run_id (str): Unique identifier for the current run
-            folder_prefix (str): Prefix for screenshot folders (traversal, replay, etc.)
+            base_dir (Optional[Path]): Base directory for screenshots (if None, uses default)
         """
-        self.folder_prefix = folder_prefix
         self.run_id = run_id
-        self.screenshots_dir = self._get_screenshots_dir()
+        self.screenshots_dir = self._get_screenshots_dir(base_dir)
         self.screenshots_dir.mkdir(exist_ok=True)
         self.screenshot_counter = 0
         logger.bugninja_log(f"📸 Screenshots will be saved to: {self.screenshots_dir}")
 
-    def _get_screenshots_dir(self) -> Path:
+    def _get_screenshots_dir(self, base_dir: Optional[Path] = None) -> Path:
         """Get the screenshots directory for current session.
 
         Returns:
             Path: Path to the screenshots directory for the current run
         """
-        base_dir = Path("./screenshots")
-        base_dir.mkdir(exist_ok=True)
+        if base_dir:
+            base_dir = base_dir / "screenshots"
+        else:
+            base_dir = Path("./screenshots")
 
+        base_dir.mkdir(exist_ok=True)
         return base_dir / f"{self.run_id}"
 
     async def take_screenshot(
@@ -140,8 +142,11 @@ class ScreenshotManager:
         if coordinates:
             self._draw_rectangle_on_screenshot(self.screenshots_dir / filename, coordinates)
 
-        # Return full relative path
-        return f"screenshots/{self.screenshots_dir.name}/{filename}"
+        screenshot_directory = str(self._get_screenshots_dir() / filename)
+
+        # Return relative path from the traversal directory
+        # Screenshots are always in screenshots/{run_id}/ relative to the base directory
+        return screenshot_directory
 
     async def _get_element_coordinates(
         self, page: Page, dom_element_data: Dict[str, Any]
@@ -408,9 +413,9 @@ class ScreenshotManager:
                 continue
 
             for interaction_selector in interaction_selectors:
+                full_selector = f"{popup_selector} {interaction_selector}"
                 try:
                     # Search within the specific popup
-                    full_selector = f"{popup_selector} {interaction_selector}"
                     logger.debug(f"Trying popup interaction selector: {full_selector}")
                     coordinates = await self._get_coordinates_with_selector(page, full_selector)
                     if coordinates:

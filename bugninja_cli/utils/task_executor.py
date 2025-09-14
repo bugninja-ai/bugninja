@@ -96,13 +96,13 @@ class TaskExecutor:
     async def _initialize_client(
         self,
         enable_logging: bool = False,
+        task_info: Optional["TaskInfo"] = None,
     ) -> None:
         """Initialize the Bugninja client.
 
         Args:
-            headless (bool): Whether to run in headless mode
             enable_logging (bool): Whether to enable Bugninja logging
-            task_run_config (Optional[TaskRunConfig]): Task-specific run configuration
+            task_info (Optional[TaskInfo]): Task information for task-specific configuration
         """
 
         try:
@@ -121,6 +121,11 @@ class TaskExecutor:
                 viewport_height=self.task_run_config.viewport_height,
                 user_agent=self.task_run_config.user_agent,
             )
+
+            # Set task-specific output directory if task_info is provided
+            if task_info:
+                task_output_dir = self.project_root / "tasks" / task_info.folder_name
+                config.output_base_dir = task_output_dir
 
             # Create event manager for progress tracking (empty list for no publishers)
             event_manager = EventPublisherManager([])
@@ -551,6 +556,7 @@ class TaskExecutor:
             # Reinitialize client with task-specific configuration
             await self._initialize_client(
                 enable_logging=self.enable_logging,
+                task_info=task_info,
             )
 
             # Create BugninjaTask

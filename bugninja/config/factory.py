@@ -98,6 +98,7 @@ class ConfigurationFactory:
             # Development configuration
             "development.debug_mode": "debug_mode",
             # Paths configuration
+            "paths.output_base_dir": "output_base_dir",
             "paths.traversals_dir": "traversals_dir",
             "paths.screenshots_dir": "screenshots_dir",
             "paths.tasks_dir": "tasks_dir",

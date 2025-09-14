@@ -140,6 +140,7 @@ class BugninjaAgentBase(Agent, ABC):
         """
         self.raw_task: str = task
         self.extra_instructions = extra_instructions
+        self.video_recording_config = video_recording_config
 
         if extra_instructions:
             extra_instructions_prompt: str = get_extra_instructions_related_prompt(

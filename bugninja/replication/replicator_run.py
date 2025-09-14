@@ -103,6 +103,7 @@ class ReplicatorRun(ReplicatorNavigator):
         enable_healing: bool = True,
         event_manager: Optional[EventPublisherManager] = None,
         healing_llm_config: Optional[LLMConfig] = None,
+        output_base_dir: Optional[Path] = None,
     ):
         """Initialize the ReplicatorRun with comprehensive configuration.
 
@@ -115,6 +116,7 @@ class ReplicatorRun(ReplicatorNavigator):
             enable_healing (bool): Whether to enable healing when actions fail (default: True)
             event_manager (Optional[EventPublisherManager]): Optional event publisher manager for tracking
             healing_llm_config (Optional[LLMConfig]): Optional LLM configuration for healing agent (uses default if None)
+            output_base_dir (Optional[Path]): Base directory for all output files (traversals, screenshots, videos)
 
         Raises:
             ReplicatorError: If traversal source is invalid or loading fails
@@ -172,8 +174,13 @@ class ReplicatorRun(ReplicatorNavigator):
         if run_id is not None:
             self.run_id = run_id
 
-        # Initialize screenshot manager
-        self.screenshot_manager = ScreenshotManager(run_id=self.run_id, folder_prefix="replay")
+        # Store output base directory
+        self.output_base_dir = output_base_dir
+
+        # Initialize screenshot manager with base directory
+        self.screenshot_manager = ScreenshotManager(
+            run_id=self.run_id, base_dir=self.output_base_dir
+        )
 
         # Initialize event publisher manager (explicitly passed)
         self.event_manager = event_manager
@@ -252,6 +259,7 @@ class ReplicatorRun(ReplicatorNavigator):
             parent_run_id=self.run_id,  # Pass parent's run_id to maintain consistency
             extra_instructions=self.replay_traversal.extra_instructions,
             already_completed_brainstates=self.replay_state_machine.passed_brain_states,
+            output_base_dir=self.output_base_dir,
         )
 
         # Share screenshot directory and counter with healing agent

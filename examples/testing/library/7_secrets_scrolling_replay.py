@@ -12,7 +12,7 @@ load_dotenv(dotenv_path="example_7.env")
 async def secrets_scrolling_replay() -> None:
     task = BugninjaTask(
         description="""Navigate to https://www.imdb.com/, login using credentials. From the menu, select the option 'Top 250' movies.
-        Scroll down to make the the 10th best movie visible, and click on it to open the details. In the details click on the awards the movie have won!""",
+        Scroll down to make the the 10th best movie visible, and click on it to open the details. In the details page scroll down and click on the awards the movie have won!""",
         secrets={
             "EMAIL_CREDENTIAL": os.getenv("EMAIL_CREDENTIAL"),
             "SECRET_CREDENTIAL": os.getenv("SECRET_CREDENTIAL"),

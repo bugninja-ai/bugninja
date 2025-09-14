@@ -91,6 +91,7 @@ class NavigatorAgent(BugninjaAgentBase):
         extra_instructions: List[str] = [],
         extend_planner_system_message: str = "",
         video_recording_config: VideoRecordingConfig | None = None,
+        output_base_dir: Optional[Path] = None,
         **kwargs,  # type:ignore
     ) -> None:
         """Initialize NavigatorAgent with navigation-specific functionality.
@@ -103,6 +104,7 @@ class NavigatorAgent(BugninjaAgentBase):
             extra_instructions (List[str]): Additional instructions to append to the task
             extend_planner_system_message (str): Additional system message to extend the planner prompt
             video_recording_config (VideoRecordingConfig | None): Video recording configuration for session recording
+            output_base_dir (Optional[Path]): Base directory for all output files (traversals, screenshots, videos)
             **kwargs: Keyword arguments passed to the parent BugninjaAgentBase class
         """
 
@@ -116,6 +118,9 @@ class NavigatorAgent(BugninjaAgentBase):
             task=task,
             **kwargs,
         )
+
+        # Store output base directory
+        self.output_base_dir = output_base_dir
 
     async def _before_run_hook(self) -> None:
         """Initialize navigation session with event tracking and screenshot management.
@@ -142,10 +147,18 @@ class NavigatorAgent(BugninjaAgentBase):
 
         self._traversal: Optional[Traversal] = None  # Store traversal after successful run
 
-        # Initialize screenshot manager
-        self.screenshot_manager = ScreenshotManager(run_id=self.run_id, folder_prefix="traversal")
+        # Initialize screenshot manager with base directory
+        self.screenshot_manager = ScreenshotManager(
+            run_id=self.run_id, base_dir=self.output_base_dir
+        )
 
-        # Setup video recording if enabled
+        # Update video recording config with base directory if available
+        if self.video_recording_config and self.output_base_dir:
+            from bugninja.config.video_recording import VideoRecordingConfig
+
+            self.video_recording_config = VideoRecordingConfig.with_base_dir(
+                self.output_base_dir, **self.video_recording_config.model_dump()
+            )
 
         # Initialize event tracking for navigation run (if event_manager is provided)
         if self.event_manager and self.event_manager.has_publishers():
@@ -307,6 +320,18 @@ class NavigatorAgent(BugninjaAgentBase):
             msg=f"🪝 BEFORE-Action hook called for action #{len(self.agent_taken_actions)+1} in traversal"
         )
 
+        current_page: Page = await self.browser_session.get_current_page()
+
+        #! taking appropriate screenshot before each action
+        await current_page.wait_for_load_state("load")
+        extended_action = self.current_step_extended_actions[action_idx_in_step]
+        # Take screenshot and get filename
+        screenshot_filename = await self.screenshot_manager.take_screenshot(
+            current_page, extended_action, self.browser_session
+        )
+
+        extended_action.screenshot_filename = screenshot_filename
+
     async def _after_action_hook(
         self,
         action_idx_in_step: int,
@@ -325,6 +350,7 @@ class NavigatorAgent(BugninjaAgentBase):
         logger.info(
             msg=f"🪝 AFTER-Action hook called for action #{len(self.agent_taken_actions)+1} in traversal"
         )
+
         # ? adding the taken action to the list of agent actions
         self.agent_taken_actions.append(self.current_step_extended_actions[action_idx_in_step])
 
@@ -358,7 +384,11 @@ class NavigatorAgent(BugninjaAgentBase):
             - Uses pretty-printed JSON with 4-space indentation for readability
             - Handles Unicode characters properly with ensure_ascii=False
         """
-        traversal_dir = Path("./traversals")
+        # Use configured directory or fallback to default
+        if hasattr(self, "output_base_dir") and self.output_base_dir:
+            traversal_dir = self.output_base_dir / "traversals"
+        else:
+            traversal_dir = Path("./traversals")
 
         # Create traversals directory if it doesn't exist
         os.makedirs(traversal_dir, exist_ok=True)

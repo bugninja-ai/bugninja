@@ -624,6 +624,7 @@ class BugninjaClient:
                 sensitive_data=task.secrets,
                 extra_instructions=task.extra_instructions,
                 video_recording_config=self.config.video_recording,
+                output_base_dir=self.config.output_base_dir,
             )
 
             # Set event manager if available
@@ -753,6 +754,7 @@ class BugninjaClient:
                     sensitive_data=task.secrets,
                     extra_instructions=task.extra_instructions,
                     video_recording_config=self.config.video_recording,
+                    output_base_dir=self.config.output_base_dir,
                 )
 
                 # Set event manager if available
@@ -914,6 +916,7 @@ class BugninjaClient:
                 sleep_after_actions=1.0,  # Default sleep time
                 enable_healing=enable_healing,
                 healing_llm_config=self._llm_config,  # Pass client's LLM config
+                output_base_dir=self.config.output_base_dir,
             )
 
             # Execute replay and capture result
@@ -1098,6 +1101,7 @@ class BugninjaClient:
                     sleep_after_actions=1.0,  # Default sleep time
                     enable_healing=enable_healing,
                     healing_llm_config=self._llm_config,  # Pass client's LLM config
+                    output_base_dir=self.config.output_base_dir,
                 )
                 replicators.append(replicator)
 

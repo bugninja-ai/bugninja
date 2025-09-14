@@ -6,6 +6,9 @@ during browser automation sessions, including video quality, format, and
 encoding parameters.
 """
 
+from pathlib import Path
+from typing import Any, Dict
+
 from pydantic import BaseModel, Field
 
 
@@ -60,3 +63,19 @@ class VideoRecordingConfig(BaseModel):
     pixel_format: str = Field(default="yuv420p", description="Output pixel format")
     max_queue_size: int = Field(default=200, description="Frame queue size")
     output_dir: str = Field(default="./screen_recordings", description="Output directory")
+
+    @classmethod
+    def with_base_dir(cls, base_dir: Path, **kwargs: Dict[str, Any]) -> "VideoRecordingConfig":
+        """Create config with base directory.
+
+        Args:
+            base_dir (Path): Base directory for video recordings
+            **kwargs: Additional configuration parameters
+
+        Returns:
+            VideoRecordingConfig: Configuration with base directory set
+        """
+        # Remove output_dir from kwargs to avoid conflict
+        kwargs.pop("output_dir", None)
+        output_dir = str(base_dir / "screen_recordings")
+        return cls(output_dir=output_dir, **kwargs)  # type: ignore
