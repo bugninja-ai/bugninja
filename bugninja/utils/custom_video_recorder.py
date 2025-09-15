@@ -1,3 +1,38 @@
+"""
+Custom video recorder for Bugninja framework using FFmpeg.
+
+This module provides high-quality video recording functionality for browser automation
+sessions using FFmpeg for encoding and processing. It includes frame rate control,
+queue management, and comprehensive video encoding options for optimal quality and performance.
+
+## Key Components
+
+1. **BugninjaVideoRecorder** - Main class for video recording with FFmpeg
+2. **Frame Rate Control** - Precise frame rate management and timing
+3. **Queue Management** - Asynchronous frame processing with queue overflow handling
+4. **FFmpeg Integration** - High-quality video encoding with configurable parameters
+
+## Usage Examples
+
+```python
+from bugninja.utils import BugninjaVideoRecorder
+from bugninja.config.video_recording import VideoRecordingConfig
+
+# Create video recorder
+config = VideoRecordingConfig()
+recorder = BugninjaVideoRecorder(config)
+
+# Start recording
+await recorder.start_recording("output.mp4")
+
+# Add frames during recording
+await recorder.add_frame(frame_data)
+
+# Stop recording
+stats = await recorder.stop_recording()
+```
+"""
+
 import asyncio
 import time
 from typing import Optional
@@ -8,9 +43,48 @@ from bugninja.config.video_recording import VideoRecordingConfig
 
 
 class BugninjaVideoRecorder:
-    """High-quality video recorder for Chromium browser using Playwright CDP and FFmpeg."""
+    """High-quality video recorder for Chromium browser using Playwright CDP and FFmpeg.
+
+    This class provides comprehensive video recording functionality using FFmpeg for
+    high-quality encoding. It includes frame rate control, queue management, and
+    comprehensive video encoding options for optimal quality and performance.
+
+    Attributes:
+        config (VideoRecordingConfig): Video recording configuration
+        frame_interval (float): Time interval between frames based on FPS
+        ffmpeg_proc (Optional[asyncio.subprocess.Process]): FFmpeg subprocess
+        is_recording (bool): Whether recording is currently active
+        frame_queue (asyncio.Queue[bytes]): Queue for frame data
+        last_frame_time (float): Timestamp of last processed frame
+        frames_processed (int): Total number of frames processed
+        last_frame_data (Optional[bytes]): Last frame data for fallback
+
+    Example:
+        ```python
+        from bugninja.utils import BugninjaVideoRecorder
+        from bugninja.config.video_recording import VideoRecordingConfig
+
+        # Create video recorder
+        config = VideoRecordingConfig()
+        recorder = BugninjaVideoRecorder(config)
+
+        # Start recording
+        await recorder.start_recording("output.mp4")
+
+        # Add frames during recording
+        await recorder.add_frame(frame_data)
+
+        # Stop recording
+        stats = await recorder.stop_recording()
+        ```
+    """
 
     def __init__(self, config: VideoRecordingConfig) -> None:
+        """Initialize the video recorder.
+
+        Args:
+            config (VideoRecordingConfig): Video recording configuration
+        """
         self.config = config
         self.frame_interval: float = 1.0 / config.fps
         self.ffmpeg_proc: Optional[asyncio.subprocess.Process] = None
@@ -21,7 +95,16 @@ class BugninjaVideoRecorder:
         self.last_frame_data: Optional[bytes] = None
 
     async def start_recording(self, output_file: str) -> None:
-        """Start the recording process."""
+        """Start the recording process.
+
+        Args:
+            output_file (str): Path to the output video file
+
+        Example:
+            ```python
+            await recorder.start_recording("session_recording.mp4")
+            ```
+        """
         # Ensure output file has correct extension
         if not output_file.endswith(f".{self.config.output_format}"):
             output_file = f"{output_file}.{self.config.output_format}"
@@ -74,7 +157,17 @@ class BugninjaVideoRecorder:
         asyncio.create_task(self._process_frames())
 
     async def stop_recording(self) -> dict[str, int]:
-        """Stop the recording process."""
+        """Stop the recording process.
+
+        Returns:
+            dict[str, int]: Recording statistics including frames processed
+
+        Example:
+            ```python
+            stats = await recorder.stop_recording()
+            print(f"Processed {stats['frames_processed']} frames")
+            ```
+        """
         self.is_recording = False
 
         if self.ffmpeg_proc:
@@ -87,7 +180,16 @@ class BugninjaVideoRecorder:
         return {"frames_processed": self.frames_processed}
 
     async def add_frame(self, frame_data: bytes) -> None:
-        """Add a frame to the processing queue."""
+        """Add a frame to the processing queue.
+
+        Args:
+            frame_data (bytes): Raw frame data in bytes
+
+        Example:
+            ```python
+            await recorder.add_frame(frame_bytes)
+            ```
+        """
         if self.is_recording:
             self.last_frame_data = frame_data
             try:

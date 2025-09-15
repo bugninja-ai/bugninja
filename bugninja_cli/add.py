@@ -90,13 +90,18 @@ def add(task_name: str, project_root: Path) -> None:
         success_text.append(f"  • {task_dir}\n\n", style="blue")
 
         success_text.append("📄 Created files:\n", style="bold")
-        success_text.append(f"  • {task_dir / 'task.md'} (task description)\n", style="blue")
-        success_text.append(f"  • {task_dir / 'metadata.json'} (task metadata)\n", style="blue")
-        success_text.append(f"  • {task_dir / '.env'} (task secrets)\n\n", style="blue")
+        success_text.append(
+            f"  • {task_dir / f'task_{folder_name}.toml'} (task configuration)\n", style="blue"
+        )
+        success_text.append(
+            f"  • {task_dir / f'task_{folder_name}.env'} (task secrets)\n\n", style="blue"
+        )
 
         success_text.append("🚀 Next steps:\n", style="bold")
-        success_text.append("  1. Edit the task description in task.md\n", style="cyan")
-        success_text.append("  2. Add your secrets to .env file\n", style="cyan")
+        success_text.append(
+            f"  1. Edit the task configuration in task_{folder_name}.toml\n", style="cyan"
+        )
+        success_text.append(f"  2. Add your secrets to task_{folder_name}.env file\n", style="cyan")
         success_text.append(
             f"  3. Run 'bugninja run --task {folder_name}' or 'bugninja run --task {task_id}' to execute\n",
             style="cyan",

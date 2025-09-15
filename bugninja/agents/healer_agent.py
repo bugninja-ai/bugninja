@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import List, Optional
 
 from browser_use.agent.views import (  # type: ignore
@@ -11,7 +12,6 @@ from rich import print as rich_print
 from rich.markdown import Markdown
 
 from bugninja.agents.bugninja_agent_base import BugninjaAgentBase
-from bugninja.agents.extensions import BugninjaController, extend_agent_action_with_info
 from bugninja.prompts.prompt_factory import (
     BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
     HEALDER_AGENT_EXTRA_SYSTEM_PROMPT,
@@ -20,9 +20,6 @@ from bugninja.prompts.prompt_factory import (
 from bugninja.schemas.pipeline import BugninjaBrainState
 from bugninja.utils.logging_config import logger
 from bugninja.utils.screenshot_manager import ScreenshotManager
-
-#! keep in mind that the HealerAgent is not inherited from BugninjaAgentBase but from the NavigatorAgent directly
-#! for this reason it inherits the NavigatorAgent hooks as well
 
 
 class HealerAgent(BugninjaAgentBase):
@@ -80,13 +77,21 @@ class HealerAgent(BugninjaAgentBase):
         override_system_message: str = BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
         extend_system_message: str | None = None,
         already_completed_brainstates: List[BugninjaBrainState] = [],
+        output_base_dir: Optional[Path] = None,
+        screenshot_manager: Optional[ScreenshotManager] = None,
         **kwargs,  # type:ignore
     ) -> None:
         """Initialize HealerAgent with healing-specific functionality.
 
         Args:
             *args: Arguments passed to the parent BugninjaAgentBase class
+            task (str): The healing task description for the agent to execute
             parent_run_id (Optional[str]): ID of the parent run for event tracking continuity
+            extra_instructions (List[str]): Additional instructions to append to the task
+            override_system_message (str): System message to override the default (defaults to navigator prompt)
+            extend_system_message (str | None): Additional system message to extend the default
+            already_completed_brainstates (List[BugninjaBrainState]): Previously completed brain states for context
+            output_base_dir (Optional[Path]): Base directory for all output files (traversals, screenshots, videos)
             **kwargs: Keyword arguments passed to the parent BugninjaAgentBase class
         """
 
@@ -101,8 +106,12 @@ class HealerAgent(BugninjaAgentBase):
             + f"\n\n{HEALDER_AGENT_EXTRA_SYSTEM_PROMPT}",
             extra_instructions=extra_instructions,
             task=task,
+            screenshot_manager=screenshot_manager,
             **kwargs,
         )
+
+        # Store output base directory
+        self.output_base_dir = output_base_dir
 
         # Use parent's run_id if provided, otherwise keep the generated one
         if parent_run_id is not None:
@@ -115,19 +124,11 @@ class HealerAgent(BugninjaAgentBase):
         """Initialize healing session with event tracking and screenshot management.
 
         This hook sets up the healing environment by:
-        - overriding the default controller with BugninjaController
         - initializing screenshot manager for debugging
         - setting up event tracking for healing operations
         - logging the start of the healing intervention
         """
         logger.bugninja_log("🏁 BEFORE-Run hook called")
-
-        #! we override the default controller with our own
-        self.controller = BugninjaController()
-
-        # Initialize screenshot manager (will be overridden if shared from replay)
-        if not hasattr(self, "screenshot_manager"):
-            self.screenshot_manager = ScreenshotManager(run_id=self.run_id, folder_prefix="healing")
 
         # Initialize event tracking for healing run (if event_manager is provided)
         if self.event_manager and self.event_manager.has_publishers():
@@ -197,7 +198,7 @@ class HealerAgent(BugninjaAgentBase):
         current_page: Page = await self.browser_session.get_current_page()
 
         #! generating the alternative CSS and XPath selectors should happen BEFORE the actions are completed
-        extended_taken_actions = await extend_agent_action_with_info(
+        extended_taken_actions = await self.extend_model_output_with_info(
             brain_state_id=brain_state_id,
             current_page=current_page,
             model_output=model_output,
@@ -210,9 +211,6 @@ class HealerAgent(BugninjaAgentBase):
         # Associate each action with its corresponding extended action index
         for i, action in enumerate(model_output.action):
             self._associate_action_with_extended_action(action, i)
-
-        # ? adding the taken actions to the list of agent actions
-        self.agent_taken_actions.extend(extended_taken_actions)
 
     async def _after_step_hook(
         self, browser_state_summary: BrowserStateSummary, model_output: AgentOutput
@@ -229,15 +227,30 @@ class HealerAgent(BugninjaAgentBase):
         # Clear action mapping to prevent memory accumulation
         self._clear_action_mapping()
 
-    async def _before_action_hook(self, action: ActionModel) -> None:
+    async def _before_action_hook(
+        self,
+        action_idx_in_step: int,
+        action: ActionModel,
+    ) -> None:
         """Hook called before each action (no-op implementation).
 
         Args:
             action (ActionModel): The action about to be executed
         """
-        ...
+        logger.info(
+            msg=f"🪝 BEFORE-Action hook called for action #{len(self.agent_taken_actions)+1} in traversal"
+        )
 
-    async def _after_action_hook(self, action: ActionModel) -> None:
+        #! taking appropriate screenshot before each action
+        await self.handle_taking_screenshot_for_action(
+            extended_action=self.current_step_extended_actions[action_idx_in_step]
+        )
+
+    async def _after_action_hook(
+        self,
+        action_idx_in_step: int,
+        action: ActionModel,
+    ) -> None:
         """Capture screenshot after action execution for debugging.
 
         This hook takes a screenshot after each action is completed,
@@ -247,20 +260,10 @@ class HealerAgent(BugninjaAgentBase):
         Args:
             action (ActionModel): The action that was just executed
         """
-        await self.browser_session.remove_highlights()
 
-        current_page = await self.browser_session.get_current_page()
-
-        # Get the extended action for screenshot with highlighting
-        extended_action = self._find_matching_extended_action(action)
-
-        if not extended_action:
-            raise Exception("Extended action not found for screenshot")
-
-        screenshot_filename = await self.screenshot_manager.take_screenshot(
-            current_page, extended_action, self.browser_session
+        logger.info(
+            msg=f"🪝 AFTER-Action hook called for action #{len(self.agent_taken_actions)+1}"
         )
 
-        # Store screenshot filename with extended action
-        extended_action.screenshot_filename = screenshot_filename
-        logger.bugninja_log(f"📸 Stored screenshot filename: {screenshot_filename}")
+        # ? adding the taken action to the list of agent actions
+        self.agent_taken_actions.append(self.current_step_extended_actions[action_idx_in_step])

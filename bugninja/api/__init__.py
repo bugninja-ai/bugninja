@@ -9,8 +9,9 @@ with comprehensive type safety and validation using Pydantic models.
 1. **BugninjaClient** - Main entry point for browser automation operations
 2. **BugninjaTask** - Pydantic model for defining browser automation tasks
 3. **BugninjaTaskResult** - Pydantic model for task execution results
-4. **BugninjaConfig** - Pydantic model for client configuration
-5. **Exception Hierarchy** - Comprehensive error handling with specific exception types
+4. **BulkBugninjaTaskResult** - Pydantic model for parallel task execution results
+5. **BugninjaConfig** - Pydantic model for client configuration
+6. **Exception Hierarchy** - Comprehensive error handling with specific exception types
 
 ## Usage Examples
 
@@ -29,7 +30,7 @@ result = await client.replay_session(session_file, enable_healing=True)
 """
 
 from bugninja.api.client import BugninjaClient
-from bugninja.api.models import (
+from bugninja.schemas.models import (
     BugninjaTask,
     BugninjaTaskResult,
     BulkBugninjaTaskResult,

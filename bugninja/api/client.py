@@ -38,7 +38,14 @@ from bugninja.api.exceptions import (
     TaskExecutionError,
     ValidationError,
 )
-from bugninja.api.models import (
+from bugninja.config import (
+    create_llm_model_from_config,
+    create_provider_model_from_settings,
+)
+from bugninja.config.llm_config import LLMConfig
+from bugninja.events import EventPublisherManager
+from bugninja.replication import ReplicatorRun
+from bugninja.schemas.models import (
     BugninjaConfig,
     BugninjaErrorType,
     BugninjaTask,
@@ -49,13 +56,6 @@ from bugninja.api.models import (
     OperationType,
     SessionInfo,
 )
-from bugninja.config import (
-    create_llm_model_from_config,
-    create_provider_model_from_settings,
-)
-from bugninja.config.llm_config import LLMConfig
-from bugninja.events import EventPublisherManager
-from bugninja.replication import ReplicatorRun
 from bugninja.schemas.pipeline import Traversal
 from bugninja.utils.logging_config import logger
 
@@ -171,7 +171,7 @@ class BugninjaClient:
                    default configuration with environment variable support
             event_manager (Optional[EventPublisherManager]): Optional event publisher manager for tracking
             background (bool): Whether to run in background mode (disables console logging and enforces headless mode)
-            llm_provider (Optional[LLMProvider]): Optional LLM provider to use (overrides config default)
+            llm_config (Optional[LLMConfig]): Optional LLM configuration to use (overrides config default)
 
         Raises:
             ConfigurationError: If configuration is invalid or initialization fails
@@ -624,6 +624,7 @@ class BugninjaClient:
                 sensitive_data=task.secrets,
                 extra_instructions=task.extra_instructions,
                 video_recording_config=self.config.video_recording,
+                output_base_dir=self.config.output_base_dir,
             )
 
             # Set event manager if available
@@ -753,6 +754,7 @@ class BugninjaClient:
                     sensitive_data=task.secrets,
                     extra_instructions=task.extra_instructions,
                     video_recording_config=self.config.video_recording,
+                    output_base_dir=self.config.output_base_dir,
                 )
 
                 # Set event manager if available
@@ -914,6 +916,7 @@ class BugninjaClient:
                 sleep_after_actions=1.0,  # Default sleep time
                 enable_healing=enable_healing,
                 healing_llm_config=self._llm_config,  # Pass client's LLM config
+                output_base_dir=self.config.output_base_dir,
             )
 
             # Execute replay and capture result
@@ -1098,6 +1101,7 @@ class BugninjaClient:
                     sleep_after_actions=1.0,  # Default sleep time
                     enable_healing=enable_healing,
                     healing_llm_config=self._llm_config,  # Pass client's LLM config
+                    output_base_dir=self.config.output_base_dir,
                 )
                 replicators.append(replicator)
 

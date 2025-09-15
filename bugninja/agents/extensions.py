@@ -1,35 +1,17 @@
 import asyncio
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional
+from typing import Literal, Optional
 
 from browser_use import BrowserSession  # type: ignore
 from browser_use.agent.views import ActionResult  # type: ignore
-from browser_use.agent.views import (  # type: ignore
-    AgentOutput,
-    DOMElementNode,
-)
-from browser_use.browser.session import Page  # type: ignore
-from browser_use.browser.views import BrowserStateSummary  # type: ignore
+from browser_use.browser.views import BrowserError  # type: ignore
 from browser_use.controller.service import Controller  # type: ignore
+from browser_use.controller.views import InputTextAction  # type: ignore
 from browser_use.controller.views import ScrollAction  # type: ignore
+from browser_use.dom.views import DOMElementNode  # type: ignore
 from pydantic import BaseModel
 
-from bugninja.agents.bugninja_agent_base import BugninjaAgentBase
-from bugninja.schemas.pipeline import BugninjaExtendedAction
 from bugninja.utils.logging_config import logger
-from bugninja.utils.selector_factory import SelectorFactory
-
-SELECTOR_ORIENTED_ACTIONS: List[str] = [
-    "click_element_by_index",
-    "input_text",
-    "get_dropdown_options",
-    "select_dropdown_option",
-    "drag_drop",
-]
-
-ALTERNATIVE_XPATH_SELECTORS_KEY: str = "alternative_relative_xpaths"
-DOM_ELEMENT_DATA_KEY: str = "dom_element_data"
-BRAINSTATE_IDX_DATA_KEY: str = "idx_in_brainstate"
 
 
 class UserInputTypeEnum(str, Enum):
@@ -69,103 +51,6 @@ async def get_user_input_async() -> UserInputResponse:
         return UserInputResponse(user_input=user_input, user_input_type=UserInputTypeEnum.TEXT)
 
 
-async def extend_agent_action_with_info(
-    brain_state_id: str,
-    current_page: Page,
-    model_output: AgentOutput,
-    browser_state_summary: BrowserStateSummary,
-) -> List["BugninjaExtendedAction"]:
-    """Extend agent actions with additional DOM element information and alternative selectors.
-
-    This function processes agent actions and enriches them with detailed DOM element data,
-    including XPath selectors and alternative relative XPath selectors for selector-oriented
-    actions. It's designed to enhance action tracking and debugging capabilities by providing
-    comprehensive element identification information.
-
-    Args:
-        brain_state_id (str): Unique identifier for the current brain state/agent session
-        current_page (Page): Playwright page object representing the current browser page
-        model_output (AgentOutput): The output from the agent model containing actions to be processed
-        browser_state_summary (BrowserStateSummary): Summary of the current browser state including selector mappings
-
-    Returns:
-        List[BugninjaExtendedAction]: List of extended actions with enriched DOM element data
-
-    Raises:
-        Exception: Propagates any exceptions from SelectorFactory operations
-
-    Notes:
-        - Only selector-oriented actions (defined in SELECTOR_ORIENTED_ACTIONS) are enriched with DOM element data
-        - For selector-oriented actions, the function:
-          1. Extracts the element index from the action
-          2. Retrieves the corresponding DOM element from browser_state_summary
-          3. Formats the XPath selector
-          4. Generates alternative relative XPath selectors using SelectorFactory
-          5. Adds all this data to the action dictionary
-        - Non-selector-oriented actions are included in the result but without DOM element data
-        - The function handles exceptions during selector generation gracefully, setting alternative selectors to None if generation fails
-    """
-    currently_taken_actions: List["BugninjaExtendedAction"] = []
-
-    for action_idx, action in enumerate(model_output.action):
-        short_action_descriptor: Dict[str, Any] = action.model_dump(exclude_none=True)
-        logger.bugninja_log(f"📄 Action: {short_action_descriptor}")
-
-        action_dictionary: Dict[str, Any] = {
-            "brain_state_id": brain_state_id,
-            "action": action.model_dump(),
-            "idx_in_brainstate": action_idx,
-            DOM_ELEMENT_DATA_KEY: None,
-        }
-
-        action_key: str = list(short_action_descriptor.keys())[-1]
-        currently_taken_actions.append(BugninjaExtendedAction.model_validate(action_dictionary))
-
-        #!! these values here were selected by hand, if necessary they can be extended with other actions as well
-        if action_key not in SELECTOR_ORIENTED_ACTIONS:
-            continue
-
-        action_index = short_action_descriptor[action_key]["index"]
-        chosen_selector: DOMElementNode = browser_state_summary.selector_map[action_index]
-        logger.bugninja_log(f"📄 {action_key} on {chosen_selector}")
-
-        selector_data: Dict[str, Any] = chosen_selector.__json__()
-
-        #! here we only want to keep the first layer of children for specific element in order to avoid unnecessarily large data dump in JSON
-        ch: Dict[str, Any]
-
-        if "children" in selector_data:
-            sanitised_children: List[Dict[str, Any]] = []
-            for ch in selector_data["children"]:
-                ch["children"] = []
-                sanitised_children.append(ch)
-            selector_data["children"] = sanitised_children
-
-        unformatted_xpath: str = selector_data["xpath"]
-
-        # TODO! reenable for debugging
-        # rich_print(f"X-Path of element: `{unformatted_xpath}`")
-        # rich_print("Selector data")
-        # rich_print(selector_data)
-
-        formatted_xpath: str = "//" + unformatted_xpath.strip("/")
-
-        #! adding the raw XPath to the short action descriptor (even though it is not part of the model output)
-        short_action_descriptor[action_key]["xpath"] = formatted_xpath
-
-        current_page_html: str = await BugninjaAgentBase.get_raw_html_of_playwright_page(
-            page=current_page
-        )
-
-        selector_data[ALTERNATIVE_XPATH_SELECTORS_KEY] = SelectorFactory(
-            html_content=current_page_html
-        ).generate_relative_xpaths_from_full_xpath(full_xpath=formatted_xpath)
-
-        currently_taken_actions[-1].dom_element_data = selector_data
-
-    return currently_taken_actions
-
-
 class BugninjaController(Controller):
     """Extended controller with additional browser automation actions.
 
@@ -184,6 +69,7 @@ class BugninjaController(Controller):
     2. **scroll_up()** -> `ActionResult`: - Scroll up the page by specified amount
     3. **wait()** -> `ActionResult`: - Wait for specified number of seconds
     4. **third_party_authentication_wait()** -> `ActionResult`: - Wait for user authentication completion
+    5. **input_text()** -> `ActionResult`: - Enhanced text input with element clearing and focus management
     """
 
     def __init__(
@@ -197,7 +83,7 @@ class BugninjaController(Controller):
         Args:
             exclude_actions (list[str]): List of action names to exclude from the controller
             output_model (type[BaseModel] | None): Optional output model for action results
-            verbose (bool): Whether to enable verbose logging
+            verbose (bool): Whether to enable verbose logging for controller operations
         """
         super().__init__(exclude_actions=exclude_actions, output_model=output_model)
         self.verbose = verbose
@@ -313,3 +199,94 @@ class BugninjaController(Controller):
                     extracted_content="The timeout means that the user is still working on the third party authentication, so the agent has to wait for a bit more",
                     include_in_memory=True,
                 )
+
+        @self.registry.action(
+            "Input text into a input interactive element",
+            param_model=InputTextAction,
+        )
+        async def input_text(
+            params: InputTextAction,
+            browser_session: BrowserSession,
+            has_sensitive_data: bool = False,
+        ) -> ActionResult:
+            if params.index not in await browser_session.get_selector_map():
+                raise Exception(
+                    f"Element index {params.index} does not exist - retry or use alternative actions"
+                )
+
+            element_node: Optional[DOMElementNode] = await browser_session.get_dom_element_by_index(
+                params.index
+            )
+
+            if element_node is None:
+                raise Exception(f"Element index {params.index} could not be found on the page!")
+
+            text: str = params.text
+
+            try:
+                # Highlight before typing
+                # if element_node.highlight_index is not None:
+                # 	await self._update_state(focus_element=element_node.highlight_index)
+
+                element_handle = await browser_session.get_locate_element(element_node)
+
+                if element_handle is None:
+                    raise BrowserError(f"Element: {repr(element_node)} not found")
+
+                # Ensure element is ready for input
+                try:
+                    await element_handle.wait_for_element_state("stable", timeout=1000)
+                    is_visible = await browser_session._is_visible(element_handle)
+                    if is_visible:
+                        await element_handle.scroll_into_view_if_needed(timeout=1000)
+                except Exception:
+                    pass
+
+                # Get element properties to determine input method
+                tag_handle = await element_handle.get_property("tagName")
+                tag_name = (await tag_handle.json_value()).lower()
+                is_contenteditable = await element_handle.get_property("isContentEditable")
+                readonly_handle = await element_handle.get_property("readOnly")
+                disabled_handle = await element_handle.get_property("disabled")
+
+                readonly = await readonly_handle.json_value() if readonly_handle else False
+                disabled = await disabled_handle.json_value() if disabled_handle else False
+
+                # always click the element first to make sure it's in the focus
+                await element_handle.click()
+
+                #! Bugninja edit: we not only click, but setting the value of the input text and empty string first to clear any pre-existing text
+                await element_handle.press("Control+A")
+                await element_handle.press("Delete")
+
+                await asyncio.sleep(0.1)
+
+                try:
+                    if (await is_contenteditable.json_value() or tag_name == "input") and not (
+                        readonly or disabled
+                    ):
+                        await element_handle.evaluate('el => {el.textContent = ""; el.value = "";}')
+                        await element_handle.type(text, delay=5)
+                    else:
+                        await element_handle.fill(text)
+                except Exception:
+                    # last resort fallback, assume it's already focused after we clicked on it,
+                    # just simulate keypresses on the entire page
+                    page = await browser_session.get_current_page()
+                    await page.keyboard.type(text)
+
+            except Exception as e:
+                logger.debug(
+                    f"❌  Failed to input text into element: {repr(element_node)}. Error: {str(e)}"
+                )
+                raise BrowserError(
+                    f"Failed to input text into index {element_node.highlight_index}"
+                )
+
+            if not has_sensitive_data:
+                msg = f"⌨️  Input {params.text} into index {params.index}"
+            else:
+                msg = f"⌨️  Input sensitive data into index {params.index}"
+            logger.info(msg)
+            logger.debug(f"Element xpath: {element_node.xpath}")
+            return ActionResult(extracted_content=msg, include_in_memory=True)

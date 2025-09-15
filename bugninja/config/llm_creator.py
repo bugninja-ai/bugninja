@@ -26,15 +26,28 @@ def create_provider_model(
     with a single, unified interface that handles all providers.
 
     Args:
-        provider: LLM provider to use
-        temperature: Optional temperature override
-        settings: Optional settings instance (uses default if None)
+        provider (LLMProvider): LLM provider to use
+        temperature (Optional[float]): Optional temperature override
+        settings (Optional[BugninjaSettings]): Optional settings instance (uses default if None)
 
     Returns:
-        Configured LLM model instance
+        BaseChatModel: Configured LLM model instance
 
     Raises:
         ValueError: If provider is unsupported or configuration is invalid
+
+    Example:
+        ```python
+        from bugninja.config.llm_creator import create_provider_model
+        from bugninja.config.settings import LLMProvider
+
+        # Create OpenAI model
+        model = create_provider_model(LLMProvider.OPENAI, temperature=0.1)
+
+        # Create Azure OpenAI model with custom settings
+        settings = BugninjaSettings()
+        model = create_provider_model(LLMProvider.AZURE_OPENAI, settings=settings)
+        ```
     """
 
     # Get settings if not provided

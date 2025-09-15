@@ -1,0 +1,30 @@
+[task]
+name = "8_comprehensive_test"
+description = "Navigate to https://parabank.parasoft.com/, login using credentials and perform banking operations with the custom instructions"
+extra_instructions = [
+    "Login to the website using the provided credentials",
+    "Go to 'Open new account' section",
+    "Create a new 'CHECKING' account and a 'SAVINGS' account",
+    "Go to transfer funds section of the website",
+    "Move 75$ from the first account to a different account",
+    "Verify the transaction in 'Accounts Overview' and check whether the appropriate funds are available on the created accounts",
+    "Log out of the platform",
+]
+allowed_domains = []
+
+[run_config]
+viewport_width = 1920
+viewport_height = 1080
+user_agent = ""
+wait_between_actions = 1
+enable_vision = true
+enable_memory = true
+enable_healing = true
+headless = false
+
+[metadata]
+task_id = "y5ripr9cy3u1mp5mfkfrxvoj"
+created_date = "2025-09-14T18:52:04.121309+00:00Z"
+latest_run_path = "/home/arathus/Minyma/bugninja-experiment/tasks/8_comprehensive_test/traversals/run_20250914_205543.json"
+latest_run_status = "success"
+latest_run_timestamp = "2025-09-14T18:55:43.973723+00:00"

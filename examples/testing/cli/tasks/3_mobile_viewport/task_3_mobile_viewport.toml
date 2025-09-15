@@ -1,0 +1,22 @@
+[task]
+name = "3_mobile_viewport"
+description = "Navigate to ebay and search for home surveillance.\nOrder the list from cheapest to most expensive, and scroll down until the the result page options are visible.\nNavigate to the second page of the results, and from the second page open the first product."
+extra_instructions = []
+allowed_domains = []
+
+[run_config]
+viewport_width = 390
+viewport_height = 844
+user_agent = "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1"
+wait_between_actions = 1
+enable_vision = true
+enable_memory = true
+enable_healing = true
+headless = false
+
+[metadata]
+task_id = "y9r9b8vwa3nii3v8byo0qxjc"
+created_date = "2025-09-14T13:12:53.070072+00:00Z"
+latest_run_path = "traversals/traverse_20250914_151547_c7gmbin1isqw2ja4dn0pzhvh.json"
+latest_run_status = "success"
+latest_run_timestamp = "2025-09-14T13:15:47.317236+00:00"

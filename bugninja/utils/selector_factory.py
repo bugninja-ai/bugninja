@@ -1,3 +1,33 @@
+"""
+XPath selector generation and validation utilities for Bugninja framework.
+
+This module provides utilities for generating, validating, and working with
+XPath selectors for web elements. It includes functionality for creating
+relative XPath selectors, evaluating selector specificity, and generating
+multiple selector variations for robust element targeting.
+
+## Key Components
+
+1. **SelectorSpecificity** - Enum for selector match results
+2. **SelectorFactory** - Main class for XPath generation and validation
+3. **BANNED_XPATH_TAG_ELEMENTS** - List of HTML tags to exclude from selectors
+
+## Usage Examples
+
+```python
+from bugninja.utils import SelectorFactory
+
+# Create factory with HTML content
+factory = SelectorFactory(html_content)
+
+# Generate selectors for an element
+selectors = factory.generate_relative_xpaths_from_full_xpath("/html/body/button")
+
+# Evaluate selector specificity
+specificity = factory.evaluate_selector_on_page("//button[@id='submit']")
+```
+"""
+
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -8,6 +38,24 @@ from rich import print as rich_print
 
 
 class SelectorSpecificity(str, Enum):
+    """Enumeration of XPath selector match results.
+
+    This enum represents the different outcomes when evaluating an XPath
+    selector against HTML content.
+
+    Values:
+        NOT_FOUND (1): No elements found matching the selector
+        MULTIPLE_MATCH (2): Multiple elements found matching the selector
+        UNIQUE_MATCH (3): Exactly one element found matching the selector
+
+    Example:
+        ```python
+        specificity = factory.evaluate_selector_on_page("//button")
+        if specificity == SelectorSpecificity.UNIQUE_MATCH:
+            print("Selector is unique and valid")
+        ```
+    """
+
     NOT_FOUND = 1
     MULTIPLE_MATCH = 2
     UNIQUE_MATCH = 3
@@ -17,10 +65,55 @@ BANNED_XPATH_TAG_ELEMENTS: List[str] = ["script"]
 
 
 class SelectorFactory:
+    """Factory for generating and validating XPath selectors.
+
+    This class provides comprehensive XPath selector generation and validation
+    functionality, including the ability to create relative selectors, evaluate
+    selector specificity, and generate multiple selector variations for robust
+    element targeting.
+
+    Attributes:
+        tree (HtmlElement): Parsed HTML tree from the provided content
+
+    Example:
+        ```python
+        from bugninja.utils import SelectorFactory
+
+        # Create factory with HTML content
+        factory = SelectorFactory(html_content)
+
+        # Generate selectors for an element
+        selectors = factory.generate_relative_xpaths_from_full_xpath("/html/body/button")
+
+        # Evaluate selector specificity
+        specificity = factory.evaluate_selector_on_page("//button[@id='submit']")
+        ```
+    """
+
     def __init__(self, html_content: str):
+        """Initialize the SelectorFactory with HTML content.
+
+        Args:
+            html_content (str): HTML content to parse and work with
+        """
         self.tree: HtmlElement = html.fromstring(html_content)
 
     def evaluate_selector_on_page(self, xpath: str) -> SelectorSpecificity:
+        """Evaluate XPath selector and return its specificity.
+
+        Args:
+            xpath (str): XPath selector to evaluate
+
+        Returns:
+            SelectorSpecificity: Result of the selector evaluation
+
+        Example:
+            ```python
+            specificity = factory.evaluate_selector_on_page("//button[@id='submit']")
+            if specificity == SelectorSpecificity.UNIQUE_MATCH:
+                print("Selector is unique and valid")
+            ```
+        """
 
         found_elements: Optional[Any] = None
 
@@ -42,6 +135,20 @@ class SelectorFactory:
 
     @staticmethod
     def generate_xpaths_for_element(e: Element) -> List[str]:
+        """Generate multiple XPath selectors for a given element.
+
+        Args:
+            e (Element): XML/HTML element to generate selectors for
+
+        Returns:
+            List[str]: List of XPath selectors for the element
+
+        Example:
+            ```python
+            selectors = SelectorFactory.generate_xpaths_for_element(element)
+            # Returns: ["//button", "//button[@id='submit']", "//button[contains(@class, 'btn')]"]
+            ```
+        """
         xpath_list: List[str] = []
         attributes_dict: Dict[str, str] = {key: value for key, value in e.attrib.items()}
 
@@ -67,6 +174,20 @@ class SelectorFactory:
         return xpath_list
 
     def get_valid_xpaths_of_element(self, e: Element) -> List[str]:
+        """Get valid (unique) XPath selectors for an element.
+
+        Args:
+            e (Element): XML/HTML element to get valid selectors for
+
+        Returns:
+            List[str]: List of XPath selectors that uniquely identify the element
+
+        Example:
+            ```python
+            valid_selectors = factory.get_valid_xpaths_of_element(element)
+            # Returns only selectors that match exactly one element
+            ```
+        """
         unique_xpaths: List[str] = []
         for x_path in self.generate_xpaths_for_element(e=e):
             type_of_match: SelectorSpecificity = self.evaluate_selector_on_page(xpath=x_path)
@@ -77,6 +198,23 @@ class SelectorFactory:
         return unique_xpaths
 
     def generate_relative_xpaths_from_full_xpath(self, full_xpath: str) -> List[str]:
+        """Generate relative XPath selectors from a full XPath.
+
+        Args:
+            full_xpath (str): Full XPath selector to generate relative selectors from
+
+        Returns:
+            List[str]: List of relative XPath selectors
+
+        Raises:
+            ValueError: If no element is found or multiple elements are found for the XPath
+
+        Example:
+            ```python
+            relative_selectors = factory.generate_relative_xpaths_from_full_xpath("/html/body/button")
+            # Returns: ["//button", "//button[@id='submit']", etc.]
+            ```
+        """
 
         nodes: List[Element] = self.tree.xpath(full_xpath)
 

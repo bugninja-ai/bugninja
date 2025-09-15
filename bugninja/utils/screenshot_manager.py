@@ -1,3 +1,32 @@
+"""
+Screenshot management utilities for Bugninja framework.
+
+This module provides comprehensive screenshot capture and management functionality
+for browser automation sessions, including element highlighting, coordinate extraction,
+and organized file storage with automatic naming and timestamping.
+
+## Key Components
+
+1. **ScreenshotManager** - Main class for screenshot capture and management
+2. **Element Highlighting** - Automatic highlighting of target elements
+3. **Coordinate Extraction** - XPath-based element coordinate detection
+4. **File Organization** - Automatic folder structure and naming
+
+## Usage Examples
+
+```python
+from bugninja.utils import ScreenshotManager
+
+# Create screenshot manager
+screenshot_manager = ScreenshotManager(run_id="test_run")
+
+# Take screenshot with element highlighting
+filename = await screenshot_manager.take_screenshot(
+    page, action, browser_session
+)
+```
+"""
+
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
@@ -13,28 +42,58 @@ if TYPE_CHECKING:
 
 
 class ScreenshotManager:
-    """Unified screenshot management for all agents and replay sessions."""
+    """Unified screenshot management for all agents and replay sessions.
 
-    def __init__(self, run_id: str, folder_prefix: str = "traversal"):
-        """
-        Initialize screenshot manager.
+    This class provides comprehensive screenshot capture functionality including
+    element highlighting, coordinate extraction, and organized file storage.
+    It automatically creates folder structures, generates descriptive filenames,
+    and handles element highlighting for better debugging and analysis.
+
+    Attributes:
+        folder_prefix (str): Prefix for screenshot folders
+        run_id (str): Unique identifier for the current run
+        screenshots_dir (Path): Directory where screenshots are stored
+        screenshot_counter (int): Counter for sequential screenshot naming
+
+    Example:
+        ```python
+        from bugninja.utils import ScreenshotManager
+
+        # Create screenshot manager
+        screenshot_manager = ScreenshotManager(run_id="test_run")
+
+        # Take screenshot with element highlighting
+        filename = await screenshot_manager.take_screenshot(
+            page, action, browser_session
+        )
+        ```
+    """
+
+    def __init__(self, run_id: str, base_dir: Optional[Path] = None):
+        """Initialize screenshot manager.
 
         Args:
-            folder_prefix: Prefix for screenshot folders (traversal, replay, etc.)
+            run_id (str): Unique identifier for the current run
+            base_dir (Optional[Path]): Base directory for screenshots (if None, uses default)
         """
-        self.folder_prefix = folder_prefix
         self.run_id = run_id
-        self.screenshots_dir = self._get_screenshots_dir()
+        self.screenshots_dir = self._get_screenshots_dir(base_dir)
         self.screenshots_dir.mkdir(exist_ok=True)
         self.screenshot_counter = 0
         logger.bugninja_log(f"📸 Screenshots will be saved to: {self.screenshots_dir}")
 
-    def _get_screenshots_dir(self) -> Path:
-        """Get the screenshots directory for current session"""
+    def _get_screenshots_dir(self, base_dir: Optional[Path] = None) -> Path:
+        """Get the screenshots directory for current session.
 
-        base_dir = Path("./screenshots")
+        Returns:
+            Path: Path to the screenshots directory for the current run
+        """
+        if base_dir:
+            base_dir = base_dir / "screenshots"
+        else:
+            base_dir = Path("./screenshots")
+
         base_dir.mkdir(exist_ok=True)
-
         return base_dir / f"{self.run_id}"
 
     async def take_screenshot(
@@ -43,16 +102,23 @@ class ScreenshotManager:
         action: "BugninjaExtendedAction",
         browser_session: Optional[BrowserSession] = None,
     ) -> str:
-        """
-        Take screenshot and return filename.
+        """Take screenshot with element highlighting and return filename.
 
         Args:
-            page: Playwright page object (used to get context)
-            action: Extended action containing DOM element data
-            browser_session: Browser session object for taking screenshots
+            page (Page): Playwright page object (used to get context)
+            action (BugninjaExtendedAction): Extended action containing DOM element data
+            browser_session (Optional[BrowserSession]): Browser session object for taking screenshots
 
         Returns:
-            Full relative path to screenshot file
+            str: Full relative path to screenshot file
+
+        Example:
+            ```python
+            filename = await screenshot_manager.take_screenshot(
+                page, action, browser_session
+            )
+            print(f"Screenshot saved: {filename}")
+            ```
         """
         self.screenshot_counter += 1
 
@@ -76,8 +142,11 @@ class ScreenshotManager:
         if coordinates:
             self._draw_rectangle_on_screenshot(self.screenshots_dir / filename, coordinates)
 
-        # Return full relative path
-        return f"screenshots/{self.screenshots_dir.name}/{filename}"
+        screenshot_directory = str(self._get_screenshots_dir() / filename)
+
+        # Return relative path from the traversal directory
+        # Screenshots are always in screenshots/{run_id}/ relative to the base directory
+        return screenshot_directory
 
     async def _get_element_coordinates(
         self, page: Page, dom_element_data: Dict[str, Any]
@@ -344,9 +413,9 @@ class ScreenshotManager:
                 continue
 
             for interaction_selector in interaction_selectors:
+                full_selector = f"{popup_selector} {interaction_selector}"
                 try:
                     # Search within the specific popup
-                    full_selector = f"{popup_selector} {interaction_selector}"
                     logger.debug(f"Trying popup interaction selector: {full_selector}")
                     coordinates = await self._get_coordinates_with_selector(page, full_selector)
                     if coordinates:
@@ -517,7 +586,9 @@ class ScreenshotManager:
         """
         # Always use page.screenshot with full_page=True for consistent behavior
         # This ensures popups, modals, and overlays are captured
-        await page.screenshot(path=str(self.screenshots_dir / filename), full_page=False)
+        await page.screenshot(
+            path=str(self.screenshots_dir / filename), full_page=False, timeout=3000
+        )
 
     def _draw_rectangle_on_screenshot(
         self, screenshot_path: Path, coordinates: Dict[str, float]

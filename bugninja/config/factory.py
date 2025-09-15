@@ -6,6 +6,7 @@ instances with TOML-based configuration and singleton behavior.
 """
 
 import os
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from bugninja.config.settings import BugninjaSettings, LLMProvider
@@ -97,6 +98,7 @@ class ConfigurationFactory:
             # Development configuration
             "development.debug_mode": "debug_mode",
             # Paths configuration
+            "paths.output_base_dir": "output_base_dir",
             "paths.traversals_dir": "traversals_dir",
             "paths.screenshots_dir": "screenshots_dir",
             "paths.tasks_dir": "tasks_dir",
@@ -139,6 +141,106 @@ class ConfigurationFactory:
                 pydantic_config[config_name] = os.getenv(env_Var_name)
 
         return pydantic_config
+
+    @classmethod
+    def load_task_config(cls, task_config_path: Path) -> Dict[str, Any]:
+        """Load task-specific configuration from TOML file.
+
+        Args:
+            task_config_path: Path to the task_{name}.toml file
+
+        Returns:
+            Dictionary containing task-specific configuration
+
+        Raises:
+            FileNotFoundError: If task config file doesn't exist
+            ValueError: If TOML file is malformed or invalid
+        """
+        if not task_config_path.exists():
+            raise FileNotFoundError(f"Task configuration file not found: {task_config_path}")
+
+        # Load and validate TOML
+        toml_loader = TOMLConfigLoader(task_config_path)
+        try:
+            config = toml_loader.load_config()
+        except Exception as e:
+            raise ValueError(f"Invalid TOML configuration file '{task_config_path}': {str(e)}")
+
+        # Validate required fields (config is flattened by TOMLConfigLoader)
+        if not config.get("task.name"):
+            raise ValueError(
+                f"Missing required field 'task.name' in configuration file '{task_config_path}'"
+            )
+        if not config.get("task.description"):
+            raise ValueError(
+                f"Missing required field 'task.description' in configuration file '{task_config_path}'"
+            )
+
+        return config
+
+    @classmethod
+    def load_task_secrets(cls, task_env_path: Path) -> Optional[Dict[str, Any]]:
+        """Load task-specific secrets from ENV file (optional).
+
+        Args:
+            task_env_path: Path to the task_{name}.env file
+
+        Returns:
+            Dictionary containing task-specific secrets (empty if file doesn't exist)
+        """
+        if not task_env_path.exists():
+            return None  # No secrets file, return None
+
+        try:
+            return cls._parse_env_file(task_env_path)
+        except Exception as e:
+            raise ValueError(f"Failed to parse environment file '{task_env_path}': {str(e)}")
+
+    @classmethod
+    def _parse_env_file(cls, env_path: Path) -> Optional[Dict[str, Any]]:
+        """Parse environment variables from .env file.
+
+        Args:
+            env_path: Path to the .env file
+
+        Returns:
+            Dictionary of environment variables
+
+        Raises:
+            ValueError: If .env file is malformed
+        """
+        secrets: Dict[str, Any] = {}
+
+        try:
+            with open(env_path, "r", encoding="utf-8") as f:
+                for line_num, line in enumerate(f, 1):
+                    line = line.strip()
+
+                    # Skip empty lines and comments
+                    if not line or line.startswith("#"):
+                        continue
+
+                    # Parse key=value pairs
+                    if "=" in line:
+                        key, value = line.split("=", 1)
+                        key = key.strip()
+                        value = value.strip()
+
+                        # Remove quotes if present
+                        if (value.startswith('"') and value.endswith('"')) or (
+                            value.startswith("'") and value.endswith("'")
+                        ):
+                            value = value[1:-1]
+
+                        secrets[key] = value
+                    else:
+                        # Invalid line format
+                        raise ValueError(f"Invalid line {line_num} in {env_path}: {line}")
+
+        except Exception as e:
+            raise ValueError(f"Failed to parse environment file {env_path}: {e}")
+
+        return secrets if len(secrets) > 0 else None
 
     @classmethod
     def reset(cls) -> None:

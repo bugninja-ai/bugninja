@@ -101,21 +101,51 @@ class BaseLLMFactory(ABC):
 
 
 class LLMFactoryRegistry:
-    """Registry for LLM factories using the new unified system."""
+    """Registry for LLM factories using the new unified system.
+
+    This class provides a centralized registry for creating LLM models from
+    unified configurations, handling all supported providers through a single
+    interface.
+
+    Example:
+        ```python
+        from bugninja.config.llm_factory import LLMFactoryRegistry
+        from bugninja.config.llm_config import LLMConfig
+        from bugninja.config.settings import LLMProvider, BugninjaSettings
+
+        # Create configuration
+        config = LLMConfig(provider=LLMProvider.OPENAI, model="gpt-4")
+        settings = BugninjaSettings()
+
+        # Create model
+        model = LLMFactoryRegistry.create_llm_from_config(config, settings)
+        ```
+    """
 
     @classmethod
     def create_llm_from_config(cls, config: LLMConfig, settings: BugninjaSettings) -> BaseChatModel:
         """Create LLM model from unified configuration.
 
         Args:
-            config: Unified LLM configuration
-            settings: BugninjaSettings instance
+            config (LLMConfig): Unified LLM configuration
+            settings (BugninjaSettings): BugninjaSettings instance
 
         Returns:
-            Configured LLM model instance
+            BaseChatModel: Configured LLM model instance
 
         Raises:
             ValueError: If provider is unsupported or configuration is invalid
+
+        Example:
+            ```python
+            from bugninja.config.llm_factory import LLMFactoryRegistry
+            from bugninja.config.llm_config import LLMConfig
+            from bugninja.config.settings import LLMProvider, BugninjaSettings
+
+            config = LLMConfig(provider=LLMProvider.OPENAI, model="gpt-4")
+            settings = BugninjaSettings()
+            model = LLMFactoryRegistry.create_llm_from_config(config, settings)
+            ```
         """
         if not ProviderRegistry.is_provider_supported(config.provider):
             raise ValueError(f"Unsupported LLM provider: {config.provider}")

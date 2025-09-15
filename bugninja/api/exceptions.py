@@ -99,6 +99,9 @@ class TaskExecutionError(BugninjaError):
     Attributes:
         task_description (Optional[str]): Description of the task that failed
         steps_completed (int): Number of steps completed before failure
+        message (str): Human-readable error message
+        details (Optional[Dict[str, Any]]): Additional error details for debugging
+        original_error (Optional[Exception]): Original exception that caused this error
 
     Example:
         ```python
@@ -142,6 +145,9 @@ class SessionReplayError(BugninjaError):
     Attributes:
         session_file (Optional[str]): Path to the session file that failed
         step_number (Optional[int]): Step number where replay failed
+        message (str): Human-readable error message
+        details (Optional[Dict[str, Any]]): Additional error details for debugging
+        original_error (Optional[Exception]): Original exception that caused this error
 
     Example:
         ```python
@@ -185,6 +191,9 @@ class ConfigurationError(BugninjaError):
         config_field (Optional[str]): Name of the configuration field that is invalid
         expected_value (Optional[str]): Expected value for the configuration field
         actual_value (Optional[str]): Actual value that was provided
+        message (str): Human-readable error message
+        details (Optional[Dict[str, Any]]): Additional error details for debugging
+        original_error (Optional[Exception]): Original exception that caused this error
 
     Example:
         ```python
@@ -232,6 +241,9 @@ class LLMError(BugninjaError):
         llm_provider (Optional[str]): Name of the LLM provider that failed
         llm_model (Optional[str]): Name of the LLM model that failed
         api_response (Optional[Dict[str, Any]]): Response from the LLM API (if available)
+        message (str): Human-readable error message
+        details (Optional[Dict[str, Any]]): Additional error details for debugging
+        original_error (Optional[Exception]): Original exception that caused this error
 
     Example:
         ```python
@@ -279,6 +291,9 @@ class BrowserError(BugninjaError):
         browser_action (Optional[str]): Action that was being performed
         element_selector (Optional[str]): Selector of the element that failed
         page_url (Optional[str]): URL of the page where the error occurred
+        message (str): Human-readable error message
+        details (Optional[Dict[str, Any]]): Additional error details for debugging
+        original_error (Optional[Exception]): Original exception that caused this error
 
     Example:
         ```python
@@ -326,6 +341,9 @@ class ValidationError(BugninjaError):
         field_name (Optional[str]): Name of the field that failed validation
         field_value (Optional[str]): Value that failed validation
         validation_rule (Optional[str]): Rule that was violated
+        message (str): Human-readable error message
+        details (Optional[Dict[str, Any]]): Additional error details for debugging
+        original_error (Optional[Exception]): Original exception that caused this error
 
     Example:
         ```python

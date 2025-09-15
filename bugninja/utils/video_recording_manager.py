@@ -1,3 +1,38 @@
+"""
+Video recording management utilities for Bugninja framework.
+
+This module provides video recording management functionality for browser automation
+sessions, including session lifecycle management, frame capture coordination, and
+integration with the custom video recorder for high-quality video output.
+
+## Key Components
+
+1. **VideoRecordingManager** - Main class for video recording session management
+2. **CDP Integration** - Chrome DevTools Protocol integration for frame capture
+3. **Session Lifecycle** - Start/stop recording with proper cleanup
+4. **Frame Management** - Coordinated frame addition and processing
+
+## Usage Examples
+
+```python
+from bugninja.utils import VideoRecordingManager
+from bugninja.config.video_recording import VideoRecordingConfig
+
+# Create video recording manager
+config = VideoRecordingConfig()
+video_manager = VideoRecordingManager("test_run", config)
+
+# Start recording
+await video_manager.start_recording("output", cdp_session)
+
+# Add frames during recording
+await video_manager.add_frame(frame_data)
+
+# Stop recording
+stats = await video_manager.stop_recording()
+```
+"""
+
 import os
 from pathlib import Path
 from typing import Optional
@@ -9,14 +44,46 @@ from bugninja.utils.custom_video_recorder import BugninjaVideoRecorder
 
 
 class VideoRecordingManager:
-    """Manager for video recording functionality in Bugninja agents."""
+    """Manager for video recording functionality in Bugninja agents.
+
+    This class provides comprehensive video recording management for browser automation
+    sessions, including session lifecycle management, frame capture coordination, and
+    integration with the custom video recorder for high-quality video output.
+
+    Attributes:
+        recorder (BugninjaVideoRecorder): Custom video recorder instance
+        run_id (str): Unique identifier for the current run
+        is_recording (bool): Whether recording is currently active
+        cdp_session (Optional[CDPSession]): Chrome DevTools Protocol session
+        output_dir (str): Directory for output video files
+        config (VideoRecordingConfig): Video recording configuration
+
+    Example:
+        ```python
+        from bugninja.utils import VideoRecordingManager
+        from bugninja.config.video_recording import VideoRecordingConfig
+
+        # Create video recording manager
+        config = VideoRecordingConfig()
+        video_manager = VideoRecordingManager("test_run", config)
+
+        # Start recording
+        await video_manager.start_recording("output", cdp_session)
+
+        # Add frames during recording
+        await video_manager.add_frame(frame_data)
+
+        # Stop recording
+        stats = await video_manager.stop_recording()
+        ```
+    """
 
     def __init__(self, run_id: str, config: VideoRecordingConfig) -> None:
         """Initialize the video recording manager.
 
         Args:
-            run_id: Unique identifier for the current run
-            config: Video recording configuration
+            run_id (str): Unique identifier for the current run
+            config (VideoRecordingConfig): Video recording configuration
         """
         self.recorder = BugninjaVideoRecorder(config)
         self.run_id = run_id
@@ -32,8 +99,13 @@ class VideoRecordingManager:
         """Start video recording.
 
         Args:
-            output_file: Base name for the output file
-            cdp_session: CDP session for frame capture
+            output_file (str): Base name for the output file
+            cdp_session (CDPSession): CDP session for frame capture
+
+        Example:
+            ```python
+            await video_manager.start_recording("session_recording", cdp_session)
+            ```
         """
         # Ensure output directory exists
         os.makedirs(self.output_dir, exist_ok=True)
@@ -52,7 +124,13 @@ class VideoRecordingManager:
         """Stop video recording.
 
         Returns:
-            dict: Recording statistics
+            dict[str, int]: Recording statistics including frames processed
+
+        Example:
+            ```python
+            stats = await video_manager.stop_recording()
+            print(f"Processed {stats['frames_processed']} frames")
+            ```
         """
         if self.is_recording:
             stats = await self.recorder.stop_recording()
@@ -64,7 +142,12 @@ class VideoRecordingManager:
         """Add a frame to the recording.
 
         Args:
-            frame_data: Raw frame data in bytes
+            frame_data (bytes): Raw frame data in bytes
+
+        Example:
+            ```python
+            await video_manager.add_frame(frame_bytes)
+            ```
         """
         if self.is_recording:
             await self.recorder.add_frame(frame_data)

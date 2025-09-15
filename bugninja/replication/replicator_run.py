@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
 from cuid2 import Cuid as CUID
+from patchright.async_api import Page  # type: ignore
 from rich import print as rich_print
 
 from bugninja.agents.healer_agent import HealerAgent
@@ -53,13 +54,44 @@ class UserInterruptionError(ReplicatorError):
 
 
 class ReplicatorRun(ReplicatorNavigator):
-    """
-    A class that replicates browser interactions from a JSON log file.
+    """Main session replay orchestrator for Bugninja framework.
 
-    This class reads a JSON file containing browser interaction steps and
-    executes them sequentially using Patchright. Each interaction is processed
-    and the corresponding browser action is performed with fallback mechanisms
-    for element selection.
+    This class provides comprehensive session replication capabilities, reading
+    browser interaction steps from JSON files or Traversal objects and executing
+    them sequentially using Patchright. It includes self-healing mechanisms,
+    interactive replay features, and comprehensive error handling.
+
+    Key Features:
+    - **Session Replay**: Execute recorded browser interactions step by step
+    - **Self-Healing**: Automatic recovery when actions fail using HealerAgent
+    - **Interactive Mode**: Pause after each step for user inspection
+    - **Parallel Support**: Handle multiple session replays concurrently
+    - **Error Recovery**: Comprehensive error handling and recovery mechanisms
+
+    Attributes:
+        traversal_source (Union[str, Traversal]): Source of traversal data
+        run_id (Optional[str]): Unique identifier for the replication run
+        fail_on_unimplemented_action (bool): Whether to fail on unimplemented actions
+        sleep_after_actions (float): Time to sleep after each action
+        pause_after_each_step (bool): Whether to pause after each step
+        enable_healing (bool): Whether to enable self-healing mechanisms
+        event_manager (Optional[EventPublisherManager]): Event publisher manager
+        healing_llm_config (Optional[LLMConfig]): LLM configuration for healing
+
+    Example:
+        ```python
+        from bugninja.replication import ReplicatorRun
+
+        # Create replicator for session replay from file
+        replicator = ReplicatorRun(
+            traversal_source="./traversals/session.json",
+            enable_healing=True,
+            pause_after_each_step=False
+        )
+
+        # Execute replay
+        await replicator.start()
+        ```
     """
 
     def __init__(
@@ -72,18 +104,38 @@ class ReplicatorRun(ReplicatorNavigator):
         enable_healing: bool = True,
         event_manager: Optional[EventPublisherManager] = None,
         healing_llm_config: Optional[LLMConfig] = None,
+        output_base_dir: Optional[Path] = None,
     ):
-        """
-        Initialize the ReplicatorRun with a JSON file path or Traversal object.
+        """Initialize the ReplicatorRun with comprehensive configuration.
 
         Args:
-            traversal_source: Path to the JSON file containing interaction steps or Traversal object
-            fail_on_unimplemented_action: Whether to fail on unimplemented actions
-            sleep_after_actions: Time to sleep after each action
-            pause_after_each_step: Whether to pause and wait for Enter key after each step
-            enable_healing: Whether to enable healing when actions fail (default: True)
-            event_manager: Optional event publisher manager for tracking
-            healing_llm_config: Optional LLM configuration for healing agent (uses default if None)
+            traversal_source (Union[str, Traversal]): Path to the JSON file containing interaction steps or Traversal object
+            run_id (Optional[str]): Unique identifier for the replication run (generates new if None)
+            fail_on_unimplemented_action (bool): Whether to fail on unimplemented actions
+            sleep_after_actions (float): Time to sleep after each action in seconds
+            pause_after_each_step (bool): Whether to pause and wait for Enter key after each step
+            enable_healing (bool): Whether to enable healing when actions fail (default: True)
+            event_manager (Optional[EventPublisherManager]): Optional event publisher manager for tracking
+            healing_llm_config (Optional[LLMConfig]): Optional LLM configuration for healing agent (uses default if None)
+            output_base_dir (Optional[Path]): Base directory for all output files (traversals, screenshots, videos)
+
+        Raises:
+            ReplicatorError: If traversal source is invalid or loading fails
+
+        Example:
+            ```python
+            # Basic usage
+            replicator = ReplicatorRun("./traversals/session.json")
+
+            # Advanced configuration
+            replicator = ReplicatorRun(
+                traversal_source="./traversals/session.json",
+                run_id="custom_run_123",
+                enable_healing=True,
+                pause_after_each_step=False,
+                sleep_after_actions=2.0
+            )
+            ```
         """
 
         super().__init__(
@@ -123,8 +175,13 @@ class ReplicatorRun(ReplicatorNavigator):
         if run_id is not None:
             self.run_id = run_id
 
-        # Initialize screenshot manager
-        self.screenshot_manager = ScreenshotManager(run_id=self.run_id, folder_prefix="replay")
+        # Store output base directory
+        self.output_base_dir = output_base_dir
+
+        # Initialize screenshot manager with base directory
+        self.screenshot_manager = ScreenshotManager(
+            run_id=self.run_id, base_dir=self.output_base_dir
+        )
 
         # Initialize event publisher manager (explicitly passed)
         self.event_manager = event_manager
@@ -181,6 +238,21 @@ class ReplicatorRun(ReplicatorNavigator):
             # Continue anyway to avoid blocking the process
             logger.bugninja_log("▶️ Continuing to next step...")
 
+    async def take_screenshot(self, extended_action: BugninjaExtendedAction) -> None:
+        await self.browser_session.remove_highlights()
+
+        current_page: Page = await self.browser_session.get_current_page()
+
+        await current_page.wait_for_load_state("load")
+        # Take screenshot and get filename
+        screenshot_filename = await self.screenshot_manager.take_screenshot(
+            current_page,  # type: ignore
+            extended_action,
+            self.browser_session,
+        )
+
+        extended_action.screenshot_filename = screenshot_filename
+
     async def create_self_healing_agent(self) -> HealerAgent:
         """
         Start the self-healing agent.
@@ -203,6 +275,8 @@ class ReplicatorRun(ReplicatorNavigator):
             parent_run_id=self.run_id,  # Pass parent's run_id to maintain consistency
             extra_instructions=self.replay_traversal.extra_instructions,
             already_completed_brainstates=self.replay_state_machine.passed_brain_states,
+            output_base_dir=self.output_base_dir,
+            screenshot_manager=self.screenshot_manager,
         )
 
         # Share screenshot directory and counter with healing agent
@@ -320,6 +394,11 @@ class ReplicatorRun(ReplicatorNavigator):
                 logger.bugninja_log(f"⚙️ Performing action: {action_type}")
 
             try:
+
+                #! taking screenshot before action execution
+
+                await self.take_screenshot(extended_action=action)
+
                 logger.bugninja_log("▶️ Executing action...")
                 await self._execute_action(action)
 

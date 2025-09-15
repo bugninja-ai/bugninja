@@ -20,7 +20,37 @@ from bugninja.config.settings import BugninjaSettings, LLMProvider
 
 @dataclass
 class ProviderConfig:
-    """Configuration for a specific LLM provider."""
+    """Configuration for a specific LLM provider.
+
+    This class encapsulates all configuration information needed for a specific
+    LLM provider, including required environment variables, model classes,
+    and provider-specific settings.
+
+    Attributes:
+        name (str): Human-readable name of the provider
+        required_env_vars (List[str]): List of required environment variable names
+        error_message (str): Error message to display when configuration is invalid
+        model_class (Type[BaseChatModel]): LangChain model class for this provider
+        api_key_setting (str): Name of the API key setting in BugninjaSettings
+        base_url_setting (Optional[str]): Name of the base URL setting (if applicable)
+        api_version_setting (Optional[str]): Name of the API version setting (if applicable)
+        max_tokens_param (str): Parameter name for max tokens in the model class
+
+    Example:
+        ```python
+        from bugninja.config.provider_registry import ProviderConfig
+        from langchain_openai import ChatOpenAI
+
+        config = ProviderConfig(
+            name="OpenAI",
+            required_env_vars=["openai_api_key"],
+            error_message="OpenAI requires OPENAI_API_KEY",
+            model_class=ChatOpenAI,
+            api_key_setting="openai_api_key",
+            base_url_setting="openai_base_url"
+        )
+        ```
+    """
 
     name: str
     required_env_vars: List[str]
@@ -32,14 +62,31 @@ class ProviderConfig:
     max_tokens_param: str = "max_tokens"
 
     def validate_requirements(self, settings: BugninjaSettings) -> bool:
-        """Validate that required environment variables are set."""
+        """Validate that required environment variables are set.
+
+        Args:
+            settings (BugninjaSettings): Settings instance to validate
+
+        Returns:
+            bool: True if all required environment variables are set, False otherwise
+        """
         for env_var in self.required_env_vars:
             if not hasattr(settings, env_var) or getattr(settings, env_var) is None:
                 return False
         return True
 
     def get_api_key(self, settings: BugninjaSettings) -> str:
-        """Get API key from settings."""
+        """Get API key from settings.
+
+        Args:
+            settings (BugninjaSettings): Settings instance containing the API key
+
+        Returns:
+            str: The API key value
+
+        Raises:
+            ValueError: If the API key is missing from settings
+        """
         from pydantic import SecretStr
 
         api_key = getattr(settings, self.api_key_setting, None)
@@ -54,7 +101,15 @@ class ProviderConfig:
     def get_base_url(
         self, settings: BugninjaSettings, config_base_url: Optional[str] = None
     ) -> Optional[str]:
-        """Get base URL with fallback logic."""
+        """Get base URL with fallback logic.
+
+        Args:
+            settings (BugninjaSettings): Settings instance containing the base URL
+            config_base_url (Optional[str]): Base URL from configuration (takes precedence)
+
+        Returns:
+            Optional[str]: The base URL value, or None if not available
+        """
         if config_base_url:
             return config_base_url
         if self.base_url_setting:
@@ -63,7 +118,26 @@ class ProviderConfig:
 
 
 class ProviderRegistry:
-    """Registry for provider-specific configurations."""
+    """Registry for provider-specific configurations.
+
+    This class provides a centralized registry for all supported LLM providers,
+    containing their configuration details, validation requirements, and model classes.
+
+    Example:
+        ```python
+        from bugninja.config.provider_registry import ProviderRegistry
+        from bugninja.config.settings import LLMProvider
+
+        # Get configuration for a provider
+        config = ProviderRegistry.get_config(LLMProvider.OPENAI)
+
+        # Check if provider is supported
+        is_supported = ProviderRegistry.is_provider_supported(LLMProvider.OPENAI)
+
+        # Get list of all supported providers
+        providers = ProviderRegistry.get_supported_providers()
+        ```
+    """
 
     _providers: Dict[LLMProvider, ProviderConfig] = {
         LLMProvider.AZURE_OPENAI: ProviderConfig(
@@ -121,7 +195,17 @@ class ProviderRegistry:
 
     @classmethod
     def get_config(cls, provider: LLMProvider) -> ProviderConfig:
-        """Get configuration for a provider."""
+        """Get configuration for a provider.
+
+        Args:
+            provider (LLMProvider): The provider to get configuration for
+
+        Returns:
+            ProviderConfig: Configuration for the specified provider
+
+        Raises:
+            ValueError: If the provider is not supported
+        """
         config = cls._providers.get(provider)
         if not config:
             raise ValueError(f"Unsupported LLM provider: {provider}")
@@ -129,10 +213,21 @@ class ProviderRegistry:
 
     @classmethod
     def get_supported_providers(cls) -> List[LLMProvider]:
-        """Get list of supported providers."""
+        """Get list of supported providers.
+
+        Returns:
+            List[LLMProvider]: List of all supported LLM providers
+        """
         return list(cls._providers.keys())
 
     @classmethod
     def is_provider_supported(cls, provider: LLMProvider) -> bool:
-        """Check if provider is supported."""
+        """Check if provider is supported.
+
+        Args:
+            provider (LLMProvider): The provider to check
+
+        Returns:
+            bool: True if the provider is supported, False otherwise
+        """
         return provider in cls._providers

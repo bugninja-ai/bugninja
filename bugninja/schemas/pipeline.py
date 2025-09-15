@@ -45,12 +45,12 @@ class BugninjaBrowserConfig(BaseModel):
     """
 
     viewport: ViewportSize = Field(
-        default=ViewportSize(width=1280, height=960),
+        default=ViewportSize(width=1920, height=1080),
         description="Viewport dimensions for browser automation",
     )
 
     window_size: ViewportSize = Field(
-        default=ViewportSize(width=1280, height=960),
+        default=ViewportSize(width=1920, height=1080),
         description="Window size for browser automation",
     )
 
@@ -197,8 +197,9 @@ class ReplayWithHealingStateMachine(BaseModel):
         # Add the current action to the passed list
         self.passed_actions.append(self.current_action)
 
-        # Update to the next action
-        self.current_action = self.replay_actions.pop(0)
+        if len(self.replay_actions):
+            # Update to the next action
+            self.current_action = self.replay_actions.pop(0)
 
         # rich_print("Current action AFTER update")
         # rich_print(self.current_action)

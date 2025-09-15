@@ -16,11 +16,8 @@ from browser_use.browser.views import BrowserStateSummary  # type: ignore
 from browser_use.controller.registry.views import ActionModel  # type: ignore
 from cuid2 import Cuid as CUID
 from playwright.async_api import CDPSession
-from rich import print as rich_print
-from rich.markdown import Markdown
 
 from bugninja.agents.bugninja_agent_base import BugninjaAgentBase
-from bugninja.agents.extensions import BugninjaController, extend_agent_action_with_info
 from bugninja.config.video_recording import VideoRecordingConfig
 from bugninja.prompts.prompt_factory import (
     BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
@@ -41,6 +38,7 @@ class NavigatorAgent(BugninjaAgentBase):
     - natural language task interpretation and execution
     - comprehensive action tracking and recording
     - screenshot capture for debugging and analysis
+    - video recording of browser sessions for replay analysis
     - traversal data serialization for replay scenarios
     - event publishing for operation monitoring
 
@@ -93,8 +91,24 @@ class NavigatorAgent(BugninjaAgentBase):
         extra_instructions: List[str] = [],
         extend_planner_system_message: str = "",
         video_recording_config: VideoRecordingConfig | None = None,
+        output_base_dir: Optional[Path] = None,
+        screenshot_manager: Optional[ScreenshotManager] = None,
         **kwargs,  # type:ignore
     ) -> None:
+        """Initialize NavigatorAgent with navigation-specific functionality.
+
+        Args:
+            *args: Arguments passed to the parent BugninjaAgentBase class
+            task (str): The navigation task description for the agent to execute
+            run_id (str | None): Unique identifier for the current run. If None, generates a new CUID
+            override_system_message (str): System message to override the default (defaults to navigator prompt)
+            extra_instructions (List[str]): Additional instructions to append to the task
+            extend_planner_system_message (str): Additional system message to extend the planner prompt
+            video_recording_config (VideoRecordingConfig | None): Video recording configuration for session recording
+            output_base_dir (Optional[Path]): Base directory for all output files (traversals, screenshots, videos)
+            **kwargs: Keyword arguments passed to the parent BugninjaAgentBase class
+        """
+
         super().__init__(
             *args,
             run_id=run_id,
@@ -103,18 +117,16 @@ class NavigatorAgent(BugninjaAgentBase):
             extend_planner_system_message=extend_planner_system_message,
             extra_instructions=extra_instructions,
             task=task,
+            output_base_dir=output_base_dir,
+            screenshot_manager=screenshot_manager,
             **kwargs,
         )
-
-        rich_print("--> Formatted task provided to the agent:")
-        rich_print(Markdown(self.task))
 
     async def _before_run_hook(self) -> None:
         """Initialize navigation session with event tracking and screenshot management.
 
         This hook sets up the navigation environment by:
         - initializing action and brain state tracking
-        - overriding the default controller with BugninjaController
         - setting up screenshot manager for navigation recording
         - initializing event tracking for navigation operations
         - logging the start of the navigation session
@@ -135,13 +147,13 @@ class NavigatorAgent(BugninjaAgentBase):
 
         self._traversal: Optional[Traversal] = None  # Store traversal after successful run
 
-        #! we override the default controller with our own
-        self.controller = BugninjaController()
+        # Update video recording config with base directory if available
+        if self.video_recording_config and self.output_base_dir:
+            from bugninja.config.video_recording import VideoRecordingConfig
 
-        # Initialize screenshot manager
-        self.screenshot_manager = ScreenshotManager(run_id=self.run_id, folder_prefix="traversal")
-
-        # Setup video recording if enabled
+            self.video_recording_config = VideoRecordingConfig.with_base_dir(
+                self.output_base_dir, **self.video_recording_config.model_dump()
+            )
 
         # Initialize event tracking for navigation run (if event_manager is provided)
         if self.event_manager and self.event_manager.has_publishers():
@@ -260,7 +272,7 @@ class NavigatorAgent(BugninjaAgentBase):
         self.agent_brain_states[brain_state_id] = model_output.current_state
 
         #! generating the alternative CSS and XPath selectors should happen BEFORE the actions are completed
-        extended_taken_actions = await extend_agent_action_with_info(
+        extended_taken_actions = await self.extend_model_output_with_info(
             brain_state_id=brain_state_id,
             current_page=current_page,
             model_output=model_output,
@@ -273,9 +285,6 @@ class NavigatorAgent(BugninjaAgentBase):
         # Associate each action with its corresponding extended action index
         for i, action in enumerate(model_output.action):
             self._associate_action_with_extended_action(action, i)
-
-        # ? adding the taken actions to the list of agent actions
-        self.agent_taken_actions.extend(extended_taken_actions)
 
     async def _after_step_hook(
         self, browser_state_summary: BrowserStateSummary, model_output: AgentOutput
@@ -292,15 +301,30 @@ class NavigatorAgent(BugninjaAgentBase):
         # Clear action mapping to prevent memory accumulation
         self._clear_action_mapping()
 
-    async def _before_action_hook(self, action: ActionModel) -> None:
+    async def _before_action_hook(
+        self,
+        action_idx_in_step: int,
+        action: ActionModel,
+    ) -> None:
         """Hook called before each action (no-op implementation).
 
         Args:
             action (ActionModel): The action about to be executed
         """
-        ...
+        logger.info(
+            msg=f"🪝 BEFORE-Action hook called for action #{len(self.agent_taken_actions)+1} in traversal"
+        )
 
-    async def _after_action_hook(self, action: ActionModel) -> None:
+        #! taking appropriate screenshot before each action
+        await self.handle_taking_screenshot_for_action(
+            extended_action=self.current_step_extended_actions[action_idx_in_step]
+        )
+
+    async def _after_action_hook(
+        self,
+        action_idx_in_step: int,
+        action: ActionModel,
+    ) -> None:
         """Capture screenshot after action execution for navigation recording.
 
         This hook takes a screenshot after each action is completed,
@@ -310,21 +334,13 @@ class NavigatorAgent(BugninjaAgentBase):
         Args:
             action (ActionModel): The action that was just executed
         """
-        await self.browser_session.remove_highlights()
 
-        current_page = await self.browser_session.get_current_page()
+        logger.info(
+            msg=f"🪝 AFTER-Action hook called for action #{len(self.agent_taken_actions)+1} in traversal"
+        )
 
-        # Get the extended action for screenshot with highlighting
-        extended_action = self._find_matching_extended_action(action)
-        if extended_action:
-            # Take screenshot and get filename
-            screenshot_filename = await self.screenshot_manager.take_screenshot(
-                current_page, extended_action, self.browser_session
-            )
-
-            # Store screenshot filename with extended action
-            extended_action.screenshot_filename = screenshot_filename
-            logger.bugninja_log(f"📸 Stored screenshot filename: {screenshot_filename}")
+        # ? adding the taken action to the list of agent actions
+        self.agent_taken_actions.append(self.current_step_extended_actions[action_idx_in_step])
 
     def save_agent_actions(self, verbose: bool = False) -> Traversal:
         """Save the agent's traversal data to a JSON file for analysis and replay.
@@ -356,7 +372,11 @@ class NavigatorAgent(BugninjaAgentBase):
             - Uses pretty-printed JSON with 4-space indentation for readability
             - Handles Unicode characters properly with ensure_ascii=False
         """
-        traversal_dir = Path("./traversals")
+        # Use configured directory or fallback to default
+        if hasattr(self, "output_base_dir") and self.output_base_dir:
+            traversal_dir = self.output_base_dir / "traversals"
+        else:
+            traversal_dir = Path("./traversals")
 
         # Create traversals directory if it doesn't exist
         os.makedirs(traversal_dir, exist_ok=True)
