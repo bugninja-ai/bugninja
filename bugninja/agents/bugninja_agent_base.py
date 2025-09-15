@@ -2,6 +2,7 @@ import asyncio
 import inspect
 import time
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from browser_use.agent.message_manager.utils import save_conversation  # type: ignore
@@ -35,6 +36,7 @@ from bugninja.events import EventPublisherManager
 from bugninja.prompts.prompt_factory import get_extra_instructions_related_prompt
 from bugninja.schemas.pipeline import BugninjaExtendedAction
 from bugninja.utils.logging_config import logger
+from bugninja.utils.screenshot_manager import ScreenshotManager
 from bugninja.utils.selector_factory import SelectorFactory
 from bugninja.utils.video_recording_manager import VideoRecordingManager
 
@@ -124,6 +126,8 @@ class BugninjaAgentBase(Agent, ABC):
         override_system_message: str | None = None,
         extend_system_message: str | None = None,
         video_recording_config: Optional[VideoRecordingConfig] = None,
+        output_base_dir: Optional[Path] = None,
+        screenshot_manager: Optional[ScreenshotManager] = None,
         **kwargs,  # type:ignore
     ) -> None:
         """Initialize BugninjaAgentBase with extended functionality.
@@ -172,8 +176,33 @@ class BugninjaAgentBase(Agent, ABC):
             None
         )
 
+        self.output_base_dir: Optional[Path] = output_base_dir
+
+        self.screenshot_manager = (
+            screenshot_manager
+            if screenshot_manager
+            else ScreenshotManager(run_id=self.run_id, base_dir=self.output_base_dir)
+        )
+
         self.agent_taken_actions: List[BugninjaExtendedAction] = []
         self.agent_brain_states: Dict[str, AgentBrain] = {}
+
+    async def handle_taking_screenshot_for_action(
+        self, extended_action: BugninjaExtendedAction
+    ) -> None:
+        await self.browser_session.remove_highlights()
+
+        current_page: Page = await self.browser_session.get_current_page()
+
+        await current_page.wait_for_load_state("load")
+        # Take screenshot and get filename
+        screenshot_filename = await self.screenshot_manager.take_screenshot(
+            current_page,  # type: ignore
+            extended_action,
+            self.browser_session,
+        )
+
+        extended_action.screenshot_filename = screenshot_filename
 
     def _create_llm(
         self,

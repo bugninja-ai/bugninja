@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
 from cuid2 import Cuid as CUID
+from patchright.async_api import Page  # type: ignore
 from rich import print as rich_print
 
 from bugninja.agents.healer_agent import HealerAgent
@@ -237,6 +238,21 @@ class ReplicatorRun(ReplicatorNavigator):
             # Continue anyway to avoid blocking the process
             logger.bugninja_log("▶️ Continuing to next step...")
 
+    async def take_screenshot(self, extended_action: BugninjaExtendedAction) -> None:
+        await self.browser_session.remove_highlights()
+
+        current_page: Page = await self.browser_session.get_current_page()
+
+        await current_page.wait_for_load_state("load")
+        # Take screenshot and get filename
+        screenshot_filename = await self.screenshot_manager.take_screenshot(
+            current_page,  # type: ignore
+            extended_action,
+            self.browser_session,
+        )
+
+        extended_action.screenshot_filename = screenshot_filename
+
     async def create_self_healing_agent(self) -> HealerAgent:
         """
         Start the self-healing agent.
@@ -260,6 +276,7 @@ class ReplicatorRun(ReplicatorNavigator):
             extra_instructions=self.replay_traversal.extra_instructions,
             already_completed_brainstates=self.replay_state_machine.passed_brain_states,
             output_base_dir=self.output_base_dir,
+            screenshot_manager=self.screenshot_manager,
         )
 
         # Share screenshot directory and counter with healing agent
@@ -377,6 +394,11 @@ class ReplicatorRun(ReplicatorNavigator):
                 logger.bugninja_log(f"⚙️ Performing action: {action_type}")
 
             try:
+
+                #! taking screenshot before action execution
+
+                await self.take_screenshot(extended_action=action)
+
                 logger.bugninja_log("▶️ Executing action...")
                 await self._execute_action(action)
 

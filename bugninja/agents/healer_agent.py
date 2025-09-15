@@ -78,6 +78,7 @@ class HealerAgent(BugninjaAgentBase):
         extend_system_message: str | None = None,
         already_completed_brainstates: List[BugninjaBrainState] = [],
         output_base_dir: Optional[Path] = None,
+        screenshot_manager: Optional[ScreenshotManager] = None,
         **kwargs,  # type:ignore
     ) -> None:
         """Initialize HealerAgent with healing-specific functionality.
@@ -105,6 +106,7 @@ class HealerAgent(BugninjaAgentBase):
             + f"\n\n{HEALDER_AGENT_EXTRA_SYSTEM_PROMPT}",
             extra_instructions=extra_instructions,
             task=task,
+            screenshot_manager=screenshot_manager,
             **kwargs,
         )
 
@@ -127,12 +129,6 @@ class HealerAgent(BugninjaAgentBase):
         - logging the start of the healing intervention
         """
         logger.bugninja_log("🏁 BEFORE-Run hook called")
-
-        # Initialize screenshot manager (will be overridden if shared from replay)
-        if not hasattr(self, "screenshot_manager"):
-            self.screenshot_manager = ScreenshotManager(
-                run_id=self.run_id, base_dir=self.output_base_dir
-            )
 
         # Initialize event tracking for healing run (if event_manager is provided)
         if self.event_manager and self.event_manager.has_publishers():
@@ -243,6 +239,11 @@ class HealerAgent(BugninjaAgentBase):
         """
         logger.info(
             msg=f"🪝 BEFORE-Action hook called for action #{len(self.agent_taken_actions)+1} in traversal"
+        )
+
+        #! taking appropriate screenshot before each action
+        await self.handle_taking_screenshot_for_action(
+            extended_action=self.current_step_extended_actions[action_idx_in_step]
         )
 
     async def _after_action_hook(

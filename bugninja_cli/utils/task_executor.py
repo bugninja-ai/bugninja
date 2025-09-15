@@ -579,7 +579,7 @@ class TaskExecutor:
             elif result.success:
                 # Create traversal filename based on timestamp
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                traversal_filename = f"run_{timestamp}.json"
+                traversal_filename = f"traverse_{timestamp}.json"
                 traversal_path = traversals_dir / traversal_filename
 
                 # Save traversal if available
@@ -680,7 +680,7 @@ class TaskExecutor:
                 elif task_result.success:
                     # Create traversal filename based on timestamp and task index
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    traversal_filename = f"run_{timestamp}_task{i+1}.json"
+                    traversal_filename = f"traverse_{timestamp}_task{i+1}.json"
                     traversal_path = traversals_dir / traversal_filename
 
                     # Save traversal if available

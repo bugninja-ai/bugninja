@@ -92,6 +92,7 @@ class NavigatorAgent(BugninjaAgentBase):
         extend_planner_system_message: str = "",
         video_recording_config: VideoRecordingConfig | None = None,
         output_base_dir: Optional[Path] = None,
+        screenshot_manager: Optional[ScreenshotManager] = None,
         **kwargs,  # type:ignore
     ) -> None:
         """Initialize NavigatorAgent with navigation-specific functionality.
@@ -116,11 +117,10 @@ class NavigatorAgent(BugninjaAgentBase):
             extend_planner_system_message=extend_planner_system_message,
             extra_instructions=extra_instructions,
             task=task,
+            output_base_dir=output_base_dir,
+            screenshot_manager=screenshot_manager,
             **kwargs,
         )
-
-        # Store output base directory
-        self.output_base_dir = output_base_dir
 
     async def _before_run_hook(self) -> None:
         """Initialize navigation session with event tracking and screenshot management.
@@ -146,11 +146,6 @@ class NavigatorAgent(BugninjaAgentBase):
             logger.bugninja_log(f"🔒 Using isolated browser directory: {isolated_dir}")
 
         self._traversal: Optional[Traversal] = None  # Store traversal after successful run
-
-        # Initialize screenshot manager with base directory
-        self.screenshot_manager = ScreenshotManager(
-            run_id=self.run_id, base_dir=self.output_base_dir
-        )
 
         # Update video recording config with base directory if available
         if self.video_recording_config and self.output_base_dir:
@@ -320,17 +315,10 @@ class NavigatorAgent(BugninjaAgentBase):
             msg=f"🪝 BEFORE-Action hook called for action #{len(self.agent_taken_actions)+1} in traversal"
         )
 
-        current_page: Page = await self.browser_session.get_current_page()
-
         #! taking appropriate screenshot before each action
-        await current_page.wait_for_load_state("load")
-        extended_action = self.current_step_extended_actions[action_idx_in_step]
-        # Take screenshot and get filename
-        screenshot_filename = await self.screenshot_manager.take_screenshot(
-            current_page, extended_action, self.browser_session
+        await self.handle_taking_screenshot_for_action(
+            extended_action=self.current_step_extended_actions[action_idx_in_step]
         )
-
-        extended_action.screenshot_filename = screenshot_filename
 
     async def _after_action_hook(
         self,
