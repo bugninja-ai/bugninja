@@ -169,15 +169,13 @@ class RichTerminalPublisher(EventPublisher):
         if not self.is_available():
             raise PublisherUnavailableError("Rich terminal publisher is not available")
 
-        first_non_empty_key: str = [
-            k for k, v in action_result_data.action.items() if v is not None
-        ][0]
+        action_type: str = action_result_data.get_action_type()
 
-        action_done: Dict[str, Any] = action_result_data.action[first_non_empty_key]
+        action_done: Dict[str, Any] = action_result_data.action[action_type]
 
         # Print action event details in blue
         action_msg = Text(
-            f"🔍 Action Event: '{first_non_empty_key}' - {action_done}",
+            f"🔍 Action Event: '{action_type}' - {action_done}",
             style=self.style,
         )
         self.console.print(action_msg)

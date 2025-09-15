@@ -282,7 +282,7 @@ def replay(
                     and hasattr(result.result, "steps_completed")
                     and hasattr(result.result, "total_steps")
                 ):
-                    steps_info = f"\n📊 Steps completed: {result.result.steps_completed}/{result.result.total_steps}"
+                    steps_info = f"\n📊 Steps completed: {result.result.steps_completed+1}/{result.result.total_steps}"
 
                 console.print(
                     Panel(

@@ -375,7 +375,7 @@ class ReplicatorRun(ReplicatorNavigator):
 
             # Log action details
             action = self.replay_state_machine.current_action
-            action_type: str = [k for k, a in action.action.items() if a is not None][0]
+            action_type: str = action.get_action_type()
 
             logger.bugninja_log("")
             logger.bugninja_log(f"🔄 === PROCESSING ACTION {action_type} ===")

@@ -292,7 +292,7 @@ class ReplicatorNavigator(ABC):
     async def _handle_go_back(self) -> None:
         """Handle navigation back."""
         logger.bugninja_log("⬅️ Go back requested")
-        await self.__handle_not_implemented_action("Back navigation")
+        await self.current_page.go_back(wait_until="load")
 
     async def _handle_search_google(self) -> None:
         """Handle Google search."""
@@ -744,7 +744,7 @@ class ReplicatorNavigator(ABC):
     async def before_run(self) -> None:
         logger.bugninja_log("🚀 Starting browser session")
         await self.browser_session.start()
-        self.current_page = await self.browser_session.get_current_page()
+        self.current_page = await self.browser_session.get_current_page()  # type: ignore
 
     async def after_run(self, did_run_fail: bool, failed_reason: Optional[str]) -> None:
 

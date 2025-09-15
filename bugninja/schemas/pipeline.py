@@ -32,6 +32,9 @@ class BugninjaExtendedAction(BaseModel):
     screenshot_filename: Optional[str] = None
     idx_in_brainstate: int
 
+    def get_action_type(self) -> str:
+        return [k for k, v in self.action.items() if v is not None][0]
+
 
 #! Traversal
 

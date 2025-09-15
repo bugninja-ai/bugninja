@@ -653,14 +653,19 @@ class BugninjaClient:
             # Check if the agent actually succeeded by examining its state
             agent_success = True
             agent_error = None
-            
-            if hasattr(agent, 'state') and hasattr(agent.state, 'last_result') and agent.state.last_result:
+
+            if (
+                hasattr(agent, "state")
+                and hasattr(agent.state, "last_result")
+                and agent.state.last_result
+            ):
                 # Check if any result has an error
                 agent_success = not any(
-                    result.error for result in agent.state.last_result 
+                    result.error
+                    for result in agent.state.last_result
                     if hasattr(result, "error") and result.error
                 )
-                
+
                 # Get the error message from the last result if there was a failure
                 if not agent_success and agent.state.last_result:
                     last_result = agent.state.last_result[-1]
@@ -686,11 +691,15 @@ class BugninjaClient:
                     "allowed_domains": task.allowed_domains,
                     "has_secrets": task.secrets is not None,
                 },
-                error=BugninjaTaskError(
-                    error_type=BugninjaErrorType.TASK_EXECUTION_ERROR,
-                    message=agent_error or "Task execution failed",
-                    context={"agent_state": "failed"}
-                ) if not agent_success else None,
+                error=(
+                    BugninjaTaskError(
+                        error_type=BugninjaErrorType.TASK_EXECUTION_ERROR,
+                        message=agent_error or "Task execution failed",
+                        details={"agent_state": "failed"},
+                    )
+                    if not agent_success
+                    else None
+                ),
             )
 
         except Exception as e:
@@ -940,6 +949,17 @@ class BugninjaClient:
                 output_base_dir=self.config.output_base_dir,
             )
 
+            # Override screenshots directory for task-specific organization
+            if isinstance(session, Path):
+                # Extract task directory from path like: tasks/1_simple_navigation/traversals/file.json
+                path_parts = session.parts
+                if len(path_parts) >= 3 and path_parts[-2] == "traversals":
+                    task_dir = Path(*path_parts[:-2])  # Remove "traversals" and filename
+                    correct_screenshots_dir = task_dir / "screenshots" / replicator.run_id
+                    correct_screenshots_dir.mkdir(parents=True, exist_ok=True)
+                    # Override the screenshot manager's directory
+                    replicator.screenshot_manager.screenshots_dir = correct_screenshots_dir
+
             # Execute replay and capture result
             try:
                 await replicator.start()
@@ -983,20 +1003,47 @@ class BugninjaClient:
 
             # Determine traversal file and screenshots directory
             if isinstance(session, Path):
-                traversal_file = session
-                screenshots_dir = self.config.screenshots_dir / session.stem
+                # Check if a corrected traversal was saved by the replicator
+                if hasattr(replicator, "_traversal") and replicator._traversal:
+                    # Generate new filename with run_id to avoid overwriting original
+                    new_filename = f"replay_{replicator.run_id}.json"
+                    traversal_file = session.parent / new_filename
+
+                    # Save the corrected traversal to the new file
+                    import json
+
+                    with open(traversal_file, "w") as f:
+                        json.dump(
+                            replicator._traversal.model_dump(), f, indent=2, ensure_ascii=False
+                        )
+                else:
+                    # No correction, return original
+                    traversal_file = session
+
+                # Use the screenshots directory we set earlier
+                screenshots_dir = replicator.screenshot_manager.screenshots_dir
             else:
                 # For Traversal objects, we don't have a file path
                 traversal_file = None
                 screenshots_dir = self.config.screenshots_dir / f"traversal_{replicator.run_id}"
+
+            # Calculate steps completed from the state machine
+            steps_completed = 0
+            if hasattr(replicator, "replay_state_machine") and hasattr(
+                replicator.replay_state_machine, "passed_actions"
+            ):
+                steps_completed = len(replicator.replay_state_machine.passed_actions)
+
+            # Get total steps from replicator
+            total_steps = getattr(replicator, "total_actions", 0)
 
             return BugninjaTaskResult(
                 success=success,
                 operation_type=OperationType.REPLAY,
                 healing_status=healing_status,
                 execution_time=execution_time,
-                steps_completed=getattr(replicator, "actions_completed", 0),
-                total_steps=getattr(replicator, "total_actions", 0),
+                steps_completed=steps_completed,
+                total_steps=total_steps,
                 traversal=replicator._traversal if hasattr(replicator, "_traversal") else None,
                 traversal_file=traversal_file,
                 screenshots_dir=screenshots_dir,
