@@ -650,8 +650,25 @@ class BugninjaClient:
                 if traversal_file:
                     screenshots_dir = self.config.screenshots_dir / traversal_file.stem
 
+            # Check if the agent actually succeeded by examining its state
+            agent_success = True
+            agent_error = None
+            
+            if hasattr(agent, 'state') and hasattr(agent.state, 'last_result') and agent.state.last_result:
+                # Check if any result has an error
+                agent_success = not any(
+                    result.error for result in agent.state.last_result 
+                    if hasattr(result, "error") and result.error
+                )
+                
+                # Get the error message from the last result if there was a failure
+                if not agent_success and agent.state.last_result:
+                    last_result = agent.state.last_result[-1]
+                    if hasattr(last_result, "error") and last_result.error:
+                        agent_error = last_result.error
+
             return BugninjaTaskResult(
-                success=True,
+                success=agent_success,
                 operation_type=OperationType.FIRST_TRAVERSAL,
                 healing_status=HealingStatus.NONE,  # Navigation doesn't use healing
                 execution_time=execution_time,
@@ -669,7 +686,11 @@ class BugninjaClient:
                     "allowed_domains": task.allowed_domains,
                     "has_secrets": task.secrets is not None,
                 },
-                error=None,  # No error if success
+                error=BugninjaTaskError(
+                    error_type=BugninjaErrorType.TASK_EXECUTION_ERROR,
+                    message=agent_error or "Task execution failed",
+                    context={"agent_state": "failed"}
+                ) if not agent_success else None,
             )
 
         except Exception as e:
@@ -922,9 +943,11 @@ class BugninjaClient:
             # Execute replay and capture result
             try:
                 await replicator.start()
+                # If we get here without exception, the replay was successful
                 success = True
                 error = None
             except Exception as e:
+                # Any exception during replay indicates failure
                 success = False
                 error = e
 

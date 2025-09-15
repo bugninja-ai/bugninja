@@ -25,17 +25,17 @@ screenshots_dir = "./screenshots"
 tasks_dir = "./tasks"
 
 [browser]
-viewport_width = 1280
-viewport_height = 960
+viewport_width = 1920
+viewport_height = 1080
 user_agent = ""
 device_scale_factor = 0.0
-timeout = 30000
+timeout = 10000
 
 [agent]
 max_steps = 100
 planner_interval = 5
 enable_vision = true
-enable_memory = false
+enable_memory = true
 wait_between_actions = 1
 
 [replicator]

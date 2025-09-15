@@ -238,12 +238,17 @@ class ReplicatorRun(ReplicatorNavigator):
             # Continue anyway to avoid blocking the process
             logger.bugninja_log("▶️ Continuing to next step...")
 
+    @staticmethod
+    async def wait_proper_load_state(page: Page) -> None:
+        await page.wait_for_load_state("domcontentloaded")
+        await page.wait_for_load_state("load")
+
     async def take_screenshot(self, extended_action: BugninjaExtendedAction) -> None:
         await self.browser_session.remove_highlights()
 
-        current_page: Page = await self.browser_session.get_current_page()
+        current_page: Page = await self.browser_session.get_current_page()  # type: ignore
 
-        await current_page.wait_for_load_state("load")
+        await self.wait_proper_load_state(current_page)
         # Take screenshot and get filename
         screenshot_filename = await self.screenshot_manager.take_screenshot(
             current_page,  # type: ignore

@@ -230,7 +230,7 @@ class NavigatorAgent(BugninjaAgentBase):
 
         current_page: Page = await self.browser_session.get_current_page()
 
-        await current_page.wait_for_load_state("load")
+        await self.wait_proper_load_state(current_page)
 
         # Initialize video recording on the first step only
         if not hasattr(self, "_video_recording_initialized"):
@@ -429,14 +429,6 @@ class NavigatorAgent(BugninjaAgentBase):
 
         # Store the traversal object for later access
         self._traversal = traversal
-
-        with open(traversal_file, "w") as f:
-            json.dump(
-                traversal.model_dump(),
-                f,
-                indent=4,
-                ensure_ascii=False,
-            )
         logger.bugninja_log(f"Traversal saved with ID: {timestamp}_{self.run_id}")
 
         return traversal

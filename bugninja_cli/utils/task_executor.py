@@ -378,9 +378,16 @@ class TaskExecutor:
             if "metadata" not in config:
                 config["metadata"] = {}
 
-            config["metadata"]["latest_run_path"] = (
-                str(result.traversal_path) if result.traversal_path else ""
-            )
+            if result.traversal_path:
+                # Store relative path from project root
+                try:
+                    relative_path = result.traversal_path.relative_to(self.project_root)
+                    config["metadata"]["latest_run_path"] = str(relative_path)
+                except ValueError:
+                    # If not relative to project root, store absolute path
+                    config["metadata"]["latest_run_path"] = str(result.traversal_path)
+            else:
+                config["metadata"]["latest_run_path"] = ""
             config["metadata"]["latest_run_status"] = "success" if result.success else "failed"
             config["metadata"]["latest_run_timestamp"] = datetime.now(UTC).isoformat()
 
@@ -433,16 +440,6 @@ class TaskExecutor:
             output_traversal_path = None
             if result.success and result.traversal_file:
                 output_traversal_path = result.traversal_file
-            elif result.success:
-                # Create new traversal filename for replay results
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                replay_filename = f"replay_{timestamp}_{traversal_path.stem}.json"
-                output_traversal_path = self.project_root / "traversals" / replay_filename
-
-                # Save traversal if available
-                if result.traversal:
-                    with open(output_traversal_path, "w", encoding="utf-8") as f:
-                        json.dump(result.traversal.model_dump(), f, indent=2, ensure_ascii=False)
 
             # Create execution result
             execution_result = TaskExecutionResult(
@@ -562,9 +559,6 @@ class TaskExecutor:
             # Create BugninjaTask
             task = self._create_bugninja_task(task_info)
 
-            # Ensure traversals directory exists
-            traversals_dir = self._ensure_traversals_directory(task_info)
-
             # Execute task
             console.print(f"🔄 Executing task: {task_info.name}")
             result = await self.client.run_task(task)
@@ -577,15 +571,12 @@ class TaskExecutor:
             if result.success and result.traversal_file:
                 traversal_path = result.traversal_file
             elif result.success:
-                # Create traversal filename based on timestamp
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                traversal_filename = f"traverse_{timestamp}.json"
-                traversal_path = traversals_dir / traversal_filename
-
-                # Save traversal if available
-                if result.traversal:
-                    with open(traversal_path, "w", encoding="utf-8") as f:
-                        json.dump(result.traversal.model_dump(), f, indent=2, ensure_ascii=False)
+                # Find the traversal file in the task-specific traversals directory
+                traversals_dir = self._ensure_traversals_directory(task_info)
+                traversal_files = list(traversals_dir.glob("*.json"))
+                if traversal_files:
+                    # Get the most recent file
+                    traversal_path = max(traversal_files, key=lambda f: f.stat().st_mtime)
 
             # Create execution result
             execution_result = TaskExecutionResult(

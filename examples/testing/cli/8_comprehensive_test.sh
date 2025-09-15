@@ -1,0 +1,1 @@
+uv run bugninja_cli.py run --task 8_comprehensive_test

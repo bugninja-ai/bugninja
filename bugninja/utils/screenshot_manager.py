@@ -584,11 +584,7 @@ class ScreenshotManager:
             browser_session: Browser session object (not used, kept for compatibility)
             filename: Name of the file to save the screenshot
         """
-        # Always use page.screenshot with full_page=True for consistent behavior
-        # This ensures popups, modals, and overlays are captured
-        await page.screenshot(
-            path=str(self.screenshots_dir / filename), full_page=False, timeout=3000
-        )
+        await page.screenshot(path=str(self.screenshots_dir / filename), full_page=False)
 
     def _draw_rectangle_on_screenshot(
         self, screenshot_path: Path, coordinates: Dict[str, float]

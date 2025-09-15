@@ -194,7 +194,7 @@ class BugninjaAgentBase(Agent, ABC):
 
         current_page: Page = await self.browser_session.get_current_page()
 
-        await current_page.wait_for_load_state("load")
+        await self.wait_proper_load_state(current_page)
         # Take screenshot and get filename
         screenshot_filename = await self.screenshot_manager.take_screenshot(
             current_page,  # type: ignore
@@ -239,6 +239,11 @@ class BugninjaAgentBase(Agent, ABC):
             raise ValueError(f"Failed to create LLM model: {e}")
 
     @staticmethod
+    async def wait_proper_load_state(page: Page) -> None:
+        await page.wait_for_load_state("domcontentloaded")
+        await page.wait_for_load_state("load")
+
+    @staticmethod
     async def get_raw_html_of_playwright_page(page: Page) -> str:
         """Get the raw HTML content of a Playwright page.
 
@@ -248,8 +253,7 @@ class BugninjaAgentBase(Agent, ABC):
         Returns:
             str: Raw HTML content of the page
         """
-        await page.wait_for_load_state("domcontentloaded")
-        await page.wait_for_load_state("load")
+        await BugninjaAgentBase.wait_proper_load_state(page)
         html_content_of_page: str = await page.content()
         return html_content_of_page
 

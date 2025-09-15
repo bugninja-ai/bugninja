@@ -1,0 +1,1 @@
+uv run bugninja_cli.py run --task 4_self_healing
