@@ -1,0 +1,22 @@
+[task]
+name = "4_self_healing"
+description = "Navigate to wikipedia.com and search for Artificial Intelligence, and them open the first article."
+extra_instructions = []
+allowed_domains = []
+
+[run_config]
+viewport_width = 1920
+viewport_height = 1080
+user_agent = ""
+wait_between_actions = 1
+enable_vision = true
+enable_memory = true
+enable_healing = true
+headless = false
+
+[metadata]
+task_id = "c58h39d1yo351k9p2j5g5b4d"
+created_date = "2025-09-14T13:19:09.364270+00:00Z"
+latest_run_path = "traversals/traverse_20250914_153948_p2j3459fmu9hst6iqlou2xrv.json"
+latest_run_status = "success"
+latest_run_timestamp = "2025-09-14T13:39:49.105939+00:00"

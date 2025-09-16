@@ -1,0 +1,1 @@
+sonar-scanner -Dsonar.projectKey=bugninja -Dsonar.sources=. -Dsonar.host.url=http://localhost:9001 -Dsonar.login=sqp_ebc12ecc2917b49162c0d32e0769586160c7147c

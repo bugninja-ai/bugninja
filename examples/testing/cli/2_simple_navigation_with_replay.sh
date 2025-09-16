@@ -1,0 +1,1 @@
+uv run bugninja run --task 2_simple_navigation_with_replay

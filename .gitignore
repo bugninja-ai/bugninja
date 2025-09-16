@@ -120,7 +120,7 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
+*.env
 .venv
 env/
 venv/
@@ -264,3 +264,22 @@ tmp/
 temp/
 .tmp/ 
 recording/
+
+data
+saved_paths
+recordings
+screen_recordings
+test_output
+graph.html
+
+
+data_dir
+user_data_dir
+logs
+/screenshots
+/traversals
+/tasks
+/bugninja.toml
+/BUGNINJA_README.md
+
+.scannerwork

@@ -1,0 +1,1 @@
+uv run bugninja run --task 3_mobile_viewport

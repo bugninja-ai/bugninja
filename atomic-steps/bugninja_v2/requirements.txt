@@ -1,7 +1,0 @@
-patchright==1.47.0
-openai>=1.0.0
-python-dotenv>=1.0.0
-loguru>=0.7.0
-opencv-python>=4.8.0
-pillow>=10.0.0
-numpy>=1.24.0 

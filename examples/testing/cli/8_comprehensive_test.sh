@@ -1,0 +1,1 @@
+uv run bugninja run --task 8_comprehensive_test
