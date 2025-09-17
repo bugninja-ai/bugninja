@@ -59,7 +59,7 @@ from bugninja_cli.utils.style import MARKDOWN_CONFIG, display_logo
 @click.group(invoke_without_command=True)
 @click.rich_config(help_config=MARKDOWN_CONFIG)
 @click.pass_context
-def bugninja(ctx):
+def bugninja(ctx: click.Context) -> None:
     # Display logo for all invocations
     display_logo()
 

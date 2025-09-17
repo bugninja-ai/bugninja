@@ -30,8 +30,9 @@ def my_command():
 
 import tomllib
 from enum import Enum
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as get_package_version
 from typing import Any, Tuple
-from importlib.metadata import version as get_package_version, PackageNotFoundError
 
 import rich_click as click
 

@@ -200,12 +200,11 @@ class BugninjaClient:
         except Exception as e:
             raise ConfigurationError(f"Failed to initialize Bugninja client: {e}", original_error=e)
 
-    def _create_llm(self, temperature: Optional[float] = None, task_secrets: Optional[Dict[str, Any]] = None) -> BaseChatModel:
+    def _create_llm(self, temperature: Optional[float] = None) -> BaseChatModel:
         """Create LLM model using client configuration.
 
         Args:
             temperature (Optional[float]): Temperature setting (overrides config)
-            task_secrets (Optional[Dict[str, Any]]): Task-specific secrets for provider credentials
 
         Returns:
             BaseChatModel: Configured LLM model instance
@@ -223,7 +222,7 @@ class BugninjaClient:
                     config.temperature = temperature
                 return create_llm_model_from_config(config)
             else:
-                return create_provider_model_from_settings(temperature, task_secrets=task_secrets)
+                return create_provider_model_from_settings(temperature)
         except Exception as e:
             raise ValueError(f"Failed to create LLM model: {e}")
 
@@ -615,8 +614,8 @@ class BugninjaClient:
             browser_session.browser_profile.allowed_domains = task.allowed_domains
             self._active_sessions.append(browser_session)
 
-            # Create LLM with configured temperature and task secrets
-            llm = self._create_llm(temperature=self.config.llm_temperature, task_secrets=task.secrets)
+            # Create LLM with configured temperature
+            llm = self._create_llm(temperature=self.config.llm_temperature)
 
             # Create and run agent with task parameters
             agent = NavigatorAgent(
@@ -786,7 +785,7 @@ class BugninjaClient:
                 agent = NavigatorAgent(
                     run_id=task.run_id,
                     task=task.description,
-                    llm=self._create_llm(temperature=self.config.llm_temperature, task_secrets=task.secrets),
+                    llm=self._create_llm(temperature=self.config.llm_temperature),
                     browser_session=browser_session,
                     sensitive_data=task.secrets,
                     extra_instructions=task.extra_instructions,

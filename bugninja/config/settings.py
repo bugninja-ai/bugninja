@@ -39,6 +39,12 @@ class BugninjaSettings(BaseSettings):
     - Multi-LLM provider support
     """
 
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "case_sensitive": False,
+    }
+
     # LLM Provider Selection (from TOML)
     llm_provider: LLMProvider = Field(
         default=LLMProvider.AZURE_OPENAI, description="LLM provider to use for browser automation"
@@ -174,74 +180,27 @@ class BugninjaSettings(BaseSettings):
         """Post-initialization setup (validation moved to lazy validation)."""
         pass
 
-    def _validate_provider_config(self, task_secrets: Optional[Dict[str, Any]] = None) -> None:
-        """Validate that required configuration is present for the selected provider.
-        
-        Args:
-            task_secrets: Optional task-specific secrets that may contain provider credentials
-        """
+    def _validate_provider_config(self) -> None:
+        """Validate that required configuration is present for the selected provider."""
 
         match self.llm_provider:
             case LLMProvider.AZURE_OPENAI:
-                endpoint = self.azure_openai_endpoint
-                key = self.azure_openai_key
-                
-                # Check task secrets if not found in settings
-                if not endpoint and task_secrets:
-                    endpoint = task_secrets.get("AZURE_OPENAI_ENDPOINT")
-                if not key and task_secrets:
-                    key = task_secrets.get("AZURE_OPENAI_KEY")
-                
-                if not endpoint or not key:
+                if not self.azure_openai_endpoint or not self.azure_openai_key:
                     raise ValueError(
-                        "Azure OpenAI requires AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_KEY. "
-                        "Set these in your project .env file or task-specific .env file."
+                        "Azure OpenAI requires AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_KEY environment variables"
                     )
-                    
             case LLMProvider.OPENAI:
-                api_key = self.openai_api_key
-                if not api_key and task_secrets:
-                    api_key = task_secrets.get("OPENAI_API_KEY")
-                    
-                if not api_key:
-                    raise ValueError(
-                        "OpenAI requires OPENAI_API_KEY. "
-                        "Set this in your project .env file or task-specific .env file."
-                    )
-                    
+                if not self.openai_api_key:
+                    raise ValueError("OpenAI requires OPENAI_API_KEY environment variable")
             case LLMProvider.ANTHROPIC:
-                api_key = self.anthropic_api_key
-                if not api_key and task_secrets:
-                    api_key = task_secrets.get("ANTHROPIC_API_KEY")
-                    
-                if not api_key:
-                    raise ValueError(
-                        "Anthropic requires ANTHROPIC_API_KEY. "
-                        "Set this in your project .env file or task-specific .env file."
-                    )
-                    
+                if not self.anthropic_api_key:
+                    raise ValueError("Anthropic requires ANTHROPIC_API_KEY environment variable")
             case LLMProvider.GOOGLE_GEMINI:
-                api_key = self.google_api_key
-                if not api_key and task_secrets:
-                    api_key = task_secrets.get("GOOGLE_API_KEY")
-                    
-                if not api_key:
-                    raise ValueError(
-                        "Google Gemini requires GOOGLE_API_KEY. "
-                        "Set this in your project .env file or task-specific .env file."
-                    )
-                    
+                if not self.google_api_key:
+                    raise ValueError("Google Gemini requires GOOGLE_API_KEY environment variable")
             case LLMProvider.DEEPSEEK:
-                api_key = self.deepseek_api_key
-                if not api_key and task_secrets:
-                    api_key = task_secrets.get("DEEPSEEK_API_KEY")
-                    
-                if not api_key:
-                    raise ValueError(
-                        "DeepSeek requires DEEPSEEK_API_KEY. "
-                        "Set this in your project .env file or task-specific .env file."
-                    )
-                    
+                if not self.deepseek_api_key:
+                    raise ValueError("DeepSeek requires DEEPSEEK_API_KEY environment variable")
             case _:
                 # Ollama doesn't require API key validation as it's typically local
                 pass

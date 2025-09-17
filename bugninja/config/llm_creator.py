@@ -5,7 +5,7 @@ This module provides unified functions for creating LLM models,
 eliminating duplication across provider-specific creation functions.
 """
 
-from typing import Any, Dict, Optional
+from typing import Optional
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
@@ -71,14 +71,12 @@ def create_provider_model(
 def create_provider_model_from_settings(
     temperature: Optional[float] = None,
     settings: Optional[BugninjaSettings] = None,
-    task_secrets: Optional[Dict[str, Any]] = None,
 ) -> BaseChatModel:
     """Create LLM model using provider from settings.
 
     Args:
         temperature: Optional temperature override
         settings: Optional settings instance (uses default if None)
-        task_secrets: Optional task-specific secrets for provider credentials
 
     Returns:
         Configured LLM model instance
@@ -91,8 +89,8 @@ def create_provider_model_from_settings(
     if settings is None:
         settings = ConfigurationFactory.get_settings()
 
-    # Validate provider configuration with task secrets
-    settings._validate_provider_config(task_secrets)
+    # Validate provider configuration
+    settings._validate_provider_config()
 
     # Create model using provider from settings
     return create_provider_model(
