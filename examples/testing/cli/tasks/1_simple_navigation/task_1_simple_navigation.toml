@@ -17,6 +17,6 @@ headless = false
 [metadata]
 task_id = "ln70dwbp4l8g8bxzoafsv75b"
 created_date = "2025-09-14T12:44:24.995366+00:00Z"
-latest_run_path = "/home/arathus/Quino/bugninja-experiment/tasks/1_simple_navigation/traversals/traverse_20250915_115042.json"
+latest_run_path = "/home/arathus/Quino/bugninja-experiment/examples/testing/cli/tasks/1_simple_navigation/traversals/traverse_20250917_165254_iqb5h6k1rhev6j60vmyuog55.json"
 latest_run_status = "success"
-latest_run_timestamp = "2025-09-15T09:50:42.515871+00:00"
+latest_run_timestamp = "2025-09-17T14:54:41.481430+00:00"

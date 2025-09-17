@@ -34,6 +34,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
+from bugninja_cli.utils.completion import complete_directory_paths
 from bugninja_cli.utils.initialization import (
     create_env_template,
     create_project_directories,
@@ -65,6 +66,7 @@ console = Console()
     type=str,
     help="Path to the screenshots directory",
     default="./screenshots",
+    shell_complete=complete_directory_paths,
 )
 @click.option(
     "--tasks-dir",
@@ -74,6 +76,7 @@ console = Console()
     type=str,
     help="Path to the tasks directory",
     default="./tasks",
+    shell_complete=complete_directory_paths,
 )
 @click.option(
     "--traversals-dir",
@@ -83,6 +86,7 @@ console = Console()
     type=str,
     help="Path to the traversals directory",
     default="./traversals",
+    shell_complete=complete_directory_paths,
 )
 def init(
     project_name: str,

@@ -38,6 +38,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
+from bugninja_cli.utils.completion import complete_boolean_values, complete_task_names
 from bugninja_cli.utils.project_validator import (
     display_project_info,
     require_bugninja_project,
@@ -69,6 +70,7 @@ console = Console()
     required=False,
     type=str,
     help="Runs specific task with the given ID",
+    shell_complete=complete_task_names,
 )
 # @click.option(
 #     "-mt",
@@ -91,6 +93,7 @@ console = Console()
     flag_value=True,
     default=False,
     help="Enable Bugninja logging (true/false)",
+    shell_complete=complete_boolean_values,
 )
 @click.option(
     "--info",
