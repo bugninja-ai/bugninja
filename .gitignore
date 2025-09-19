@@ -276,8 +276,8 @@ graph.html
 data_dir
 user_data_dir
 logs
-/screenshots
-/traversals
+screenshots
+traversals
 /tasks
 /bugninja.toml
 /BUGNINJA_README.md

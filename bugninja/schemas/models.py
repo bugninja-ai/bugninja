@@ -26,7 +26,7 @@ task = BugninjaTask(
 # Create configuration with defaults
 config = BugninjaConfig(
     headless=True,
-    llm_temperature=0.1
+    llm_temperature=0.0
 )
 ```
 """
@@ -482,7 +482,7 @@ class BugninjaConfig(BaseModel):
 
         # Advanced configuration
         config = BugninjaConfig(
-            llm_temperature=0.1,
+            llm_temperature=0.0,
             headless=True,
             viewport_width=1920,
             viewport_height=1080,

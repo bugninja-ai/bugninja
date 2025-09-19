@@ -89,6 +89,9 @@ def create_provider_model_from_settings(
     if settings is None:
         settings = ConfigurationFactory.get_settings()
 
+    # Validate provider configuration
+    settings._validate_provider_config()
+
     # Create model using provider from settings
     return create_provider_model(
         provider=settings.llm_provider,

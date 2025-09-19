@@ -161,7 +161,6 @@ class BugninjaClient:
         self,
         config: Optional[BugninjaConfig] = None,
         event_manager: Optional[EventPublisherManager] = None,
-        background: bool = False,
         llm_config: Optional[LLMConfig] = None,
     ) -> None:
         """Initialize Bugninja client with optional configuration.
@@ -170,7 +169,6 @@ class BugninjaClient:
             config (Optional[BugninjaConfig]): Optional configuration object. If not provided, uses
                    default configuration with environment variable support
             event_manager (Optional[EventPublisherManager]): Optional event publisher manager for tracking
-            background (bool): Whether to run in background mode (disables console logging and enforces headless mode)
             llm_config (Optional[LLMConfig]): Optional LLM configuration to use (overrides config default)
 
         Raises:
@@ -180,13 +178,6 @@ class BugninjaClient:
             # Use provided config or create default
             # BugninjaConfig validation happens automatically during instantiation
             self.config = config or BugninjaConfig()
-
-            # Enforce headless mode when background=True
-            if background:
-                self.config.headless = True
-
-            # Store background flag
-            self.background = background
 
             # Store LLM configuration (use provided or create from settings)
             self._llm_config = llm_config
@@ -619,6 +610,7 @@ class BugninjaClient:
 
             # Create and run agent with task parameters
             agent = NavigatorAgent(
+                bugninja_config=self.config,
                 run_id=task.run_id,
                 task=task.description,
                 llm=llm,
@@ -783,6 +775,7 @@ class BugninjaClient:
 
                 # Create agent (isolation happens in _before_run_hook)
                 agent = NavigatorAgent(
+                    bugninja_config=self.config,
                     run_id=task.run_id,
                     task=task.description,
                     llm=self._create_llm(temperature=self.config.llm_temperature),
@@ -950,6 +943,7 @@ class BugninjaClient:
             # Convert Path to string for ReplicatorRun
             traversal_source = str(session) if isinstance(session, Path) else session
             replicator = ReplicatorRun(
+                bugninja_config=self.config,
                 traversal_source=traversal_source,
                 pause_after_each_step=pause_after_each_step,
                 sleep_after_actions=1.0,  # Default sleep time
@@ -1171,6 +1165,7 @@ class BugninjaClient:
                 # Convert Path to string for ReplicatorRun
                 traversal_source = str(session) if isinstance(session, Path) else session
                 replicator = ReplicatorRun(
+                    bugninja_config=self.config,
                     traversal_source=traversal_source,
                     pause_after_each_step=pause_after_each_step,
                     sleep_after_actions=1.0,  # Default sleep time
