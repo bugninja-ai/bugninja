@@ -66,8 +66,7 @@ SELECTOR_ORIENTED_ACTIONS: List[str] = [
 ALTERNATIVE_XPATH_SELECTORS_KEY: str = "alternative_relative_xpaths"
 DOM_ELEMENT_DATA_KEY: str = "dom_element_data"
 BRAINSTATE_IDX_DATA_KEY: str = "idx_in_brainstate"
-
-GO_TO_URL_IDENTIFIER: str = "go_to_url"
+NAVIGATION_IDENTIFIERS = ["go_back", "go_forward", "go_to_url"]
 
 
 class BugninjaAgentBase(Agent, ABC):

@@ -76,7 +76,7 @@ bugninja replay --task login_test --healing
 
 ### Using pip (Recommended)
 ```bash
-pip install bugninja
+pip install --user .
 ```
 
 ### Using uv (Global Install)
@@ -92,6 +92,28 @@ uv sync
 source .venv/bin/activate
 bugninja --help
 # ... etc
+```
+
+### Install CLI tool with autocompletion
+
+```bash
+pipx install .
+```
+
+To enable autocomplete:
+
+```bash
+# bash
+echo 'eval "$(_BUGNINJA_COMPLETE=bash_source bugninja)"' >> ~/.bashrc
+
+#zsh
+echo 'eval "$(_BUGNINJA_COMPLETE=bash_source bugninja)"' >> ~/.zshrc
+```
+
+For `Fish` add this to `~/.config/fish/completions/foo-bar.fish`
+
+```
+_BUGNINJA_COMPLETE=fish_source bugninja | source
 ```
 
 ### Verify Installation

@@ -17,9 +17,11 @@ from browser_use.controller.registry.views import ActionModel  # type: ignore
 from cuid2 import Cuid as CUID
 from playwright._impl._api_structures import ViewportSize
 from playwright.async_api import CDPSession
-from rich import print as rich_print
 
-from bugninja.agents.bugninja_agent_base import GO_TO_URL_IDENTIFIER, BugninjaAgentBase
+from bugninja.agents.bugninja_agent_base import (
+    NAVIGATION_IDENTIFIERS,
+    BugninjaAgentBase,
+)
 from bugninja.config.video_recording import VideoRecordingConfig
 from bugninja.prompts.prompt_factory import (
     BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
@@ -285,9 +287,6 @@ class NavigatorAgent(BugninjaAgentBase):
             browser_state_summary=browser_state_summary,
         )
 
-        rich_print("Current brain state:")
-        rich_print(model_output.current_state)
-
         # Store extended actions for hook access
         self.current_step_extended_actions = extended_taken_actions
 
@@ -329,7 +328,7 @@ class NavigatorAgent(BugninjaAgentBase):
         ]
 
         # ? we take screenshot of every action BEFORE it happens except the "go_to_url" since it has to be taken after
-        if extended_action.get_action_type() != GO_TO_URL_IDENTIFIER:
+        if extended_action.get_action_type() not in NAVIGATION_IDENTIFIERS:
             #! taking appropriate screenshot before each action
             await self.handle_taking_screenshot_for_action(extended_action=extended_action)
 
@@ -357,7 +356,7 @@ class NavigatorAgent(BugninjaAgentBase):
         ]
 
         # ? we take screenshot of `go_to_url` action after it happens since before it the page is not loaded yet
-        if extended_action.get_action_type() == GO_TO_URL_IDENTIFIER:
+        if extended_action.get_action_type() in NAVIGATION_IDENTIFIERS:
             #! taking appropriate screenshot before each action
             await self.handle_taking_screenshot_for_action(extended_action=extended_action)
 

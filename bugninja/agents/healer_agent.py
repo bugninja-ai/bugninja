@@ -9,7 +9,10 @@ from browser_use.browser.views import BrowserStateSummary  # type: ignore
 from browser_use.controller.registry.views import ActionModel  # type: ignore
 from cuid2 import Cuid as CUID
 
-from bugninja.agents.bugninja_agent_base import GO_TO_URL_IDENTIFIER, BugninjaAgentBase
+from bugninja.agents.bugninja_agent_base import (
+    NAVIGATION_IDENTIFIERS,
+    BugninjaAgentBase,
+)
 from bugninja.prompts.prompt_factory import (
     BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
     HEALDER_AGENT_EXTRA_SYSTEM_PROMPT,
@@ -244,7 +247,7 @@ class HealerAgent(BugninjaAgentBase):
         ]
 
         # ? we take screenshot of every action BEFORE it happens except the "go_to_url" since it has to be taken after
-        if extended_action.get_action_type() != GO_TO_URL_IDENTIFIER:
+        if extended_action.get_action_type() not in NAVIGATION_IDENTIFIERS:
             #! taking appropriate screenshot before each action
             await self.handle_taking_screenshot_for_action(extended_action=extended_action)
 
@@ -272,7 +275,7 @@ class HealerAgent(BugninjaAgentBase):
         ]
 
         # ? we take screenshot of `go_to_url` action after it happens since before it the page is not loaded yet
-        if extended_action.get_action_type() == GO_TO_URL_IDENTIFIER:
+        if extended_action.get_action_type() in NAVIGATION_IDENTIFIERS:
             #! taking appropriate screenshot before each action
             await self.handle_taking_screenshot_for_action(extended_action=extended_action)
 
