@@ -34,8 +34,10 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
+from bugninja_cli.utils.completion import complete_directory_paths
 from bugninja_cli.utils.initialization import (
     create_env_template,
+    create_gitignore_template,
     create_project_directories,
     create_readme_template,
     get_default_config_template,
@@ -65,6 +67,7 @@ console = Console()
     type=str,
     help="Path to the screenshots directory",
     default="./screenshots",
+    shell_complete=complete_directory_paths,
 )
 @click.option(
     "--tasks-dir",
@@ -74,6 +77,7 @@ console = Console()
     type=str,
     help="Path to the tasks directory",
     default="./tasks",
+    shell_complete=complete_directory_paths,
 )
 @click.option(
     "--traversals-dir",
@@ -83,6 +87,7 @@ console = Console()
     type=str,
     help="Path to the traversals directory",
     default="./traversals",
+    shell_complete=complete_directory_paths,
 )
 def init(
     project_name: str,
@@ -95,7 +100,7 @@ def init(
     This command creates a **complete Bugninja project structure** including:
     - project configuration file (bugninja.toml)
     - environment template (.env.example)
-    - project directories (traversals, screenshots, tasks)
+    - tasks directory for task definitions
     - README documentation
 
     Args:
@@ -159,6 +164,10 @@ def init(
         env_file = current_dir / ".env.example"
         create_env_template(env_file)
 
+        # Create .gitignore
+        gitignore_file = current_dir / ".gitignore"
+        create_gitignore_template(gitignore_file)
+
         # Create README
         readme_file = current_dir / "BUGNINJA_README.md"
         create_readme_template(readme_file, project_name)
@@ -169,13 +178,12 @@ def init(
         success_text.append(f"Project '{project_name}' initialized successfully!\n\n", style="bold")
 
         success_text.append("📁 Created directories:\n", style="bold")
-        success_text.append(f"  • {traversals_dir}\n", style="blue")
-        success_text.append(f"  • {screenshots_dir}\n", style="blue")
         success_text.append(f"  • {tasks_dir}\n\n", style="blue")
 
         success_text.append("📄 Created files:\n", style="bold")
         success_text.append("  • bugninja.toml (project configuration)\n", style="blue")
         success_text.append("  • .env.example (environment template)\n", style="blue")
+        success_text.append("  • .gitignore (git exclusions)\n", style="blue")
         success_text.append("  • BUGNINJA_README.md (project documentation)\n\n", style="blue")
 
         success_text.append("🚀 Next steps:\n", style="bold")

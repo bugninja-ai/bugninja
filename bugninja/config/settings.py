@@ -39,6 +39,12 @@ class BugninjaSettings(BaseSettings):
     - Multi-LLM provider support
     """
 
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "case_sensitive": False,
+    }
+
     # LLM Provider Selection (from TOML)
     llm_provider: LLMProvider = Field(
         default=LLMProvider.AZURE_OPENAI, description="LLM provider to use for browser automation"
@@ -171,8 +177,8 @@ class BugninjaSettings(BaseSettings):
         return v
 
     def model_post_init(self, __context: Any) -> None:
-        """Post-initialization validation for provider-specific requirements."""
-        self._validate_provider_config()
+        """Post-initialization setup (validation moved to lazy validation)."""
+        pass
 
     def _validate_provider_config(self) -> None:
         """Validate that required configuration is present for the selected provider."""

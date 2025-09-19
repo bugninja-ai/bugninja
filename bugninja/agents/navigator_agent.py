@@ -15,15 +15,21 @@ from browser_use.browser.session import Page  # type: ignore
 from browser_use.browser.views import BrowserStateSummary  # type: ignore
 from browser_use.controller.registry.views import ActionModel  # type: ignore
 from cuid2 import Cuid as CUID
+from playwright._impl._api_structures import ViewportSize
 from playwright.async_api import CDPSession
 
-from bugninja.agents.bugninja_agent_base import BugninjaAgentBase
+from bugninja.agents.bugninja_agent_base import (
+    NAVIGATION_IDENTIFIERS,
+    BugninjaAgentBase,
+)
 from bugninja.config.video_recording import VideoRecordingConfig
 from bugninja.prompts.prompt_factory import (
     BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
 )
+from bugninja.schemas.models import BugninjaConfig
 from bugninja.schemas.pipeline import (
     BugninjaBrowserConfig,
+    BugninjaExtendedAction,
     Traversal,
 )
 from bugninja.utils.logging_config import logger
@@ -86,6 +92,7 @@ class NavigatorAgent(BugninjaAgentBase):
         self,
         *args,
         task: str,
+        bugninja_config: BugninjaConfig,
         run_id: str | None = None,
         override_system_message: str = BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
         extra_instructions: List[str] = [],
@@ -112,6 +119,7 @@ class NavigatorAgent(BugninjaAgentBase):
         super().__init__(
             *args,
             run_id=run_id,
+            bugninja_config=bugninja_config,
             video_recording_config=video_recording_config,
             override_system_message=override_system_message,
             extend_planner_system_message=extend_planner_system_message,
@@ -315,29 +323,42 @@ class NavigatorAgent(BugninjaAgentBase):
             msg=f"🪝 BEFORE-Action hook called for action #{len(self.agent_taken_actions)+1} in traversal"
         )
 
-        #! taking appropriate screenshot before each action
-        await self.handle_taking_screenshot_for_action(
-            extended_action=self.current_step_extended_actions[action_idx_in_step]
-        )
+        extended_action: BugninjaExtendedAction = self.current_step_extended_actions[
+            action_idx_in_step
+        ]
+
+        # ? we take screenshot of every action BEFORE it happens except the "go_to_url" since it has to be taken after
+        if extended_action.get_action_type() not in NAVIGATION_IDENTIFIERS:
+            #! taking appropriate screenshot before each action
+            await self.handle_taking_screenshot_for_action(extended_action=extended_action)
 
     async def _after_action_hook(
         self,
         action_idx_in_step: int,
         action: ActionModel,
     ) -> None:
-        """Capture screenshot after action execution for navigation recording.
+        """Capture screenshot after action execution for debugging.
 
         This hook takes a screenshot after each action is completed,
-        highlighting the element that was interacted with for navigation
-        recording and analysis purposes.
+        highlighting the element that was interacted with for debugging
+        and analysis purposes.
 
         Args:
             action (ActionModel): The action that was just executed
         """
 
         logger.info(
-            msg=f"🪝 AFTER-Action hook called for action #{len(self.agent_taken_actions)+1} in traversal"
+            msg=f"🪝 AFTER-Action hook called for action #{len(self.agent_taken_actions)+1}"
         )
+
+        extended_action: BugninjaExtendedAction = self.current_step_extended_actions[
+            action_idx_in_step
+        ]
+
+        # ? we take screenshot of `go_to_url` action after it happens since before it the page is not loaded yet
+        if extended_action.get_action_type() in NAVIGATION_IDENTIFIERS:
+            #! taking appropriate screenshot before each action
+            await self.handle_taking_screenshot_for_action(extended_action=extended_action)
 
         # ? adding the taken action to the list of agent actions
         self.agent_taken_actions.append(self.current_step_extended_actions[action_idx_in_step])
@@ -412,7 +433,11 @@ class NavigatorAgent(BugninjaAgentBase):
             extra_instructions=self.extra_instructions,
             # TODO! saving here does not seem proper
             browser_config=BugninjaBrowserConfig.from_browser_profile(
-                self.browser_session.browser_profile
+                self.browser_session.browser_profile,
+                window_size=ViewportSize(
+                    width=self.bugninja_config.viewport_width,
+                    height=self.bugninja_config.viewport_height,
+                ),
             ),
             secrets=self.sensitive_data,
             brain_states=self.agent_brain_states,

@@ -23,10 +23,10 @@ from bugninja_cli.utils.task_executor import TaskExecutor
 executor = TaskExecutor(project_root)
 
 # Execute single task
-result = await executor.execute_task(task_info, headless=True)
+result = await executor.execute_task(task_info)
 
 # Execute multiple tasks in parallel
-results = await executor.execute_multiple_tasks(task_infos, headless=True)
+results = await executor.execute_multiple_tasks(task_infos)
 ```
 """
 
@@ -71,7 +71,6 @@ class TaskExecutor:
 
         Args:
             project_root (Path): Root directory of the Bugninja project
-            headless (bool): Whether to run in headless mode (default: True)
             enable_logging (bool): Whether to enable Bugninja logging (default: False)
         """
         self.project_root = project_root
@@ -538,7 +537,6 @@ class TaskExecutor:
 
         Args:
             task_info (TaskInfo): Task information object
-            headless (bool): Whether to run in headless mode (overrides TOML setting)
 
         Returns:
             TaskExecutionResult: Execution result
@@ -625,7 +623,6 @@ class TaskExecutor:
 
         Args:
             task_infos (List[TaskInfo]): List of task information objects
-            headless (bool): Whether to run in headless mode
 
         Returns:
             List[TaskExecutionResult]: List of execution results
