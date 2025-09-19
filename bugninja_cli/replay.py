@@ -38,6 +38,10 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
+from bugninja_cli.utils.completion import (
+    complete_executed_tasks,
+    complete_traversal_ids,
+)
 from bugninja_cli.utils.project_validator import (
     display_project_info,
     require_bugninja_project,
@@ -64,6 +68,7 @@ console = Console()
     required=False,
     type=str,
     help="Replay latest traversal for the specified task name",
+    shell_complete=complete_executed_tasks,
 )
 @click.option(
     "-tr",
@@ -72,6 +77,7 @@ console = Console()
     required=False,
     type=str,
     help="Replay specific traversal by its run_id",
+    shell_complete=complete_traversal_ids,
 )
 # @click.option(
 #     "-mt",

@@ -9,13 +9,17 @@ from browser_use.browser.views import BrowserStateSummary  # type: ignore
 from browser_use.controller.registry.views import ActionModel  # type: ignore
 from cuid2 import Cuid as CUID
 
-from bugninja.agents.bugninja_agent_base import BugninjaAgentBase
+from bugninja.agents.bugninja_agent_base import (
+    NAVIGATION_IDENTIFIERS,
+    BugninjaAgentBase,
+)
 from bugninja.prompts.prompt_factory import (
     BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
     HEALDER_AGENT_EXTRA_SYSTEM_PROMPT,
     get_passed_brainstates_related_prompt,
 )
-from bugninja.schemas.pipeline import BugninjaBrainState
+from bugninja.schemas.models import BugninjaConfig
+from bugninja.schemas.pipeline import BugninjaBrainState, BugninjaExtendedAction
 from bugninja.utils.logging_config import logger
 from bugninja.utils.screenshot_manager import ScreenshotManager
 
@@ -70,6 +74,7 @@ class HealerAgent(BugninjaAgentBase):
         self,
         *args,
         task: str,
+        bugninja_config: BugninjaConfig,
         parent_run_id: Optional[str] = None,
         extra_instructions: List[str] = [],
         override_system_message: str = BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
@@ -99,6 +104,7 @@ class HealerAgent(BugninjaAgentBase):
 
         super().__init__(
             *args,
+            bugninja_config=bugninja_config,
             override_system_message=override_system_message,
             extend_system_message=system_message_to_extend_by
             + f"\n\n{HEALDER_AGENT_EXTRA_SYSTEM_PROMPT}",
@@ -236,10 +242,14 @@ class HealerAgent(BugninjaAgentBase):
             msg=f"🪝 BEFORE-Action hook called for action #{len(self.agent_taken_actions)+1} in traversal"
         )
 
-        #! taking appropriate screenshot before each action
-        await self.handle_taking_screenshot_for_action(
-            extended_action=self.current_step_extended_actions[action_idx_in_step]
-        )
+        extended_action: BugninjaExtendedAction = self.current_step_extended_actions[
+            action_idx_in_step
+        ]
+
+        # ? we take screenshot of every action BEFORE it happens except the "go_to_url" since it has to be taken after
+        if extended_action.get_action_type() not in NAVIGATION_IDENTIFIERS:
+            #! taking appropriate screenshot before each action
+            await self.handle_taking_screenshot_for_action(extended_action=extended_action)
 
     async def _after_action_hook(
         self,
@@ -259,6 +269,15 @@ class HealerAgent(BugninjaAgentBase):
         logger.info(
             msg=f"🪝 AFTER-Action hook called for action #{len(self.agent_taken_actions)+1}"
         )
+
+        extended_action: BugninjaExtendedAction = self.current_step_extended_actions[
+            action_idx_in_step
+        ]
+
+        # ? we take screenshot of `go_to_url` action after it happens since before it the page is not loaded yet
+        if extended_action.get_action_type() in NAVIGATION_IDENTIFIERS:
+            #! taking appropriate screenshot before each action
+            await self.handle_taking_screenshot_for_action(extended_action=extended_action)
 
         # ? adding the taken action to the list of agent actions
         self.agent_taken_actions.append(self.current_step_extended_actions[action_idx_in_step])

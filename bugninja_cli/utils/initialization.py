@@ -154,11 +154,10 @@ def validate_project_structure(project_root: Path) -> bool:
 
 
 def create_project_directories(project_config: Dict[str, Any]) -> None:
-    """Create all required project directories.
+    """Create required project directories.
 
-    This function creates the necessary directory structure for a Bugninja project
-    based on the configuration settings. It creates directories for traversals,
-    screenshots, and tasks.
+    This function creates the necessary directory structure for a Bugninja project.
+    Only creates the tasks directory as screenshots and traversals are now task-specific.
 
     Args:
         project_config (Dict[str, Any]): Configuration dictionary with path information
@@ -172,28 +171,17 @@ def create_project_directories(project_config: Dict[str, Any]) -> None:
 
         config = {
             "paths": {
-                "traversals_dir": "./traversals",
-                "screenshots_dir": "./screenshots",
                 "tasks_dir": "./tasks"
             }
         }
         create_project_directories(config)
         ```
     """
-    directories = []
-
-    # Extract directory paths from config
+    # Only create tasks directory - screenshots and traversals are task-specific
     paths = project_config.get("paths", {})
-    directories.extend(
-        [
-            Path(paths.get("traversals_dir", "./traversals")),
-            Path(paths.get("screenshots_dir", "./screenshots")),
-            Path(paths.get("tasks_dir", "./tasks")),
-        ]
-    )
+    tasks_dir = Path(paths.get("tasks_dir", "./tasks"))
 
-    # Create directories
-    ensure_directories_exist(directories)
+    ensure_directories_exist([tasks_dir])
 
 
 def ensure_directories_exist(directories: List[Path]) -> None:
@@ -330,32 +318,8 @@ def get_default_config_template(project_name: str, **overrides: Dict[str, Any]) 
         },
         "development": {"debug_mode": False},
         "paths": {
-            "traversals_dir": "./traversals",
-            "screenshots_dir": "./screenshots",
             "tasks_dir": "./tasks",
         },
-        "browser": {
-            "viewport_width": 1920,
-            "viewport_height": 1080,
-            "user_agent": "",
-            "device_scale_factor": 0.0,
-            "timeout": 30000,
-        },
-        "agent": {
-            "max_steps": 100,
-            "planner_interval": 5,
-            "enable_vision": True,
-            "enable_memory": True,
-            "wait_between_actions": 1,
-        },
-        "replicator": {
-            "sleep_after_actions": 1.0,
-            "pause_after_each_step": True,
-            "fail_on_unimplemented_action": True,
-            "max_retries": 2,
-            "retry_delay": 0.5,
-        },
-        "screenshot": {"format": "png"},
         "events": {"publishers": ["null"]},
     }
 
@@ -390,7 +354,8 @@ def write_config_file(config: Dict[str, Any], path: Path) -> None:
     """
     # Add header comment
     header = """# Bugninja Configuration
-# This file contains all non-sensitive project configuration
+# This file contains global project configuration (LLM, logging, etc.)
+# Task-specific settings (browser, agent, etc.) are in individual task_*.toml files
 # Sensitive data (API keys, passwords) should be stored in .env file
 
 """
@@ -555,6 +520,11 @@ def create_env_template(path: Path) -> None:
 # Options: azure_openai, openai, anthropic, google_gemini, deepseek, ollama
 LLM_PROVIDER=azure_openai
 
+# Name of the LLM model to use
+LLM_MODEL=gpt-4.1
+# Temperature for LLM responses (0.0 = deterministic, 1.0 = creative)
+LLM_TEMPERATURE=0.0
+
 # Azure OpenAI Configuration (required if LLM_PROVIDER=azure_openai)
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 AZURE_OPENAI_KEY=your-api-key-here
@@ -585,6 +555,41 @@ AZURE_OPENAI_KEY=your-api-key-here
         f.write(env_content)
 
 
+def create_gitignore_template(path: Path) -> None:
+    """Create a .gitignore template for the project.
+
+    This function creates a .gitignore file with appropriate exclusions
+    for Bugninja projects including screenshots, traversals, and sensitive files.
+
+    Args:
+        path (Path): Path to create the .gitignore file
+
+    Example:
+        ```python
+        from bugninja_cli.utils.initialization import create_gitignore_template
+
+        create_gitignore_template(Path("./.gitignore"))
+        ```
+    """
+    gitignore_content = """# Bugninja Project .gitignore
+
+# Screenshots from automation runs
+screenshots/
+
+# Traversal files (recorded browser sessions)
+traversals/
+
+# Environment files with sensitive data
+*.env
+
+# Bugninja README (auto-generated)
+BUGNINJA_README.md
+"""
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(gitignore_content)
+
+
 def create_readme_template(path: Path, project_name: str) -> None:
     """Create a README template for the project.
 
@@ -608,26 +613,23 @@ This is a Bugninja browser automation project.
 
 ## Project Structure
 
-- `bugninja.toml` - Project configuration
+- `bugninja.toml` - Global project configuration (LLM, logging, etc.)
 - `.env` - Sensitive configuration (API keys, etc.)
-- `traversals/` - Recorded browser sessions
-- `screenshots/` - Screenshots from automation runs
-- `tasks/` - BugninjaTask definitions and descriptions
+- `tasks/` - Task definitions and configurations
+  - Each task has its own `screenshots/` and `traversals/` subdirectories
+  - Task-specific settings in `task_*.toml` files
 
 ## Getting Started
 
 1. Copy `.env.example` to `.env` and fill in your API keys
-2. Define your tasks in the `tasks/` directory
-3. Run automation with `bugninja run`
+2. Create tasks with `bugninja add <task-name>`
+3. Run automation with `bugninja run --task <task-name>`
 4. Replay sessions with `bugninja replay`
 
 ## Configuration
 
-Edit `bugninja.toml` to customize:
-- LLM settings
-- Browser configuration
-- Logging options
-- Directory paths
+- **Global settings**: Edit `bugninja.toml` for LLM, logging, and project settings
+- **Task settings**: Edit individual `task_*.toml` files for browser, agent, and run-specific settings
 
 For more information, see the [Bugninja documentation](https://github.com/bugninja/bugninja).
 """
