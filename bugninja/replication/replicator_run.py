@@ -37,6 +37,7 @@ from bugninja.replication.replicator_navigation import (
     ReplicatorNavigator,
     get_user_input,
 )
+from bugninja.schemas.models import BugninjaConfig
 from bugninja.schemas.pipeline import (
     BugninjaBrainState,
     BugninjaExtendedAction,
@@ -96,6 +97,7 @@ class ReplicatorRun(ReplicatorNavigator):
 
     def __init__(
         self,
+        bugninja_config: BugninjaConfig,
         traversal_source: Union[str, Traversal],
         run_id: Optional[str] = None,
         fail_on_unimplemented_action: bool = False,
@@ -137,6 +139,8 @@ class ReplicatorRun(ReplicatorNavigator):
             )
             ```
         """
+
+        self.config = bugninja_config
 
         super().__init__(
             traversal_source=traversal_source,
@@ -273,6 +277,7 @@ class ReplicatorRun(ReplicatorNavigator):
             logger.bugninja_log("🩹 Using default LLM configuration for healing")
 
         agent = HealerAgent(
+            bugninja_config=self.config,
             task=self.replay_traversal.test_case,
             llm=llm,
             browser_session=self.browser_session,

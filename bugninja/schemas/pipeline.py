@@ -47,6 +47,7 @@ class BugninjaBrowserConfig(BaseModel):
     for browser automation tasks.
     """
 
+    # TODO! this is a monkeypatch optionality because of browseruse bullshit, has to be re-set to strict
     viewport: ViewportSize = Field(
         default=ViewportSize(width=1920, height=1080),
         description="Viewport dimensions for browser automation",
@@ -77,7 +78,9 @@ class BugninjaBrowserConfig(BaseModel):
     allowed_domains: Optional[List[str]] = Field(default=None)
 
     @staticmethod
-    def from_browser_profile(browser_profile: BrowserProfile) -> "BugninjaBrowserConfig":
+    def from_browser_profile(
+        browser_profile: BrowserProfile, window_size: ViewportSize
+    ) -> "BugninjaBrowserConfig":
         """Convert external BrowserProfile to BugninjaBrowserConfig.
 
         Args:
@@ -96,12 +99,14 @@ class BugninjaBrowserConfig(BaseModel):
                 else browser_profile.user_data_dir.as_posix()
             )
 
+        viewport_to_add = browser_profile.window_size or window_size
+
         return BugninjaBrowserConfig(
             channel=browser_profile.channel,
             user_data_dir=user_data_dir_str,
             user_agent=browser_profile.user_agent,
-            viewport=browser_profile.window_size,  #! hard monkeypatch bacause of browseruse bullshit
-            window_size=browser_profile.window_size,
+            viewport=viewport_to_add,  #! hard monkeypatch bacause of browseruse bullshit
+            window_size=viewport_to_add,
             device_scale_factor=browser_profile.device_scale_factor,
             color_scheme=browser_profile.color_scheme,
             accept_downloads=browser_profile.accept_downloads,

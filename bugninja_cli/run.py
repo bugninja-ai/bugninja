@@ -81,12 +81,6 @@ console = Console()
 #     multiple=True,
 #     help="Runs multiple tasks with the given IDs",
 # )
-# @click.option(
-#     "--headless",
-#     is_flag=True,
-#     default=True,
-#     help="Run browser in headless mode (default: True)",
-# )
 @click.option(
     "--enable-logging",
     is_flag=False,
@@ -105,7 +99,6 @@ def run(
     # all_flag: bool,
     task: str,
     # multiple: List[str],
-    # headless: bool,
     enable_logging: bool,
     info: bool,
     project_root: Path,
@@ -318,7 +311,6 @@ async def _run_single_task(
 #         executor (TaskExecutor): Task executor instance
 #         task_manager (TaskManager): Task manager instance
 #         task_identifiers (List[str]): List of task identifiers
-#         headless (bool): Whether to run in headless mode
 #     """
 #     # Find all tasks
 #     task_infos = []
@@ -414,7 +406,6 @@ async def _run_single_task(
 #     Args:
 #         executor (TaskExecutor): Task executor instance
 #         task_manager (TaskManager): Task manager instance
-#         headless (bool): Whether to run in headless mode
 #     """
 #     # Get all tasks
 #     task_infos = task_manager.list_tasks()

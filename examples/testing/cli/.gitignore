@@ -1,0 +1,14 @@
+# Bugninja Project .gitignore
+
+# Screenshots from automation runs
+screenshots/
+
+# Traversal files (recorded browser sessions)
+traversals/
+
+# Environment files with sensitive data
+*.env
+.env.example
+
+# Bugninja README (auto-generated)
+BUGNINJA_README.md

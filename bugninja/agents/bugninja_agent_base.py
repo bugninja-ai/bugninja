@@ -34,6 +34,7 @@ from bugninja.config.llm_config import LLMConfig
 from bugninja.config.video_recording import VideoRecordingConfig
 from bugninja.events import EventPublisherManager
 from bugninja.prompts.prompt_factory import get_extra_instructions_related_prompt
+from bugninja.schemas.models import BugninjaConfig
 from bugninja.schemas.pipeline import BugninjaExtendedAction
 from bugninja.utils.logging_config import logger
 from bugninja.utils.screenshot_manager import ScreenshotManager
@@ -65,6 +66,8 @@ SELECTOR_ORIENTED_ACTIONS: List[str] = [
 ALTERNATIVE_XPATH_SELECTORS_KEY: str = "alternative_relative_xpaths"
 DOM_ELEMENT_DATA_KEY: str = "dom_element_data"
 BRAINSTATE_IDX_DATA_KEY: str = "idx_in_brainstate"
+
+GO_TO_URL_IDENTIFIER: str = "go_to_url"
 
 
 class BugninjaAgentBase(Agent, ABC):
@@ -121,6 +124,7 @@ class BugninjaAgentBase(Agent, ABC):
         self,
         *args,
         task: str,
+        bugninja_config: BugninjaConfig,
         run_id: Optional[str] = None,
         extra_instructions: List[str] = [],
         override_system_message: str | None = None,
@@ -149,6 +153,7 @@ class BugninjaAgentBase(Agent, ABC):
         self.raw_task: str = task
         self.extra_instructions = extra_instructions
         self.video_recording_config = video_recording_config
+        self.bugninja_config = bugninja_config
 
         if extra_instructions:
             extra_instructions_prompt: str = get_extra_instructions_related_prompt(

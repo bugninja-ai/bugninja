@@ -1,5 +1,6 @@
 # Bugninja Configuration
-# This file contains all non-sensitive project configuration
+# This file contains global project configuration (LLM, logging, etc.)
+# Task-specific settings (browser, agent, etc.) are in individual task_*.toml files
 # Sensitive data (API keys, passwords) should be stored in .env file
 
 [project]
@@ -20,33 +21,9 @@ logging_enabled = false
 debug_mode = false
 
 [paths]
+tasks_dir = "./tasks"
 traversals_dir = "./traversals"
 screenshots_dir = "./screenshots"
-tasks_dir = "./tasks"
-
-[browser]
-viewport_width = 1920
-viewport_height = 1080
-user_agent = ""
-device_scale_factor = 0.0
-timeout = 10000
-
-[agent]
-max_steps = 100
-planner_interval = 5
-enable_vision = true
-enable_memory = true
-wait_between_actions = 1
-
-[replicator]
-sleep_after_actions = 1.0
-pause_after_each_step = true
-fail_on_unimplemented_action = false
-max_retries = 2
-retry_delay = 0.5
-
-[screenshot]
-format = "png"
 
 [events]
 publishers = ["null"]
