@@ -16,6 +16,10 @@ This module provides **comprehensive utility functions and classes** for:
 3. **style** - CLI styling and formatting utilities
 4. **task_manager** - Task creation, validation, and management
 5. **task_executor** - Task execution and orchestration
+6. **replay_metadata** - Replay run metadata management
+7. **run_metadata** - AI-navigated run metadata management
+8. **task_lookup** - Task lookup and identification utilities
+9. **result_display** - Result display and formatting utilities
 
 ## Usage Examples
 
@@ -24,6 +28,10 @@ from bugninja_cli.utils.initialization import is_bugninja_project, get_project_r
 from bugninja_cli.utils.project_validator import require_bugninja_project
 from bugninja_cli.utils.task_manager import TaskManager
 from bugninja_cli.utils.task_executor import TaskExecutor
+from bugninja_cli.utils.replay_metadata import update_task_metadata_with_replay
+from bugninja_cli.utils.run_metadata import update_task_metadata_with_ai_run
+from bugninja_cli.utils.task_lookup import get_task_by_identifier
+from bugninja_cli.utils.result_display import display_task_success, display_task_failure
 
 # Check if current directory is a Bugninja project
 if is_bugninja_project():
@@ -45,5 +53,8 @@ task_id = task_manager.create_task("My Task")
 # Execute tasks
 executor = TaskExecutor(config, project_root)
 result = await executor.execute_task(task_info)
+
+# Update replay metadata
+update_task_metadata_with_replay(task_toml_path, traversal_path, result, healing_enabled)
 ```
 """

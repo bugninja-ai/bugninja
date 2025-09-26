@@ -24,6 +24,9 @@ async def secrets() -> None:
     # Execute the task
     result = await BugninjaClient().run_task(task=task)
 
+    if result.error:
+        raise Exception(result.error.message)
+
     if result.traversal:
         rich_print(list(result.traversal.brain_states.values())[-1])
 

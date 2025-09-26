@@ -20,19 +20,22 @@ This module provides a **comprehensive command-line interface** for:
 
 ```bash
 # Initialize a new project
-bugninja init --name my-automation-project
+bugninja init my-automation-project
 
 # Create a new task
-bugninja add --name "Login Flow"
+bugninja add "Login Flow"
 
 # Run a specific task
-bugninja run --task login-flow
+bugninja run login-flow
 
 # Replay a recorded session
 bugninja replay --traversal session_123
 
+# Replay latest traversal for a task
+bugninja replay task-name
+
 # View project statistics
-bugninja stats --list
+bugninja stats
 ```
 
 ## Architecture
@@ -51,8 +54,8 @@ from bugninja_cli.add import add
 from bugninja_cli.init import init
 from bugninja_cli.replay import replay
 from bugninja_cli.run import run
+from bugninja_cli.stats import stats
 
-# from bugninja_cli.stats import stats
 from bugninja_cli.utils.style import MARKDOWN_CONFIG, display_logo
 
 
@@ -72,8 +75,7 @@ bugninja.add_command(init)
 bugninja.add_command(add)
 bugninja.add_command(run)
 bugninja.add_command(replay)
-# TODO! later
-# bugninja.add_command(stats)
+bugninja.add_command(stats)
 
 if __name__ == "__main__":
     bugninja()

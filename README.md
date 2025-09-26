@@ -32,18 +32,18 @@ https://github.com/user-attachments/assets/e574c9a9-15e7-4191-8cf4-bc4ab1cd2693
 ### ✨ Write Tests in Plain English
 ```bash
 # First, initialize your project
-bugninja init --name my_project
+bugninja init my_project
 
 # Add a new test case
-bugninja add
+bugninja add "Login Test"
 
 # This creates a TOML file like:
 # [task]
-# name = "login_test"
+# name = "Login Test"
 # description = "Navigate to login page, enter credentials, and verify dashboard loads"
 
 # Run it with AI
-bugninja run --task login_test
+bugninja run login_test
 ```
 
 ### 🤖 AI-Powered Browser Agent
@@ -57,13 +57,13 @@ Bugninja's intelligent browser agent understands your web application like a hum
 Every test run is automatically recorded as a "traversal" that can be replayed:
 ```bash
 # Record a test session
-bugninja run --task login_test
+bugninja run login_test
 
 # Replay latest traversal for a task
-bugninja replay --task login_test
+bugninja replay login_test
 
 # Self-healing replay fixes broken tests automatically
-bugninja replay --task login_test --healing
+bugninja replay login_test --healing
 ```
 
 ### 🎯 Perfect for Modern E2E Testing
@@ -106,14 +106,14 @@ To enable autocomplete:
 # bash
 echo 'eval "$(_BUGNINJA_COMPLETE=bash_source bugninja)"' >> ~/.bashrc
 
-#zsh
-echo 'eval "$(_BUGNINJA_COMPLETE=bash_source bugninja)"' >> ~/.zshrc
+# zsh (make sure compinit is initialized first)
+echo -e '\n# Initialize zsh completion system\nautoload -Uz compinit\ncompinit\n\n# Bugninja CLI completion\neval "$(_BUGNINJA_COMPLETE=zsh_source bugninja)"' >> ~/.zshrc
 ```
 
 For `Fish` add this to `~/.config/fish/completions/foo-bar.fish`
 
 ```
-_BUGNINJA_COMPLETE=fish_source bugninja | source
+_BUGNINJA_COMPLETE=fish_source bugninja 
 ```
 
 ### Verify Installation
@@ -162,8 +162,7 @@ timeout = 30000
 [agent]
 max_steps = 100
 enable_vision = true
-enable_memory = true
-wait_between_actions = 1
+wait_between_actions = 1.0
 
 [run_config]
 headless = false
@@ -176,19 +175,19 @@ enable_healing = true
 ### 📊 **Rich CLI Experience**
 ```bash
 # Initialize a new Bugninja project (required first step)
-bugninja init --name my_project
+bugninja init my_project
 
 # Add a new task interactively
-bugninja add
+bugninja add "My Task"
 
 # Run a task
-bugninja run --task my_task
+bugninja run my_task
 
 # Replay latest traversal for a task
-bugninja replay --task my_task
+bugninja replay my_task
 
 # Self-healing replay
-bugninja replay --task my_task --healing
+bugninja replay my_task --healing
 
 # Replay specific traversal by ID
 bugninja replay --traversal kfdvnie47ic2b87l00v7iut5

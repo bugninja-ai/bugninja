@@ -20,17 +20,16 @@ capabilities.
 bugninja replay --traversal kfdvnie47ic2b87l00v7iut5
 
 # Replay latest traversal for task
-bugninja replay --task 5_secrets
+bugninja replay 5_secrets
 
 # Replay with healing enabled
-bugninja replay --task 5_secrets --healing
+bugninja replay 5_secrets --healing
 
 # Show project info before replaying
-bugninja replay --task 5_secrets --info
+bugninja replay 5_secrets --info
 ```
 """
 
-from datetime import UTC, datetime
 from pathlib import Path
 
 import rich_click as click
@@ -39,7 +38,7 @@ from rich.panel import Panel
 from rich.text import Text
 
 from bugninja_cli.utils.completion import (
-    complete_executed_tasks,
+    complete_replay_task_names,
     complete_traversal_ids,
 )
 from bugninja_cli.utils.project_validator import (
@@ -61,14 +60,11 @@ console = Console()
 #     is_flag=True,
 #     help="Replay all available traversals in `traversals` folder",
 # )
-@click.option(
-    "-t",
-    "--task",
+@click.argument(
     "task_name",
-    required=False,
     type=str,
-    help="Replay latest traversal for the specified task name",
-    shell_complete=complete_executed_tasks,
+    required=False,
+    shell_complete=complete_replay_task_names,
 )
 @click.option(
     "-tr",
@@ -138,13 +134,13 @@ def replay(
         bugninja replay --traversal kfdvnie47ic2b87l00v7iut5
 
         # Replay latest traversal for task
-        bugninja replay --task 5_secrets
+        bugninja replay 5_secrets
 
         # Replay with healing enabled
-        bugninja replay --task 5_secrets --healing
+        bugninja replay 5_secrets --healing
 
         # Show project info before replaying
-        bugninja replay --task 5_secrets --info
+        bugninja replay 5_secrets --info
         ```
 
     Notes:
@@ -268,41 +264,61 @@ def replay(
 
             # Execute replay
             async def run_replay() -> TaskExecutionResult:
-                async with TaskExecutor(default_config, project_root) as executor:
-                    result = await executor.replay_traversal(traversal_path, enable_healing=healing)
+                # Determine healing setting and video recording configuration
+                actual_healing = healing
+                task_run_config = default_config
+                task_info_for_replay = None
+                if is_task_name:
+                    # For task-based replay, read settings from task configuration
+                    try:
+                        from bugninja_cli.utils.task_manager import TaskManager
+
+                        task_manager = TaskManager(project_root)
+                        task_info_for_replay = task_manager.get_task_by_name(task_name)
+                        if task_info_for_replay:
+                            # Load task configuration to get healing and video recording settings
+                            task_run_config = TaskExecutor._load_task_run_config(
+                                task_info_for_replay.toml_path
+                            )
+                            actual_healing = task_run_config.enable_healing
+                            console.print(
+                                f"📋 Using healing setting from task config: {actual_healing}"
+                            )
+                            if task_run_config.enable_video_recording:
+                                console.print(
+                                    f"🎥 Video recording enabled from task config: {task_run_config.enable_video_recording}"
+                                )
+                    except Exception as e:
+                        console.print(
+                            f"⚠️  Warning: Could not read task config, using CLI healing flag: {e}"
+                        )
+                        actual_healing = healing
+
+                async with TaskExecutor(task_run_config, project_root) as executor:
+                    # Set task info for proper video recording directory
+                    if task_info_for_replay:
+                        executor.task_info = task_info_for_replay
+                    result = await executor.replay_traversal(
+                        traversal_path, enable_healing=actual_healing
+                    )
 
                     # Update task metadata if this was a task-based replay
-                    if is_task_name and result.success:
+                    if is_task_name:
+                        from bugninja_cli.utils.replay_metadata import (
+                            update_task_metadata_with_replay,
+                        )
                         from bugninja_cli.utils.task_manager import TaskManager
 
                         task_manager = TaskManager(project_root)
                         try:
                             task_info = task_manager.get_task_by_name(task_name)
                             if task_info:
-                                # Update metadata with replay results
-                                import tomli
-                                import tomli_w
-
-                                with open(task_info.toml_path, "rb") as f:
-                                    config = tomli.load(f)
-
-                                if "metadata" not in config:
-                                    config["metadata"] = {}
-
-                                config["metadata"]["latest_run_path"] = (
-                                    str(result.traversal_path) if result.traversal_path else ""
+                                update_task_metadata_with_replay(
+                                    task_info.toml_path, traversal_path, result, actual_healing
                                 )
-                                config["metadata"]["latest_run_status"] = (
-                                    "success" if result.success else "failed"
+                                console.print(
+                                    f"📝 Updated task metadata for '{task_name}' with replay run"
                                 )
-                                config["metadata"]["latest_run_timestamp"] = datetime.now(
-                                    UTC
-                                ).isoformat()
-
-                                with open(task_info.toml_path, "wb") as f:
-                                    tomli_w.dump(config, f)
-
-                                console.print(f"📝 Updated task metadata for '{task_name}'")
                         except Exception as e:
                             console.print(f"⚠️  Warning: Failed to update task metadata: {e}")
 
@@ -334,9 +350,13 @@ def replay(
             else:
                 console.print(
                     Panel(
-                        f"❌ Replay failed!\n"
-                        f"⏱️  Execution time: {result.execution_time:.2f}s\n"
-                        f"🚨 Error: {result.error_message}",
+                        (
+                            f"❌ Replay failed!\n"
+                            f"⏱️  Execution time: {result.execution_time:.2f}s\n"
+                            f"🚨 Error:\n" + result.error_message
+                            if result.error_message
+                            else "No error message available"
+                        ),
                         title="Replay Failed",
                         border_style="red",
                     )

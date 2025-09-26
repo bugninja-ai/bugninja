@@ -17,10 +17,10 @@ and templates for immediate use.
 
 ```bash
 # Basic initialization
-bugninja init --name my-automation-project
+bugninja init my-automation-project
 
 # Custom directory paths
-bugninja init --name my-project \
+bugninja init my-project \
     --screenshots-dir ./custom-screenshots \
     --tasks-dir ./custom-tasks \
     --traversals-dir ./custom-traversals
@@ -34,7 +34,10 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
-from bugninja_cli.utils.completion import complete_directory_paths
+from bugninja_cli.utils.completion import (
+    complete_directory_paths,
+    complete_project_names,
+)
 from bugninja_cli.utils.initialization import (
     create_env_template,
     create_gitignore_template,
@@ -51,13 +54,10 @@ console = Console()
 
 @click.command()
 @click.rich_config(help_config=MARKDOWN_CONFIG)
-@click.option(
-    "--name",
-    "-n",
+@click.argument(
     "project_name",
-    required=True,
     type=str,
-    help="Name of the project to initialize",
+    shell_complete=complete_project_names,
 )
 @click.option(
     "--screenshots-dir",
@@ -115,10 +115,10 @@ def init(
     Example:
         ```bash
         # Basic initialization
-        bugninja init --name my-automation-project
+        bugninja init my-automation-project
 
         # Custom directory paths
-        bugninja init --name my-project \
+        bugninja init my-project \
             --screenshots-dir ./custom-screenshots \
             --tasks-dir ./custom-tasks \
             --traversals-dir ./custom-traversals

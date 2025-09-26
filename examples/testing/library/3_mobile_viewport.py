@@ -26,6 +26,9 @@ async def mobile_viewport() -> None:
     # Execute the task
     result = await client.run_task(task=task)
 
+    if result.error:
+        raise Exception(result.error.message)
+
     if not result.traversal:
         rich_print(result)
         raise Exception("Task execution failed")

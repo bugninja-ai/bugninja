@@ -8,15 +8,19 @@ allowed_domains = []
 viewport_width = 390
 viewport_height = 844
 user_agent = "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1"
-wait_between_actions = 1
+wait_between_actions = 1.0
 enable_vision = true
-enable_memory = true
 enable_healing = true
 headless = false
+enable_video_recording = false
+
 
 [metadata]
 task_id = "y9r9b8vwa3nii3v8byo0qxjc"
 created_date = "2025-09-14T13:12:53.070072+00:00Z"
-latest_run_path = "tasks/3_mobile_viewport/traversals/traverse_20250919_111828_ytc62wk1lzkbxoa973yn492y.json"
-latest_run_status = "success"
-latest_run_timestamp = "2025-09-19T09:18:28.482207+00:00"
+
+[metadata.summary]
+total_ai_runs = 0
+total_replay_runs = 0
+successful_ai_runs = 0
+successful_replay_runs = 0

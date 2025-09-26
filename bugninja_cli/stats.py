@@ -2,44 +2,43 @@
 Statistics command for Bugninja CLI.
 
 This module provides the **stats command** for displaying statistics and information
-about automation runs. Currently provides basic project information display with
-placeholder functionality for future run statistics.
+about automation runs with comprehensive task statistics and run history.
 
 ## Key Features
 
-1. **Project Information** - Display comprehensive project information
-2. **Run Listing** - Placeholder for listing all available runs (TODO)
-3. **Run Statistics** - Placeholder for specific run statistics (TODO)
-4. **Rich Output** - Provides formatted project information
+1. **Task Statistics** - Display comprehensive task run statistics
+2. **Run History** - Show AI runs vs replay runs for each task
+3. **Success Tracking** - Display last run status and success rates
+4. **Rich Tables** - Beautiful formatted output using Rich tables
 
 ## Usage Examples
 
 ```bash
+# Show task statistics
+bugninja stats
+
 # Show project information
 bugninja stats --info
 
-# List all available runs (TODO: Not yet implemented)
-bugninja stats --list
-
-# Show statistics for specific run (TODO: Not yet implemented)
-bugninja stats --id run_20240115_123456
-
-# Show both project info and run list
-bugninja stats --list --info
+# Show both project info and task statistics
+bugninja stats --info
 ```
 """
 
 from pathlib import Path
+from typing import List
 
 import rich_click as click
 from rich.console import Console
 from rich.panel import Panel
+from rich.table import Table
 from rich.text import Text
 
 from bugninja_cli.utils.project_validator import (
     display_project_info,
     require_bugninja_project,
 )
+from bugninja_cli.utils.stats_collector import StatsCollector, TaskStats
 from bugninja_cli.utils.style import MARKDOWN_CONFIG
 
 console = Console()
@@ -48,39 +47,21 @@ console = Console()
 @click.command()
 @click.rich_config(help_config=MARKDOWN_CONFIG)
 @click.option(
-    "--list",
-    "-l",
-    "list_flag",
-    is_flag=True,
-    help="List all available runs",
-)
-@click.option(
-    "--id",
-    "run_id",
-    required=False,
-    type=str,
-    help="Show statistics for specific run ID",
-)
-@click.option(
     "--info",
     is_flag=True,
     help="Show project information",
 )
 @require_bugninja_project
 def stats(
-    list_flag: bool,
-    run_id: str,
     info: bool,
     project_root: Path,
 ) -> None:
     """Display statistics and information about automation runs.
 
-    This command provides **basic project information display** with placeholder
-    functionality for future comprehensive statistics and reporting features.
+    This command provides **comprehensive task statistics** including run counts,
+    success rates, and last run status for all tasks in the project.
 
     Args:
-        list_flag (bool): Whether to list all available runs (TODO: Not implemented)
-        run_id (Optional[str]): ID of specific run to show statistics for (TODO: Not implemented)
         info (bool): Whether to show project information
         project_root (Path): Root directory of the Bugninja project
 
@@ -89,48 +70,79 @@ def stats(
 
     Example:
         ```bash
+        # Show task statistics
+        bugninja stats
+
         # Show project information
         bugninja stats --info
 
-        # List all available runs (TODO: Not yet implemented)
-        bugninja stats --list
-
-        # Show statistics for specific run (TODO: Not yet implemented)
-        bugninja stats --id run_20240115_123456
-
-        # Show both project info and run list
-        bugninja stats --list --info
+        # Show both project info and task statistics
+        bugninja stats --info
         ```
 
     Notes:
         - Requires a valid Bugninja project (use `bugninja init` to create one)
-        - Currently only displays project information
-        - Run statistics functionality is planned for future implementation
-        - Statistics will be generated from traversal files in the `traversals/` directory
+        - Statistics are generated from run_history.json files in each task directory
+        - Shows AI runs, replay runs, and last run status for each task
+        - Handles missing or corrupted run history files gracefully
     """
     if info:
         display_project_info(project_root)
 
-    if list_flag:
-        console.print(Panel("📊 Listing all runs...", title="Stats Command", border_style="blue"))
-        # TODO: Implement listing all runs
-    elif run_id:
-        console.print(
-            Panel(
-                f"📊 Showing statistics for run: {run_id}",
-                title="Stats Command",
-                border_style="blue",
-            )
-        )
-        # TODO: Implement showing specific run statistics
-    else:
+    # Collect statistics from all tasks
+    stats_collector = StatsCollector(project_root)
+    task_stats = stats_collector.collect_all_task_stats()
+
+    if not task_stats:
         console.print(
             Panel(
                 Text(
-                    "📊 Project Statistics\n\nUse:\n  -l, --list: List all runs\n  --id <run_id>: Show specific run statistics",
-                    style="cyan",
+                    "📊 No tasks found in this project.\n\n"
+                    "Create tasks with:\n"
+                    '  bugninja add --name "My Task"',
+                    style="yellow",
                 ),
-                title="Statistics",
-                border_style="blue",
+                title="No Tasks Found",
+                border_style="yellow",
             )
         )
+        return
+
+    # Create and display the statistics table
+    _display_task_statistics_table(task_stats)
+
+
+def _display_task_statistics_table(task_stats: List[TaskStats]) -> None:
+    """Display task statistics in a Rich table.
+
+    Args:
+        task_stats: List of TaskStats objects to display
+    """
+    # Create the table
+    table = Table(title="📊 Task Statistics", show_header=True, header_style="bold magenta")
+
+    # Add columns in the requested order
+    table.add_column("Task Name", style="cyan", no_wrap=True)
+    table.add_column("Last Status", justify="center", style="bold")
+    table.add_column("Last Run", style="dim")
+    table.add_column("Last Run Type", justify="center", style="blue")
+    table.add_column("Total Runs", justify="right", style="bold")
+    table.add_column("AI Runs", justify="right", style="blue")
+    table.add_column("Replay Runs", justify="right", style="green")
+    table.add_column("Error Type", style="red")
+
+    # Add rows
+    for stats in task_stats:
+        table.add_row(
+            stats.task_name,
+            stats.last_status,
+            stats.last_run_time,
+            stats.last_run_type,
+            str(stats.total_runs),
+            str(stats.ai_runs),
+            str(stats.replay_runs),
+            stats.error_type,
+        )
+
+    # Display the table
+    console.print(table)

@@ -520,8 +520,6 @@ def create_env_template(path: Path) -> None:
 # Options: azure_openai, openai, anthropic, google_gemini, deepseek, ollama
 LLM_PROVIDER=azure_openai
 
-# Name of the LLM model to use
-LLM_MODEL=gpt-4.1
 # Temperature for LLM responses (0.0 = deterministic, 1.0 = creative)
 LLM_TEMPERATURE=0.0
 
@@ -576,8 +574,14 @@ def create_gitignore_template(path: Path) -> None:
 # Screenshots from automation runs
 screenshots/
 
+# Video recordings from automation runs
+videos/
+
 # Traversal files (recorded browser sessions)
 traversals/
+
+# Run histories of specific tasks
+run_history.json
 
 # Environment files with sensitive data
 *.env

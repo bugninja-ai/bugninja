@@ -15,10 +15,10 @@ It creates a complete task structure with description, metadata, and environment
 
 ```bash
 # Create a new task
-bugninja add --name "Login Flow"
+bugninja add "Login Flow"
 
 # Create another task
-bugninja add --name "User Registration"
+bugninja add "User Registration"
 ```
 """
 
@@ -38,13 +38,9 @@ console = Console()
 
 @click.command()
 @click.rich_config(help_config=MARKDOWN_CONFIG)
-@click.option(
-    "--name",
-    "-n",
+@click.argument(
     "task_name",
-    required=True,
     type=str,
-    help="Name of the task to create",
 )
 @require_bugninja_project
 def add(task_name: str, project_root: Path) -> None:
@@ -66,10 +62,10 @@ def add(task_name: str, project_root: Path) -> None:
     Example:
         ```bash
         # Create a new task
-        bugninja add --name "Login Flow"
+        bugninja add "Login Flow"
 
         # Create another task
-        bugninja add --name "User Registration"
+        bugninja add "User Registration"
         ```
     """
     try:
@@ -103,7 +99,7 @@ def add(task_name: str, project_root: Path) -> None:
         )
         success_text.append(f"  2. Add your secrets to task_{folder_name}.env file\n", style="cyan")
         success_text.append(
-            f"  3. Run 'bugninja run --task {folder_name}' or 'bugninja run --task {task_id}' to execute\n",
+            f"  3. Run 'bugninja run {folder_name}' or 'bugninja run {task_id}' to execute\n",
             style="cyan",
         )
 

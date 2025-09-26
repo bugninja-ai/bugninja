@@ -17,12 +17,18 @@ entire remaining traversal without stopping for state matching or brain state
 boundaries.
 """
 
+import asyncio
+import base64
 import json
+import time
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
+import cv2
+import numpy as np
 from cuid2 import Cuid as CUID
 from patchright.async_api import Page  # type: ignore
+from playwright.async_api import CDPSession
 from rich import print as rich_print
 
 from bugninja.agents.healer_agent import HealerAgent
@@ -39,6 +45,7 @@ from bugninja.replication.replicator_navigation import (
 )
 from bugninja.schemas.models import BugninjaConfig
 from bugninja.schemas.pipeline import (
+    ActionTimestamps,
     BugninjaBrainState,
     BugninjaExtendedAction,
     ReplayWithHealingStateMachine,
@@ -46,6 +53,7 @@ from bugninja.schemas.pipeline import (
 )
 from bugninja.utils.logging_config import logger
 from bugninja.utils.screenshot_manager import ScreenshotManager
+from bugninja.utils.video_recording_manager import VideoRecordingManager
 
 
 class UserInterruptionError(ReplicatorError):
@@ -187,6 +195,16 @@ class ReplicatorRun(ReplicatorNavigator):
             run_id=self.run_id, base_dir=self.output_base_dir
         )
 
+        # Initialize video recording manager if enabled
+        self.video_recording_manager: Optional[VideoRecordingManager] = (
+            VideoRecordingManager(
+                self.run_id, self.config.video_recording, cli_mode=self.config.cli_mode
+            )
+            if self.config.video_recording
+            else None
+        )
+        self._video_recording_initialized: bool = False
+
         # Initialize event publisher manager (explicitly passed)
         self.event_manager = event_manager
 
@@ -273,7 +291,9 @@ class ReplicatorRun(ReplicatorNavigator):
                 f"🩹 Using custom LLM for healing: {self.healing_llm_config.provider.value} - {self.healing_llm_config.model}"
             )
         else:
-            llm = create_llm_model_from_config(create_llm_config_from_settings())
+            llm = create_llm_model_from_config(
+                create_llm_config_from_settings(cli_mode=self.config.cli_mode)
+            )
             logger.bugninja_log("🩹 Using default LLM configuration for healing")
 
         agent = HealerAgent(
@@ -404,6 +424,25 @@ class ReplicatorRun(ReplicatorNavigator):
                 logger.bugninja_log(f"⚙️ Performing action: {action_type}")
 
             try:
+                # Initialize video recording on the first action only
+                if not self._video_recording_initialized:
+                    await self._initialize_video_recording()
+
+                # Capture start video offset if video recording is enabled
+                if self.video_recording_manager and self.video_recording_manager.is_recording:
+                    start_timestamp = time.time() * 1000  # UTC timestamp in milliseconds
+
+                    # Calculate video offset
+                    video_start_offset = self.video_recording_manager.get_video_offset(
+                        start_timestamp
+                    )
+
+                    # Create timestamps object with only video offsets
+                    action.timestamps = ActionTimestamps(video_start_offset=video_start_offset)
+
+                    logger.bugninja_log(
+                        f"🕐 Captured start video offset: {video_start_offset:.3f}s"
+                    )
 
                 #! taking screenshot before action execution
 
@@ -411,6 +450,23 @@ class ReplicatorRun(ReplicatorNavigator):
 
                 logger.bugninja_log("▶️ Executing action...")
                 await self._execute_action(action)
+
+                # Capture end video offset if video recording is enabled and timestamps exist
+                if (
+                    self.video_recording_manager
+                    and self.video_recording_manager.is_recording
+                    and action.timestamps is not None
+                ):
+
+                    end_timestamp = time.time() * 1000  # UTC timestamp in milliseconds
+
+                    # Calculate video offset
+                    video_end_offset = self.video_recording_manager.get_video_offset(end_timestamp)
+
+                    # Update timestamps with end video offset
+                    action.timestamps.video_end_offset = video_end_offset
+
+                    logger.bugninja_log(f"🕐 Captured end video offset: {video_end_offset:.3f}s")
 
                 # Take screenshot after action execution
                 screenshot_filename = await self._take_screenshot(action_type)
@@ -493,6 +549,14 @@ class ReplicatorRun(ReplicatorNavigator):
                     )
                     break
 
+                # Stop video recording on error
+                if self.video_recording_manager:
+                    try:
+                        await self.video_recording_manager.stop_recording()
+                        logger.bugninja_log("🎥 Stopped video recording due to error")
+                    except Exception as video_error:
+                        logger.error(f"❌ Failed to stop video recording: {video_error}")
+
         logger.bugninja_log("")
         logger.bugninja_log("🏁 === REPLICATION COMPLETED ===")
         logger.bugninja_log(f"📊 Final status: {'❌ FAILED' if failed else '✅ SUCCESS'}")
@@ -507,6 +571,16 @@ class ReplicatorRun(ReplicatorNavigator):
             # Store the original traversal if no healing occurred
             self._traversal = self.replay_traversal
             logger.warning("⚠️ No healing occurred - using original traversal")
+
+        # Stop video recording if enabled
+        if self.video_recording_manager:
+            try:
+                stats = await self.video_recording_manager.stop_recording()
+                logger.bugninja_log(
+                    f"🎥 Stopped video recording. Frames processed: {stats['frames_processed']}"
+                )
+            except Exception as e:
+                logger.error(f"❌ Failed to stop video recording: {e}")
 
         return not failed, failed_reason
 
@@ -650,6 +724,86 @@ class ReplicatorRun(ReplicatorNavigator):
         except Exception:
             pass
         return "unknown"
+
+    async def _initialize_video_recording(self) -> None:
+        """Initialize video recording for the replay session.
+
+        This method sets up video recording using CDP screencast, similar to NavigatorAgent.
+        It starts recording at the first action execution and handles frame processing.
+        """
+        if self.video_recording_manager and self.browser_session.browser_context:
+            try:
+                current_page: Page = await self.browser_session.get_current_page()
+                cdp_session = await self.browser_session.browser_context.new_cdp_session(current_page)  # type: ignore
+
+                # Start video recording
+                output_file = f"run_{self.run_id}"
+                await self.video_recording_manager.start_recording(output_file, cdp_session)
+
+                # Setup CDP screencast
+                await cdp_session.send(
+                    "Page.startScreencast",
+                    {
+                        "format": "jpeg",
+                        "quality": self.video_recording_manager.config.quality,
+                        "maxWidth": self.video_recording_manager.config.width,
+                        "maxHeight": self.video_recording_manager.config.height,
+                        "everyNthFrame": 1,
+                    },
+                )
+
+                # Setup frame handler
+                cdp_session.on(
+                    "Page.screencastFrame",
+                    lambda frame: asyncio.create_task(
+                        self._handle_screencast_frame(frame, cdp_session)
+                    ),
+                )
+
+                self._video_recording_initialized = True
+                logger.bugninja_log(f"🎥 Started video recording: {output_file}")
+            except Exception as e:
+                logger.error(
+                    f"❌ Video recording failed: {e}. Replay will continue without video recording."
+                )
+                # Disable video recording for this session
+                self.video_recording_manager = None
+                self._video_recording_initialized = True
+
+    async def _handle_screencast_frame(
+        self, frame: dict[str, Any], cdp_session: CDPSession
+    ) -> None:
+        """Handle incoming screencast frames for video recording.
+
+        Args:
+            frame: CDP screencast frame data
+            cdp_session: CDP session for acknowledgment
+        """
+        if self.video_recording_manager:
+            try:
+                img_data: bytes = base64.b64decode(frame["data"])
+                arr: np.ndarray = np.frombuffer(img_data, np.uint8)  # type: ignore
+                img: Optional[np.ndarray] = cv2.imdecode(arr, cv2.IMREAD_COLOR)  # type: ignore
+
+                if img is not None:
+                    img = cv2.resize(
+                        img,
+                        (
+                            self.video_recording_manager.config.width,
+                            self.video_recording_manager.config.height,
+                        ),
+                    )
+                    frame_bytes: bytes = img.tobytes()
+                    await self.video_recording_manager.add_frame(frame_bytes)
+            except Exception:
+                pass
+            finally:
+                try:
+                    await cdp_session.send(
+                        "Page.screencastFrameAck", {"sessionId": frame["sessionId"]}
+                    )
+                except Exception:
+                    pass
 
     # TODO! this has to be implemented properly with the new event publisher setup
     # async def _publish_run_event(self, event_type: str, data: Dict[str, Any]) -> None:

@@ -20,6 +20,9 @@ async def simple_navigation_with_replay() -> None:
     # Execute the task
     result = await client.run_task(task=task)
 
+    if result.error:
+        raise Exception(result.error.message)
+
     if not result.traversal:
         rich_print(result)
         raise Exception("Task execution failed")

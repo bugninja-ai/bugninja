@@ -239,7 +239,6 @@ class LLMError(BugninjaError):
 
     Attributes:
         llm_provider (Optional[str]): Name of the LLM provider that failed
-        llm_model (Optional[str]): Name of the LLM model that failed
         api_response (Optional[Dict[str, Any]]): Response from the LLM API (if available)
         message (str): Human-readable error message
         details (Optional[Dict[str, Any]]): Additional error details for debugging
@@ -250,7 +249,7 @@ class LLMError(BugninjaError):
         try:
             result = await client.run_task(task)
         except LLMError as e:
-            print(f"LLM provider '{e.llm_provider}' failed with model '{e.llm_model}'")
+            print(f"LLM provider '{e.llm_provider}' failed")
             print(f"API response: {e.api_response}")
         ```
     """
@@ -259,7 +258,6 @@ class LLMError(BugninjaError):
         self,
         message: str,
         llm_provider: Optional[str] = None,
-        llm_model: Optional[str] = None,
         api_response: Optional[Dict[str, Any]] = None,
         details: Optional[Dict[str, Any]] = None,
         original_error: Optional[Exception] = None,
@@ -269,14 +267,12 @@ class LLMError(BugninjaError):
         Args:
             message (str): Error message describing the LLM failure
             llm_provider (Optional[str]): Name of the LLM provider that failed
-            llm_model (Optional[str]): Name of the LLM model that failed
             api_response (Optional[Dict[str, Any]]): Response from the LLM API (if available)
             details (Optional[Dict[str, Any]]): Additional error details
             original_error (Optional[Exception]): Original exception that caused the error
         """
         super().__init__(message, details, original_error)
         self.llm_provider = llm_provider
-        self.llm_model = llm_model
         self.api_response = api_response
 
 

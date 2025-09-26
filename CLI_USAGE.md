@@ -10,10 +10,10 @@ Before using any Bugninja commands, you need to initialize a project:
 
 ```bash
 # Initialize a new project
-bugninja init --name my-automation-project
+bugninja init my-automation-project
 
 # Initialize with custom directory paths
-bugninja init --name my-project \
+bugninja init my-project \
   --screenshots-dir ./captures \
   --tasks-dir ./test-tasks \
   --traversals-dir ./sessions
@@ -41,63 +41,67 @@ my-automation-project/
 
 Initialize a new Bugninja project in the current directory.
 
+**Arguments:**
+- `<project_name>`: Project name (required)
+
 **Options:**
-- `--name, -n <name>`: Project name (required)
 - `--screenshots-dir, -s <path>`: Screenshots directory (default: `./screenshots`)
 - `--tasks-dir, -t <path>`: Tasks directory (default: `./tasks`)
 - `--traversals-dir, -tr <path>`: Traversals directory (default: `./traversals`)
 
-
 **Example:**
 ```bash
-bugninja init --name ecommerce-tests --screenshots-dir ./test-captures
+bugninja init ecommerce-tests --screenshots-dir ./test-captures
 ```
 
 ### **`bugninja run` - Execute Tasks**
 
 Run browser automation tasks. **Requires initialized project.**
 
+**Arguments:**
+- `<task>`: Task name or ID to run (required)
+
 **Options:**
-- `--all, -a`: Run all available tasks
-- `--task, -t <id>`: Run specific task by ID
-- `--multiple, -mt <id1> <id2>`: Run multiple tasks
+- `--enable-logging`: Enable Bugninja logging
 - `--info`: Show project information before running
 
 **Examples:**
 ```bash
-# Run all tasks
-bugninja run --all
-
 # Run specific task
-bugninja run --task login-test
+bugninja run login-test
 
-# Run multiple tasks
-bugninja run --multiple login-test checkout-test
+# Run with logging enabled
+bugninja run login-test --enable-logging
 
 # Show project info and run
-bugninja run --all --info
+bugninja run login-test --info
 ```
 
 ### **`bugninja replay` - Replay Sessions**
 
 Replay recorded browser sessions. **Requires initialized project.**
 
+**Arguments:**
+- `[task_name]`: Task name to replay latest traversal for (optional)
+
 **Options:**
-- `--all, -a`: Replay all available traversals
-- `--traversal, -t <id>`: Replay specific traversal by ID
-- `--multiple, -mt <id1> <id2>`: Replay multiple traversals
+- `--traversal, -tr <id>`: Replay specific traversal by ID
+- `--healing`: Enable healing during replay
 - `--info`: Show project information before replaying
 
 **Examples:**
 ```bash
-# Replay all traversals
-bugninja replay --all
+# Replay latest traversal for a task
+bugninja replay login-test
 
-# Replay specific traversal
+# Replay with healing enabled
+bugninja replay login-test --healing
+
+# Replay specific traversal by ID
 bugninja replay --traversal session-123
 
-# Replay multiple traversals
-bugninja replay --multiple session-123 session-456
+# Show project info before replaying
+bugninja replay login-test --info
 ```
 
 ### **`bugninja stats` - View Statistics**
@@ -105,17 +109,12 @@ bugninja replay --multiple session-123 session-456
 Show statistics about automation runs. **Requires initialized project.**
 
 **Options:**
-- `--list, -l`: List all available runs
-- `--id <run_id>`: Show statistics for specific run
 - `--info`: Show project information
 
 **Examples:**
 ```bash
-# List all runs
-bugninja stats --list
-
-# Show specific run statistics
-bugninja stats --id run-abc123
+# Show task statistics
+bugninja stats
 
 # Show project info
 bugninja stats --info
@@ -136,7 +135,7 @@ All commands (except `init`) require a properly initialized Bugninja project. Th
 ❌ Not in a Bugninja project.
 
 To initialize a new project, run:
-  bugninja init --name <project-name>
+  bugninja init <project-name>
 
 Or navigate to an existing Bugninja project directory.
 ```
@@ -147,7 +146,7 @@ Or navigate to an existing Bugninja project directory.
 
 The project may be corrupted or incomplete.
 Delete the project files and reinitialize with:
-  bugninja init --name <project-name>
+  bugninja init <project-name>
 ```
 
 ## 🎨 Rich Output
@@ -210,12 +209,12 @@ AZURE_OPENAI_KEY=your-api-key-here
 ### **Common Issues**
 
 1. **"Not in a Bugninja project"**
-   - Run `bugninja init --name <project-name>` to create a project
+   - Run `bugninja init <project-name>` to create a project
    - Navigate to an existing Bugninja project directory
 
 2. **"Invalid project structure"**
    - The project may be corrupted
-   - Delete project files and reinitialize with `bugninja init --name <project-name>`
+   - Delete project files and reinitialize with `bugninja init <project-name>`
 
 3. **Permission errors during initialization**
    - Check write permissions in the current directory
@@ -237,7 +236,7 @@ If you have an existing Bugninja setup:
 
 1. **Backup your current configuration**
 2. **Delete existing project files** (or move to different directory)
-3. **Run `bugninja init --name <project-name>`**
+3. **Run `bugninja init <project-name>`**
 4. **Copy your existing `.env` file** (don't overwrite the template)
 5. **Move your existing files** to the new directory structure
 6. **Update paths** in `bugninja.toml` if needed

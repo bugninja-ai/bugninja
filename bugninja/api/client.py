@@ -191,11 +191,8 @@ class BugninjaClient:
         except Exception as e:
             raise ConfigurationError(f"Failed to initialize Bugninja client: {e}", original_error=e)
 
-    def _create_llm(self, temperature: Optional[float] = None) -> BaseChatModel:
+    def _create_llm(self) -> BaseChatModel:
         """Create LLM model using client configuration.
-
-        Args:
-            temperature (Optional[float]): Temperature setting (overrides config)
 
         Returns:
             BaseChatModel: Configured LLM model instance
@@ -204,16 +201,11 @@ class BugninjaClient:
             ValueError: If LLM configuration is invalid or missing
         """
         try:
-
             # Use provided LLM config or create from settings
             if self._llm_config is not None:
-
-                config = self._llm_config
-                if temperature is not None:
-                    config.temperature = temperature
-                return create_llm_model_from_config(config)
+                return create_llm_model_from_config(self._llm_config, cli_mode=self.config.cli_mode)
             else:
-                return create_provider_model_from_settings(temperature)
+                return create_provider_model_from_settings(cli_mode=self.config.cli_mode)
         except Exception as e:
             raise ValueError(f"Failed to create LLM model: {e}")
 
@@ -443,7 +435,6 @@ class BugninjaClient:
             raise LLMError(
                 f"LLM operation failed during {operation_type.value}: {error}",
                 llm_provider=self.config.llm_provider,
-                llm_model=self.config.llm_model,
                 original_error=error,
             )
 
@@ -606,7 +597,7 @@ class BugninjaClient:
             self._active_sessions.append(browser_session)
 
             # Create LLM with configured temperature
-            llm = self._create_llm(temperature=self.config.llm_temperature)
+            llm = self._create_llm()
 
             # Create and run agent with task parameters
             agent = NavigatorAgent(
@@ -643,7 +634,7 @@ class BugninjaClient:
                 traversal_file = max(traversal_files, key=lambda f: f.stat().st_mtime)
 
                 # Create screenshots directory based on traversal file name
-                if traversal_file:
+                if traversal_file and self.config.screenshots_dir:
                     screenshots_dir = self.config.screenshots_dir / traversal_file.stem
 
             # Check if the agent actually succeeded by examining its state
@@ -778,7 +769,7 @@ class BugninjaClient:
                     bugninja_config=self.config,
                     run_id=task.run_id,
                     task=task.description,
-                    llm=self._create_llm(temperature=self.config.llm_temperature),
+                    llm=self._create_llm(),
                     browser_session=browser_session,
                     sensitive_data=task.secrets,
                     extra_instructions=task.extra_instructions,
@@ -1022,7 +1013,9 @@ class BugninjaClient:
             else:
                 # For Traversal objects, we don't have a file path
                 traversal_file = None
-                screenshots_dir = self.config.screenshots_dir / f"traversal_{replicator.run_id}"
+                screenshots_dir = None
+                if self.config.screenshots_dir:
+                    screenshots_dir = self.config.screenshots_dir / f"traversal_{replicator.run_id}"
 
             # Calculate steps completed from the state machine
             steps_completed = 0
@@ -1194,12 +1187,18 @@ class BugninjaClient:
                     # Determine traversal file and screenshots directory
                     if isinstance(session, Path):
                         traversal_file = session
-                        screenshots_dir = self.config.screenshots_dir / session.stem
+                        screenshots_dir = (
+                            self.config.screenshots_dir / session.stem
+                            if self.config.screenshots_dir
+                            else None
+                        )
                     else:
                         # For Traversal objects, we don't have a file path
                         traversal_file = None
                         screenshots_dir = (
                             self.config.screenshots_dir / f"traversal_{replicator.run_id}"
+                            if self.config.screenshots_dir
+                            else None
                         )
 
                     # Create individual result for successful session

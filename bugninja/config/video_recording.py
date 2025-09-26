@@ -62,7 +62,7 @@ class VideoRecordingConfig(BaseModel):
     bitrate: str = Field(default="25M", description="Target bitrate")
     pixel_format: str = Field(default="yuv420p", description="Output pixel format")
     max_queue_size: int = Field(default=200, description="Frame queue size")
-    output_dir: str = Field(default="./screen_recordings", description="Output directory")
+    output_dir: str = Field(default="./videos", description="Output directory")
 
     @classmethod
     def with_base_dir(cls, base_dir: Path, **kwargs: Dict[str, Any]) -> "VideoRecordingConfig":
@@ -77,5 +77,5 @@ class VideoRecordingConfig(BaseModel):
         """
         # Remove output_dir from kwargs to avoid conflict
         kwargs.pop("output_dir", None)
-        output_dir = str(base_dir / "screen_recordings")
+        output_dir = str(base_dir / "videos")
         return cls(output_dir=output_dir, **kwargs)  # type: ignore

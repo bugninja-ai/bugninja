@@ -31,24 +31,29 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
 
 import rich_click as click
 from rich.console import Console
 from rich.panel import Panel
-from rich.text import Text
 
 from bugninja_cli.utils.completion import complete_boolean_values, complete_task_names
 from bugninja_cli.utils.project_validator import (
     display_project_info,
     require_bugninja_project,
 )
+from bugninja_cli.utils.result_display import (
+    display_execution_error,
+    display_task_failure,
+    display_task_not_found,
+    display_task_success,
+)
 from bugninja_cli.utils.style import MARKDOWN_CONFIG
 from bugninja_cli.utils.task_executor import TaskExecutor
+from bugninja_cli.utils.task_lookup import (
+    get_available_tasks_list,
+    get_task_by_identifier,
+)
 from bugninja_cli.utils.task_manager import TaskManager
-
-if TYPE_CHECKING:
-    from bugninja.schemas import TaskInfo
 
 console = Console()
 
@@ -63,13 +68,9 @@ console = Console()
 #     is_flag=True,
 #     help="Run all available possible task in `tasks` folder",
 # )
-@click.option(
-    "-t",
-    "--task",
+@click.argument(
     "task",
-    required=False,
     type=str,
-    help="Runs specific task with the given ID",
     shell_complete=complete_task_names,
 )
 # @click.option(
@@ -121,13 +122,13 @@ def run(
     Example:
         ```bash
         # Run specific task
-        bugninja run --task login-flow
+        bugninja run login-flow
 
         # Run with logging enabled
-        bugninja run --task login-flow --enable-logging
+        bugninja run login-flow --enable-logging
 
         # Show project info before running
-        bugninja run --task login-flow --info
+        bugninja run login-flow --info
         ```
 
     Notes:
@@ -146,26 +147,11 @@ def run(
 
     async def run_tasks() -> None:
 
-        task_info = _get_task_by_identifier(task_manager, task)
+        task_info = get_task_by_identifier(task_manager, task)
 
         if not task_info:
-            console.print(
-                Panel(
-                    Text(
-                        f"❌ Task '{task}' not found.\n\n"
-                        "Available tasks:\n"
-                        + "\n".join(
-                            [
-                                f"  • {task.name} ({task.folder_name})"
-                                for task in task_manager.list_tasks()
-                            ]
-                        ),
-                        style="red",
-                    ),
-                    title="Task Not Found",
-                    border_style="red",
-                )
-            )
+            available_tasks = get_available_tasks_list(task_manager)
+            display_task_not_found(task, available_tasks)
             return
 
         # Load task run configuration from TOML
@@ -190,29 +176,6 @@ def run(
     asyncio.run(run_tasks())
 
 
-def _get_task_by_identifier(task_manager: TaskManager, identifier: str) -> Optional[TaskInfo]:
-    """Get task by folder name or CUID.
-
-    Args:
-        task_manager (TaskManager): Task manager instance
-        identifier (str): Task identifier (folder name or CUID)
-
-    Returns:
-        TaskInfo: Task information if found, None otherwise
-    """
-    # First try folder name lookup
-    task: Optional[TaskInfo] = task_manager.get_task_by_name(identifier)
-    if task:
-        return task
-
-    # Then try CUID lookup
-    task = task_manager.get_task_by_cuid(identifier)
-    if task:
-        return task
-
-    return None
-
-
 async def _run_single_task(
     executor: TaskExecutor, task_manager: TaskManager, task_identifier: str
 ) -> None:
@@ -224,26 +187,11 @@ async def _run_single_task(
         task_identifier (str): Task identifier (folder name or CUID)
     """
     # Find the task
-    task_info = _get_task_by_identifier(task_manager, task_identifier)
+    task_info = get_task_by_identifier(task_manager, task_identifier)
 
     if not task_info:
-        console.print(
-            Panel(
-                Text(
-                    f"❌ Task '{task_identifier}' not found.\n\n"
-                    "Available tasks:\n"
-                    + "\n".join(
-                        [
-                            f"  • {task.name} ({task.folder_name})"
-                            for task in task_manager.list_tasks()
-                        ]
-                    ),
-                    style="red",
-                ),
-                title="Task Not Found",
-                border_style="red",
-            )
-        )
+        available_tasks = get_available_tasks_list(task_manager)
+        display_task_not_found(task_identifier, available_tasks)
         return
 
     # Execute the task
@@ -253,53 +201,17 @@ async def _run_single_task(
 
     # Show which config files are being used
     console.print(f"📄 Using configuration: {task_info.toml_path}")
-    if task_info.env_path.exists():
-        console.print(f"🔐 Using secrets: {task_info.env_path}")
-    else:
-        console.print(f"ℹ️  No secrets file found: {task_info.env_path}")
 
     try:
         result = await executor.execute_task(task_info)
 
         # Show summary
         if result.success:
-            console.print(
-                Panel(
-                    Text(
-                        (
-                            f"✅ Task '{task_info.name}' completed successfully!\n\n"
-                            f"⏱️ Execution time: {result.execution_time:.2f} seconds\n"
-                            f"📁 Traversal saved: {result.traversal_path}"
-                            if result.traversal_path
-                            else "📁 No traversal file generated"
-                        ),
-                        style="green",
-                    ),
-                    title="Task Completed",
-                    border_style="green",
-                )
-            )
+            display_task_success(task_info, result)
         else:
-            console.print(
-                Panel(
-                    Text(
-                        f"❌ Task '{task_info.name}' failed!\n\n"
-                        f"⏱️ Execution time: {result.execution_time:.2f} seconds\n"
-                        f"🚨 Error: {result.error_message}",
-                        style="red",
-                    ),
-                    title="Task Failed",
-                    border_style="red",
-                )
-            )
+            display_task_failure(task_info, result)
     except Exception as e:
-        console.print(
-            Panel(
-                Text(f"❌ Failed to execute task '{task_info.name}': {e}", style="red"),
-                title="Execution Error",
-                border_style="red",
-            )
-        )
+        display_execution_error(task_info, e)
 
 
 # async def _run_multiple_tasks(

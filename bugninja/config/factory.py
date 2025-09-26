@@ -24,8 +24,11 @@ class ConfigurationFactory:
     _toml_loader: Optional[TOMLConfigLoader] = None
 
     @classmethod
-    def get_settings(cls) -> BugninjaSettings:
-        """Get or create settings instance.
+    def get_settings(cls, cli_mode: bool = False) -> BugninjaSettings:
+        """Get or create settings instance based on CLI mode.
+
+        Args:
+            cli_mode (bool): Whether to use CLI mode (TOML) or Library mode (env vars)
 
         Returns:
             Configured settings instance
@@ -35,32 +38,58 @@ class ConfigurationFactory:
         """
         # Check if we need to create a new instance
         if cls._instance is None:
-            # Initialize TOML loader if needed
-            if cls._toml_loader is None:
-                cls._toml_loader = TOMLConfigLoader()
-
-            # Try to load TOML configuration first
-            toml_overrides = {}
-            try:
-                toml_config = cls._toml_loader.load_config()
-                toml_overrides = cls._convert_toml_to_pydantic(toml_config)
-            except Exception:
-                # If TOML loading fails, continue without TOML overrides
-                # This allows backward compatibility when TOML file is missing
-                pass
-
-            # Create settings with TOML overrides (if any)
-            # BugninjaSettings() will automatically load from environment variables
-            try:
-                cls._instance = BugninjaSettings(**toml_overrides)
-            except Exception as e:
-                # Provide more helpful error message for missing environment variables
-                # Simplified error handling to avoid constructor issues
-                raise ValueError(
-                    f"Configuration error. Please check your environment variables. Original error: {str(e).lower()}"
-                )
+            if cli_mode:
+                # CLI mode: Use TOML configuration exclusively
+                cls._instance = cls._load_from_toml_only()
+            else:
+                # Library mode: Use environment variables exclusively
+                cls._instance = cls._load_from_env_only()
 
         return cls._instance
+
+    @classmethod
+    def _load_from_toml_only(cls) -> BugninjaSettings:
+        """Load configuration from TOML file (CLI mode only).
+
+        In CLI mode, we use TOML for non-sensitive settings (provider, model, temperature)
+        but still load sensitive data (API keys, endpoints) from environment variables.
+
+        Returns:
+            BugninjaSettings: Settings loaded from TOML + environment variables
+
+        Raises:
+            ValueError: If TOML configuration is invalid
+        """
+        # Initialize TOML loader if needed
+        if cls._toml_loader is None:
+            cls._toml_loader = TOMLConfigLoader()
+
+        try:
+            # Load TOML configuration
+            toml_config = cls._toml_loader.load_config()
+            toml_overrides = cls._convert_toml_to_pydantic(toml_config)
+
+            # Create settings with TOML values + environment variables
+            # This ensures API keys and endpoints come from env vars (security)
+            return BugninjaSettings(**toml_overrides)
+        except Exception as e:
+            raise ValueError(f"TOML configuration error: {str(e)}")
+
+    @classmethod
+    def _load_from_env_only(cls) -> BugninjaSettings:
+        """Load configuration from environment variables (Library mode only).
+
+        Returns:
+            BugninjaSettings: Settings loaded from environment variables
+
+        Raises:
+            ValueError: If environment configuration is invalid
+        """
+        try:
+            # Create settings with environment variables only
+            return BugninjaSettings()  # type: ignore
+        except Exception as e:
+            raise ValueError(f"Environment configuration error: {str(e)}")
 
     @classmethod
     def _convert_toml_to_pydantic(cls, toml_config: Dict[str, Any]) -> Dict[str, Any]:
@@ -77,7 +106,6 @@ class ConfigurationFactory:
             "project.name": "project_name",
             # LLM configuration
             "llm.provider": "llm_provider",
-            "llm.model": "llm_model",
             "llm.temperature": "llm_temperature",
             # Azure OpenAI configuration
             "llm.azure_openai.api_version": "azure_openai_api_version",
@@ -176,71 +204,18 @@ class ConfigurationFactory:
                 f"Missing required field 'task.description' in configuration file '{task_config_path}'"
             )
 
+        # Extract secrets from flattened config
+        secrets: Dict[str, str] = {}
+        for key, value in config.items():
+            if key.startswith("secrets."):
+                secret_key = key.replace("secrets.", "")
+                secrets[secret_key] = value
+
+        # Add secrets to config if any exist
+        if secrets:
+            config["task_secrets"] = secrets
+
         return config
-
-    @classmethod
-    def load_task_secrets(cls, task_env_path: Path) -> Optional[Dict[str, Any]]:
-        """Load task-specific secrets from ENV file (optional).
-
-        Args:
-            task_env_path: Path to the task_{name}.env file
-
-        Returns:
-            Dictionary containing task-specific secrets (empty if file doesn't exist)
-        """
-        if not task_env_path.exists():
-            return None  # No secrets file, return None
-
-        try:
-            return cls._parse_env_file(task_env_path)
-        except Exception as e:
-            raise ValueError(f"Failed to parse environment file '{task_env_path}': {str(e)}")
-
-    @classmethod
-    def _parse_env_file(cls, env_path: Path) -> Optional[Dict[str, Any]]:
-        """Parse environment variables from .env file.
-
-        Args:
-            env_path: Path to the .env file
-
-        Returns:
-            Dictionary of environment variables
-
-        Raises:
-            ValueError: If .env file is malformed
-        """
-        secrets: Dict[str, Any] = {}
-
-        try:
-            with open(env_path, "r", encoding="utf-8") as f:
-                for line_num, line in enumerate(f, 1):
-                    line = line.strip()
-
-                    # Skip empty lines and comments
-                    if not line or line.startswith("#"):
-                        continue
-
-                    # Parse key=value pairs
-                    if "=" in line:
-                        key, value = line.split("=", 1)
-                        key = key.strip()
-                        value = value.strip()
-
-                        # Remove quotes if present
-                        if (value.startswith('"') and value.endswith('"')) or (
-                            value.startswith("'") and value.endswith("'")
-                        ):
-                            value = value[1:-1]
-
-                        secrets[key] = value
-                    else:
-                        # Invalid line format
-                        raise ValueError(f"Invalid line {line_num} in {env_path}: {line}")
-
-        except Exception as e:
-            raise ValueError(f"Failed to parse environment file {env_path}: {e}")
-
-        return secrets if len(secrets) > 0 else None
 
     @classmethod
     def reset(cls) -> None:

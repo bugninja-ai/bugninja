@@ -17,7 +17,7 @@ from bugninja.config.settings import BugninjaSettings, LLMProvider
 
 def create_provider_model(
     provider: LLMProvider,
-    temperature: Optional[float] = None,
+    cli_mode: bool = False,
     settings: Optional[BugninjaSettings] = None,
 ) -> BaseChatModel:
     """Create LLM model for any provider with unified interface.
@@ -27,7 +27,7 @@ def create_provider_model(
 
     Args:
         provider (LLMProvider): LLM provider to use
-        temperature (Optional[float]): Optional temperature override
+        cli_mode (bool): Whether to use CLI mode (TOML) or Library mode (env vars)
         settings (Optional[BugninjaSettings]): Optional settings instance (uses default if None)
 
     Returns:
@@ -41,41 +41,37 @@ def create_provider_model(
         from bugninja.config.llm_creator import create_provider_model
         from bugninja.config.settings import LLMProvider
 
-        # Create OpenAI model
-        model = create_provider_model(LLMProvider.OPENAI, temperature=0.1)
+        # Create OpenAI model (Library mode)
+        model = create_provider_model(LLMProvider.OPENAI, cli_mode=False)
 
-        # Create Azure OpenAI model with custom settings
-        settings = BugninjaSettings()
-        model = create_provider_model(LLMProvider.AZURE_OPENAI, settings=settings)
+        # Create Azure OpenAI model (CLI mode)
+        model = create_provider_model(LLMProvider.AZURE_OPENAI, cli_mode=True)
         ```
     """
 
     # Get settings if not provided
     if settings is None:
-        settings = ConfigurationFactory.get_settings()
+        settings = ConfigurationFactory.get_settings(cli_mode=cli_mode)
 
     # Create factory for the provider
     factory = BaseLLMFactory(settings, provider)
 
-    # Create configuration
+    # Create configuration with temperature from settings
     config = LLMConfig.create_default(provider)
-
-    # Override temperature if specified
-    if temperature is not None:
-        config.temperature = temperature
+    config.temperature = settings.llm_temperature
 
     # Create and return model
     return factory.create_model_from_config(config)
 
 
 def create_provider_model_from_settings(
-    temperature: Optional[float] = None,
+    cli_mode: bool = False,
     settings: Optional[BugninjaSettings] = None,
 ) -> BaseChatModel:
     """Create LLM model using provider from settings.
 
     Args:
-        temperature: Optional temperature override
+        cli_mode (bool): Whether to use CLI mode (TOML) or Library mode (env vars)
         settings: Optional settings instance (uses default if None)
 
     Returns:
@@ -87,7 +83,7 @@ def create_provider_model_from_settings(
 
     # Get settings if not provided
     if settings is None:
-        settings = ConfigurationFactory.get_settings()
+        settings = ConfigurationFactory.get_settings(cli_mode=cli_mode)
 
     # Validate provider configuration
     settings._validate_provider_config()
@@ -95,16 +91,17 @@ def create_provider_model_from_settings(
     # Create model using provider from settings
     return create_provider_model(
         provider=settings.llm_provider,
-        temperature=temperature,
+        cli_mode=cli_mode,
         settings=settings,
     )
 
 
-def create_llm_model_from_config(config: LLMConfig) -> BaseChatModel:
+def create_llm_model_from_config(config: LLMConfig, cli_mode: bool = False) -> BaseChatModel:
     """Create LLM model from unified configuration.
 
     Args:
         config: Unified LLM configuration
+        cli_mode (bool): Whether to use CLI mode (TOML) or Library mode (env vars)
 
     Returns:
         Configured LLM model instance
@@ -113,13 +110,16 @@ def create_llm_model_from_config(config: LLMConfig) -> BaseChatModel:
         ValueError: If configuration is invalid
     """
 
-    settings = ConfigurationFactory.get_settings()
+    settings = ConfigurationFactory.get_settings(cli_mode=cli_mode)
     factory = BaseLLMFactory(settings, config.provider)
     return factory.create_model_from_config(config)
 
 
-def create_llm_config_from_settings() -> LLMConfig:
+def create_llm_config_from_settings(cli_mode: bool = False) -> LLMConfig:
     """Create LLM configuration from settings.
+
+    Args:
+        cli_mode (bool): Whether to use CLI mode (TOML) or Library mode (env vars)
 
     Returns:
         LLM configuration based on current settings
@@ -128,5 +128,5 @@ def create_llm_config_from_settings() -> LLMConfig:
         ValueError: If settings are invalid
     """
 
-    settings = ConfigurationFactory.get_settings()
+    settings = ConfigurationFactory.get_settings(cli_mode=cli_mode)
     return LLMConfig.create_default(settings.llm_provider)
