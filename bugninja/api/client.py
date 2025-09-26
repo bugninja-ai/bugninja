@@ -435,7 +435,6 @@ class BugninjaClient:
             raise LLMError(
                 f"LLM operation failed during {operation_type.value}: {error}",
                 llm_provider=self.config.llm_provider,
-                llm_model=self.config.llm_model,
                 original_error=error,
             )
 

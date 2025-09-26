@@ -121,7 +121,6 @@ from bugninja.config import ConfigurationFactory
 
 # Override specific settings via environment variables
 os.environ["LLM_PROVIDER"] = "azure_openai"
-os.environ["LLM_MODEL"] = "gpt-4-turbo"
 os.environ["LOG_LEVEL"] = "DEBUG"
 
 # Load settings (environment variables take precedence)
@@ -163,7 +162,6 @@ TRAVERSALS_DIR=./traversals
 ```bash
 # LLM Provider Configuration
 LLM_PROVIDER=azure_openai
-LLM_MODEL=gpt-4.1
 LLM_TEMPERATURE=0.0
 
 # Azure OpenAI (only needed if using Azure)

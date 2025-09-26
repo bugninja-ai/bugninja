@@ -45,7 +45,6 @@ class BugninjaSettings(BaseSettings):
 
     # LLM Provider Selection (from TOML)
     llm_provider: LLMProvider = Field(description="LLM provider to use for browser automation")
-    llm_model: str = Field(description="LLM model name to use")
     llm_temperature: float = Field(
         ge=0.0,
         le=2.0,
@@ -200,11 +199,6 @@ class BugninjaSettings(BaseSettings):
                 pass
 
     # Backward compatibility properties
-    @property
-    def azure_openai_model(self) -> str:
-        """Backward compatibility: Get Azure OpenAI model name."""
-        return self.llm_model
-
     @property
     def azure_openai_temperature(self) -> float:
         """Backward compatibility: Get Azure OpenAI temperature."""

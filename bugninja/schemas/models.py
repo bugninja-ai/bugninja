@@ -487,7 +487,6 @@ class BugninjaConfig(BaseModel):
 
     Attributes:
         llm_provider (str): LLM provider to use (default: "azure_openai")
-        llm_model (str): LLM model to use (default: "gpt-4.1")
         llm_temperature (float): Temperature for LLM responses (0.0-2.0, default: 0.0)
         headless (bool): Run browser in headless mode (default: False)
         viewport_width (int): Browser viewport width (800-3840, default: 1920)
@@ -529,8 +528,6 @@ class BugninjaConfig(BaseModel):
         default="azure_openai",
         description="LLM provider to use",
     )
-
-    llm_model: str = Field(default="gpt-4.1", description="LLM model to use")
 
     llm_temperature: float = Field(
         default=0.0, ge=0.0, le=2.0, description="Temperature for LLM responses"
@@ -695,7 +692,6 @@ class BugninjaConfig(BaseModel):
         json_schema_extra = {
             "example": {
                 "llm_provider": "azure_openai",
-                "llm_model": "gpt-4.1",
                 "headless": False,
                 "viewport_width": 1280,
                 "viewport_height": 960,

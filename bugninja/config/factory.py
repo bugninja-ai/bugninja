@@ -106,7 +106,6 @@ class ConfigurationFactory:
             "project.name": "project_name",
             # LLM configuration
             "llm.provider": "llm_provider",
-            "llm.model": "llm_model",
             "llm.temperature": "llm_temperature",
             # Azure OpenAI configuration
             "llm.azure_openai.api_version": "azure_openai_api_version",
