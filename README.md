@@ -106,14 +106,14 @@ To enable autocomplete:
 # bash
 echo 'eval "$(_BUGNINJA_COMPLETE=bash_source bugninja)"' >> ~/.bashrc
 
-#zsh
-echo 'eval "$(_BUGNINJA_COMPLETE=bash_source bugninja)"' >> ~/.zshrc
+# zsh (make sure compinit is initialized first)
+echo -e '\n# Initialize zsh completion system\nautoload -Uz compinit\ncompinit\n\n# Bugninja CLI completion\neval "$(_BUGNINJA_COMPLETE=zsh_source bugninja)"' >> ~/.zshrc
 ```
 
 For `Fish` add this to `~/.config/fish/completions/foo-bar.fish`
 
 ```
-_BUGNINJA_COMPLETE=fish_source bugninja | source
+_BUGNINJA_COMPLETE=fish_source bugninja 
 ```
 
 ### Verify Installation
