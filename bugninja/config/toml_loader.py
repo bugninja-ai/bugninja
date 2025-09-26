@@ -79,8 +79,13 @@ class TOMLConfigLoader:
             full_key = f"{prefix}.{key}" if prefix else key
 
             if isinstance(value, dict):
-                # Recursively flatten nested dictionaries
-                flattened.update(self._flatten_config(value, full_key))
+                # Handle secrets section specially - flatten with "secrets." prefix
+                if key == "secrets":
+                    for secret_key, secret_value in value.items():
+                        flattened[f"secrets.{secret_key}"] = secret_value
+                else:
+                    # Recursively flatten nested dictionaries
+                    flattened.update(self._flatten_config(value, full_key))
             else:
                 # Direct assignment for non-dict values
                 flattened[full_key] = value

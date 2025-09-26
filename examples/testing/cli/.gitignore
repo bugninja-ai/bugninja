@@ -3,6 +3,9 @@
 # Screenshots from automation runs
 screenshots/
 
+# Video recordings from automation runs
+videos/
+
 # Traversal files (recorded browser sessions)
 traversals/
 
@@ -12,3 +15,5 @@ traversals/
 
 # Bugninja README (auto-generated)
 BUGNINJA_README.md
+
+run_history.json

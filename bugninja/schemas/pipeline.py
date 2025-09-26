@@ -19,6 +19,17 @@ from bugninja.utils.logging_config import logger
 #! State comparisons
 
 
+class ActionTimestamps(BaseModel):
+    """Timestamp information for action execution with video synchronization.
+
+    This model stores timing information for individual actions relative to video start,
+    providing precise video synchronization points for action start and end times.
+    """
+
+    video_start_offset: Optional[float] = None  # Seconds from video start
+    video_end_offset: Optional[float] = None  # Seconds from video start
+
+
 class BugninjaExtendedAction(BaseModel):
     """Represents extended action data with brain state associations and DOM information.
 
@@ -31,6 +42,7 @@ class BugninjaExtendedAction(BaseModel):
     dom_element_data: Optional[Dict[str, Any]]
     screenshot_filename: Optional[str] = None
     idx_in_brainstate: int
+    timestamps: Optional[ActionTimestamps] = None
 
     def get_action_type(self) -> str:
         return [k for k, v in self.action.items() if v is not None][0]

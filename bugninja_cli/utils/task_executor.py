@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -42,7 +42,9 @@ from rich.console import Console
 
 if TYPE_CHECKING:
     from bugninja.api import BugninjaTask
+    from bugninja.config.video_recording import VideoRecordingConfig
     from bugninja.schemas import TaskExecutionResult, TaskInfo, TaskRunConfig
+    from bugninja.schemas.models import BugninjaConfig
     from bugninja.schemas.pipeline import Traversal
 
 
@@ -127,6 +129,47 @@ class TaskExecutor:
                 task_output_dir = self.project_root / "tasks" / task_info.folder_name
                 config.output_base_dir = task_output_dir
 
+                # Set correct screenshots directory for CLI mode
+                config.screenshots_dir = task_output_dir / "screenshots"
+            else:
+                # For CLI mode without task_info, don't create default screenshots directory
+                config.screenshots_dir = None
+
+            # Handle video recording if enabled and task_info is provided
+            if self.task_run_config.enable_video_recording and task_info:
+                try:
+                    # Check FFmpeg availability first
+                    from bugninja.utils.video_recording_manager import (
+                        VideoRecordingManager,
+                    )
+
+                    if not VideoRecordingManager.check_ffmpeg_availability():
+                        self.logger.warning(
+                            "⚠️ FFmpeg is not available. Video recording will be disabled. Please install FFmpeg to enable video recording."
+                        )
+                        # Disable video recording for this session
+                        config.video_recording = None
+                    else:
+                        # Ensure videos directory exists
+                        videos_dir = self._ensure_videos_directory(task_info)
+
+                        # Create video recording configuration
+                        video_config = self.task_run_config.get_video_recording_config(
+                            str(videos_dir)
+                        )
+                        if video_config:
+                            # Set the video recording configuration directly
+                            config.video_recording = video_config
+                            self.logger.bugninja_log(
+                                f"🎥 Video recording enabled for task: {task_info.name}"
+                            )
+                except Exception as e:
+                    self.logger.warning(
+                        f"⚠️ Video recording setup failed: {e}. Task will continue without video recording."
+                    )
+                    # Disable video recording for this session
+                    config.video_recording = None
+
             # Create event manager for progress tracking (empty list for no publishers)
             event_manager = EventPublisherManager([])
 
@@ -148,54 +191,6 @@ class TaskExecutor:
                 self.logger.bugninja_log("Bugninja client cleaned up successfully")
             except Exception as e:
                 self.logger.error(f"Error during client cleanup: {e}")
-
-    def _parse_env_file(self, env_path: Path) -> Dict[str, Any]:
-        """Parse environment variables from .env file.
-
-        Args:
-            env_path (Path): Path to the .env file
-
-        Returns:
-            Dict[str, Any]: Dictionary of environment variables
-
-        Raises:
-            FileNotFoundError: If .env file doesn't exist
-            ValueError: If .env file is malformed
-        """
-        if not env_path.exists():
-            raise FileNotFoundError(f"Environment file not found: {env_path}")
-
-        secrets: Dict[str, Any] = {}
-
-        try:
-            with open(env_path, "r", encoding="utf-8") as f:
-                for line_num, line in enumerate(f, 1):
-                    line = line.strip()
-
-                    # Skip empty lines and comments
-                    if not line or line.startswith("#"):
-                        continue
-
-                    # Parse key=value pairs
-                    if "=" in line:
-                        key, value = line.split("=", 1)
-                        key = key.strip()
-                        value = value.strip()
-
-                        # Remove quotes if present
-                        if (value.startswith('"') and value.endswith('"')) or (
-                            value.startswith("'") and value.endswith("'")
-                        ):
-                            value = value[1:-1]
-
-                        secrets[key] = value
-                    else:
-                        self.logger.warning(f"Invalid line {line_num} in {env_path}: {line}")
-
-        except Exception as e:
-            raise ValueError(f"Failed to parse environment file {env_path}: {e}")
-
-        return secrets
 
     def _read_task_description(self, description_path: Path) -> str:
         """Read task description from markdown file.
@@ -308,35 +303,34 @@ class TaskExecutor:
 
     @staticmethod
     def find_traversal_by_task_name(task_name: str, project_root: Path) -> Path:
-        """Find traversal file by task name using latest_run_path.
+        """Find traversal file by task name using the latest AI-navigated run.
 
         Args:
             task_name: Name of the task
             project_root: Root directory of the Bugninja project
 
         Returns:
-            Path: Path to the traversal file from latest_run_path
+            Path: Path to the latest traversal file from ai_navigated_runs
 
         Raises:
             FileNotFoundError: If task or traversal file not found
-            ValueError: If TOML file is malformed
+            ValueError: If JSON file is malformed
         """
-        task_toml_path: Path = project_root / "tasks" / task_name / f"task_{task_name}.toml"
+        task_dir: Path = project_root / "tasks" / task_name
 
-        if not task_toml_path.exists():
-            raise FileNotFoundError(f"Task not found: {task_name} (missing {task_toml_path})")
+        if not task_dir.exists():
+            raise FileNotFoundError(f"Task not found: {task_name} (missing {task_dir})")
 
         try:
-            import tomli
+            from bugninja_cli.utils.run_history_manager import RunHistoryManager
 
-            with open(task_toml_path, "rb") as f:
-                config = tomli.load(f)
+            # Use RunHistoryManager to get the latest traversal
+            history_manager = RunHistoryManager(task_dir)
+            traversal_path = history_manager.get_latest_ai_run_traversal()
 
-            latest_run_path = config.get("metadata", {}).get("latest_run_path")
-            if not latest_run_path:
-                raise FileNotFoundError(f"No latest_run_path found in task '{task_name}'")
+            if not traversal_path:
+                raise FileNotFoundError(f"No AI-navigated runs found in task '{task_name}'")
 
-            traversal_path: Path = project_root / latest_run_path
             if not traversal_path.exists():
                 raise FileNotFoundError(f"Traversal file not found: {traversal_path}")
 
@@ -345,7 +339,7 @@ class TaskExecutor:
         except Exception as e:
             if isinstance(e, (FileNotFoundError, ValueError)):
                 raise
-            raise ValueError(f"Failed to read task configuration for '{task_name}': {e}")
+            raise ValueError(f"Failed to read task run history for '{task_name}': {e}")
 
     def _ensure_traversals_directory(self, task_info: TaskInfo) -> Path:
         """Ensure traversals directory exists for the task.
@@ -360,47 +354,74 @@ class TaskExecutor:
         traversals_dir.mkdir(exist_ok=True)
         return traversals_dir
 
-    def _update_task_metadata(self, task_info: TaskInfo, result: TaskExecutionResult) -> None:
-        """Update task metadata with execution results.
+    def _ensure_videos_directory(self, task_info: TaskInfo) -> Path:
+        """Ensure videos directory exists for the task.
+
+        Args:
+            task_info (TaskInfo): Task information object
+
+        Returns:
+            Path: Path to the videos directory
+        """
+        videos_dir = task_info.task_path / "videos"
+        videos_dir.mkdir(parents=True, exist_ok=True)
+        return videos_dir
+
+    def _update_video_recording_config(
+        self, config: "BugninjaConfig", video_config: "VideoRecordingConfig"
+    ) -> None:
+        """Update video recording configuration with task-specific settings.
+
+        Args:
+            config (BugninjaConfig): The Bugninja configuration to update
+            video_config (VideoRecordingConfig): Task-specific video configuration
+        """
+        # Update all video recording settings
+        if config.video_recording:
+            config.video_recording.output_dir = video_config.output_dir
+            config.video_recording.width = video_config.width
+            config.video_recording.height = video_config.height
+            config.video_recording.fps = video_config.fps
+            config.video_recording.quality = video_config.quality
+            config.video_recording.output_format = video_config.output_format
+            config.video_recording.codec = video_config.codec
+            config.video_recording.preset = video_config.preset
+            config.video_recording.crf = video_config.crf
+            config.video_recording.bitrate = video_config.bitrate
+            config.video_recording.pixel_format = video_config.pixel_format
+            config.video_recording.max_queue_size = video_config.max_queue_size
+
+    def _update_task_metadata(
+        self, task_info: TaskInfo, result: TaskExecutionResult, run_type: str = "ai_navigated"
+    ) -> None:
+        """Update task metadata with new run tracking system.
 
         Args:
             task_info (TaskInfo): Task information object
             result (TaskExecutionResult): Execution result
+            run_type (str): Type of run ("ai_navigated" or "replay")
         """
         try:
-            # Read current TOML configuration
-            import tomli
+            from bugninja_cli.utils.run_history_manager import RunHistoryManager
 
-            with open(task_info.toml_path, "rb") as f:
-                config = tomli.load(f)
+            # Use RunHistoryManager to add the run
+            history_manager = RunHistoryManager(task_info.task_path)
 
-            # Update metadata section with execution results
-            if "metadata" not in config:
-                config["metadata"] = {}
+            if run_type == "ai_navigated":
+                history_manager.add_ai_run(result)
+            else:  # replay
+                # For replay runs, we need the original traversal ID
+                # This should be passed from the caller, but for now we'll use a placeholder
+                original_traversal_id = "unknown"  # TODO: Pass this from caller
+                healing_enabled = False  # TODO: Pass this from caller
+                history_manager.add_replay_run(result, original_traversal_id, healing_enabled)
 
-            if result.traversal_path:
-                # Store relative path from project root
-                try:
-                    relative_path = result.traversal_path.relative_to(self.project_root)
-                    config["metadata"]["latest_run_path"] = str(relative_path)
-                except ValueError:
-                    # If not relative to project root, store absolute path
-                    config["metadata"]["latest_run_path"] = str(result.traversal_path)
-            else:
-                config["metadata"]["latest_run_path"] = ""
-            config["metadata"]["latest_run_status"] = "success" if result.success else "failed"
-            config["metadata"]["latest_run_timestamp"] = datetime.now(UTC).isoformat()
-
-            # Write updated TOML configuration
-            import tomli_w
-
-            with open(task_info.toml_path, "wb") as f:
-                tomli_w.dump(config, f)
-
-            self.logger.bugninja_log(f"Updated metadata for task '{task_info.name}'")
+            self.logger.bugninja_log(
+                f"Updated metadata for task '{task_info.name}' with {run_type} run"
+            )
 
         except Exception as e:
-            self.logger.error(f"Failed to update metadata for task '{task_info.name}': {e}")
+            raise ValueError(f"Failed to update task metadata: {e}")
 
     async def replay_traversal(
         self, traversal_path: Path, enable_healing: bool = False
@@ -424,7 +445,7 @@ class TaskExecutor:
             # Load traversal file to get original browser configuration
             traversal_config = self._load_traversal_config(traversal_path)
 
-            # Reinitialize client with original browser configuration
+            # Reinitialize client with original browser configuration and video recording settings
             await self._initialize_client_with_traversal_config(traversal_config)
 
             # Execute replay using BugninjaClient
@@ -447,7 +468,7 @@ class TaskExecutor:
                 success=result.success,
                 execution_time=execution_time,
                 traversal_path=output_traversal_path,
-                error_message=result.error.message if result.error else None,
+                error_message=str(result.error) if result.error else None,
                 result=result,
             )
 
@@ -516,7 +537,51 @@ class TaskExecutor:
                 viewport_width=browser_config.get("viewport", {}).get("width", 1920),
                 viewport_height=browser_config.get("viewport", {}).get("height", 1080),
                 user_agent=browser_config.get("user_agent"),
+                cli_mode=True,  # Enable CLI mode for TOML configuration
             )
+
+            # Handle video recording configuration if enabled in task
+            if self.task_run_config.enable_video_recording:
+                try:
+                    # Check FFmpeg availability first
+                    from bugninja.utils.video_recording_manager import (
+                        VideoRecordingManager,
+                    )
+
+                    if not VideoRecordingManager.check_ffmpeg_availability():
+                        self.logger.warning(
+                            "⚠️ FFmpeg is not available. Video recording will be disabled. Please install FFmpeg to enable video recording."
+                        )
+                    else:
+                        # Create video recording configuration
+                        from bugninja.config.video_recording import VideoRecordingConfig
+
+                        # Use the same output directory structure as the original task
+                        # For replay, we need to determine the original task directory
+                        if hasattr(self, "task_info") and self.task_info:
+                            # Use the original task directory
+                            task_name = self.task_info.folder_name
+                            output_base_dir = self.project_root / "tasks" / task_name
+                        else:
+                            # Fallback to a generic replay directory
+                            output_base_dir = self.project_root / "tasks" / "replay"
+
+                        videos_dir = output_base_dir / "videos"
+                        videos_dir.mkdir(parents=True, exist_ok=True)
+
+                        video_config = VideoRecordingConfig(
+                            output_dir=str(videos_dir),
+                            width=self.task_run_config.viewport_width,
+                            height=self.task_run_config.viewport_height,
+                        )
+
+                        config.video_recording = video_config
+                        self.logger.bugninja_log("🎥 Video recording enabled for replay")
+
+                except Exception as e:
+                    self.logger.warning(
+                        f"⚠️ Video recording setup failed: {e}. Replay will continue without video recording."
+                    )
 
             # Create event manager for progress tracking
             event_manager = EventPublisherManager([])
@@ -548,8 +613,7 @@ class TaskExecutor:
         from bugninja.schemas import TaskExecutionResult
 
         try:
-
-            # Reinitialize client with task-specific configuration
+            # Always initialize client with task-specific configuration
             await self._initialize_client(
                 enable_logging=self.enable_logging,
                 task_info=task_info,

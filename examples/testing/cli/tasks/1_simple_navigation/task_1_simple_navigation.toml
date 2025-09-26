@@ -8,15 +8,12 @@ allowed_domains = []
 viewport_width = 1920
 viewport_height = 1080
 user_agent = ""
-wait_between_actions = 1
+wait_between_actions = 1.0
 enable_vision = true
-enable_memory = true
 enable_healing = true
 headless = false
+enable_video_recording = true
 
 [metadata]
 task_id = "ln70dwbp4l8g8bxzoafsv75b"
 created_date = "2025-09-14T12:44:24.995366+00:00Z"
-latest_run_path = "tasks/1_simple_navigation/traversals/traverse_20250919_114155_cmj2j2k2wnc0xx1k9cas1y6y.json"
-latest_run_status = "success"
-latest_run_timestamp = "2025-09-19T09:41:55.271751+00:00"

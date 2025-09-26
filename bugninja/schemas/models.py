@@ -191,8 +191,7 @@ class BugninjaTask(BaseModel):
         """Load task configuration from TOML file.
 
         This method loads task-specific configuration from the provided TOML file,
-        including task description, agent settings, and secrets from the corresponding
-        ENV file.
+        including task description, agent settings, and secrets from the TOML file.
 
         Raises:
             FileNotFoundError: If task config file doesn't exist
@@ -205,17 +204,11 @@ class BugninjaTask(BaseModel):
         from bugninja.config.factory import ConfigurationFactory
 
         try:
-            # Load task configuration from TOML
+            # Load task configuration from TOML (includes secrets)
             task_config = ConfigurationFactory.load_task_config(self.task_config_path)
 
-            # Load task secrets from ENV file (optional)
-            task_env_path = self.task_config_path.with_suffix(".env")
-            task_secrets: Optional[Dict[str, Any]] = ConfigurationFactory.load_task_secrets(
-                task_env_path
-            )
-
             # Update task properties from config
-            self._update_from_config(task_config, task_secrets)
+            self._update_from_config(task_config)
 
         except Exception as e:
             raise ValueError(f"Configuration error: {str(e)}")
@@ -223,20 +216,19 @@ class BugninjaTask(BaseModel):
     def _update_from_config(
         self,
         task_config: Dict[str, Any],
-        task_secrets: Optional[Dict[str, Any]],
     ) -> None:
         """Update task properties from configuration data.
 
         Args:
             task_config: Task-specific configuration from TOML (flattened)
-            task_secrets: Task-specific secrets from ENV
         """
         # Update task description and instructions (config is flattened)
         self.description = task_config.get("task.description", "")
         self.extra_instructions = task_config.get("task.extra_instructions", [])
 
-        # Update secrets
-        self.secrets = task_secrets
+        # Update secrets from TOML config
+        if "task_secrets" in task_config:
+            self.secrets = task_config["task_secrets"]
 
         # Update allowed domains if present
         if "task.allowed_domains" in task_config:
@@ -400,6 +392,44 @@ class BugninjaTaskError(BaseModel):
     original_error: Optional[str] = None
     suggested_action: Optional[str] = None
 
+    def __str__(self) -> str:
+        """Return a human-readable error message with proper formatting.
+
+        Returns:
+            str: Formatted error message with details and suggestions
+        """
+        import json
+
+        # Start with the main error message
+        error_parts = [f"🚨 {self.message}"]
+
+        # Add error type if available
+        if self.error_type:
+            error_parts.append(f"📋 Error Type: {self.error_type.value}")
+
+        # Add details if available (formatted nicely)
+        if self.details:
+            error_parts.append("📝 Details:")
+            try:
+                # Format details as pretty JSON
+                formatted_details = json.dumps(self.details, indent=2, default=str)
+                # Indent each line of details
+                indented_details = "\n".join(f"  {line}" for line in formatted_details.split("\n"))
+                error_parts.append(indented_details)
+            except Exception:
+                # Fallback to string representation
+                error_parts.append(f"  {self.details}")
+
+        # Add original error if available
+        if self.original_error:
+            error_parts.append(f"🔍 Original Error: {self.original_error}")
+
+        # Add suggested action if available
+        if self.suggested_action:
+            error_parts.append(f"💡 Suggested Action: {self.suggested_action}")
+
+        return "\n".join(error_parts)
+
 
 class BulkBugninjaTaskResult(BaseModel):
     """Result for parallel task execution with aggregate metrics.
@@ -471,7 +501,7 @@ class BugninjaConfig(BaseModel):
         debug_mode (bool): Enable debug mode (default: False)
         screenshots_dir (Path): Directory for storing screenshots (default: "./screenshots")
         traversals_dir (Path): Directory for storing traversal files (default: "./traversals")
-        video_recording (VideoRecordingConfig): Video recording configuration (default: disabled)
+        video_recording (Optional[VideoRecordingConfig]): Video recording configuration (default: None)
 
     Example:
         ```python
@@ -550,7 +580,7 @@ class BugninjaConfig(BaseModel):
         description="Base directory for all output files (traversals, screenshots, videos)",
     )
 
-    screenshots_dir: Path = Field(
+    screenshots_dir: Optional[Path] = Field(
         default=Path("./screenshots"), description="Directory for storing screenshots"
     )
 
@@ -559,8 +589,8 @@ class BugninjaConfig(BaseModel):
     )
 
     # Video Recording Configuration
-    video_recording: VideoRecordingConfig = Field(
-        default_factory=VideoRecordingConfig,
+    video_recording: Optional[VideoRecordingConfig] = Field(
+        default=None,
         description="Video recording configuration for navigation sessions",
     )
 
@@ -586,7 +616,7 @@ class BugninjaConfig(BaseModel):
         # Directory creation is now handled explicitly when needed
         return v
 
-    def get_effective_screenshots_dir(self) -> Path:
+    def get_effective_screenshots_dir(self) -> Optional[Path]:
         """Get the effective screenshots directory based on output_base_dir.
 
         Returns:
@@ -613,8 +643,8 @@ class BugninjaConfig(BaseModel):
             Path: The video directory to use
         """
         if self.output_base_dir:
-            return self.output_base_dir / "screen_recordings"
-        return Path(self.video_recording.output_dir)
+            return self.output_base_dir / "videos"
+        return Path(self.video_recording.output_dir) if self.video_recording else Path("./videos")
 
     def ensure_directories_exist(self) -> None:
         """Explicitly create directories when needed.
@@ -635,11 +665,16 @@ class BugninjaConfig(BaseModel):
 
         # Add screenshots directory
         if self.screenshots_dir is not None:
-            directories_to_create.append(self.screenshots_dir)
+            # Use effective screenshots directory for CLI mode
+            effective_screenshots_dir = self.get_effective_screenshots_dir()
+            if effective_screenshots_dir:
+                directories_to_create.append(effective_screenshots_dir)
 
         # Add traversals directory
         if self.traversals_dir is not None:
-            directories_to_create.append(self.traversals_dir)
+            # Use effective traversals directory for CLI mode
+            effective_traversals_dir = self.get_effective_traversals_dir()
+            directories_to_create.append(effective_traversals_dir)
 
         # Add user data directory
         if self.user_data_dir is not None:

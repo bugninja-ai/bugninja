@@ -8,15 +8,19 @@ allowed_domains = []
 viewport_width = 1920
 viewport_height = 1080
 user_agent = ""
-wait_between_actions = 1
+wait_between_actions = 1.0
 enable_vision = true
-enable_memory = true
 enable_healing = true
 headless = false
+enable_video_recording = false
+
 
 [metadata]
 task_id = "c58h39d1yo351k9p2j5g5b4d"
 created_date = "2025-09-14T13:19:09.364270+00:00Z"
-latest_run_path = "traversals/traverse_20250914_153948_p2j3459fmu9hst6iqlou2xrv.json"
-latest_run_status = "success"
-latest_run_timestamp = "2025-09-14T13:39:49.105939+00:00"
+
+[metadata.summary]
+total_ai_runs = 0
+total_replay_runs = 0
+successful_ai_runs = 0
+successful_replay_runs = 0

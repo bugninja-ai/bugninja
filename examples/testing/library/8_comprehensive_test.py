@@ -55,6 +55,9 @@ async def comprehensive_test() -> None:
     # Execute the task
     result = await client.run_task(task=task)
 
+    if result.error:
+        raise Exception(result.error.message)
+
     if not result.traversal_file:
         rich_print(result)
         raise Exception("Task execution failed")

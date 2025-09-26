@@ -25,6 +25,9 @@ async def secrets_scrolling_replay() -> None:
     # Execute the task
     result = await client.run_task(task=task)
 
+    if result.error:
+        raise Exception(result.error.message)
+
     if not result.traversal_file:
         raise Exception("Task execution failed; the `traversal_file` is empty")
 

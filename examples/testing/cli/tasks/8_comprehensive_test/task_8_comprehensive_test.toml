@@ -12,19 +12,27 @@ extra_instructions = [
 ]
 allowed_domains = []
 
+[secrets]
+USERNAME = "test_account_username"
+PASSWORD = "password_123"
+
 [run_config]
 viewport_width = 1920
 viewport_height = 1080
 user_agent = ""
-wait_between_actions = 1
+wait_between_actions = 1.0
 enable_vision = true
-enable_memory = true
 enable_healing = true
 headless = false
+enable_video_recording = false
+
 
 [metadata]
 task_id = "y5ripr9cy3u1mp5mfkfrxvoj"
 created_date = "2025-09-14T18:52:04.121309+00:00Z"
-latest_run_path = "/home/arathus/Minyma/bugninja-experiment/tasks/8_comprehensive_test/traversals/run_20250914_205543.json"
-latest_run_status = "success"
-latest_run_timestamp = "2025-09-14T18:55:43.973723+00:00"
+
+[metadata.summary]
+total_ai_runs = 0
+total_replay_runs = 0
+successful_ai_runs = 0
+successful_replay_runs = 0

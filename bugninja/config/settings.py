@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from pydantic import Field, SecretStr, field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from bugninja.events.types import EventPublisherType
 
@@ -39,19 +39,14 @@ class BugninjaSettings(BaseSettings):
     - Multi-LLM provider support
     """
 
-    model_config = {
-        "env_file": ".env",
-        "env_file_encoding": "utf-8",
-        "case_sensitive": False,
-    }
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
+    )
 
     # LLM Provider Selection (from TOML)
-    llm_provider: LLMProvider = Field(
-        default=LLMProvider.AZURE_OPENAI, description="LLM provider to use for browser automation"
-    )
-    llm_model: str = Field(default="gpt-4.1", description="LLM model name to use")
+    llm_provider: LLMProvider = Field(description="LLM provider to use for browser automation")
+    llm_model: str = Field(description="LLM model name to use")
     llm_temperature: float = Field(
-        default=0.0,
         ge=0.0,
         le=2.0,
         description="Temperature for LLM responses",
@@ -59,10 +54,10 @@ class BugninjaSettings(BaseSettings):
 
     # Azure OpenAI Configuration (Sensitive - from .env)
     azure_openai_endpoint: Optional[str] = Field(
-        None, alias="AZURE_OPENAI_ENDPOINT", description="Azure OpenAI endpoint URL"
+        default=None, alias="AZURE_OPENAI_ENDPOINT", description="Azure OpenAI endpoint URL"
     )
     azure_openai_key: Optional[SecretStr] = Field(
-        None, alias="AZURE_OPENAI_KEY", description="Azure OpenAI API key"
+        default=None, alias="AZURE_OPENAI_KEY", description="Azure OpenAI API key"
     )
     azure_openai_api_version: str = Field(
         default="2024-02-15-preview",
@@ -71,34 +66,34 @@ class BugninjaSettings(BaseSettings):
 
     # OpenAI Configuration (Sensitive - from .env)
     openai_api_key: Optional[SecretStr] = Field(
-        None, alias="OPENAI_API_KEY", description="OpenAI API key"
+        default=None, alias="OPENAI_API_KEY", description="OpenAI API key"
     )
     openai_base_url: Optional[str] = Field(
-        None, description="OpenAI API base URL (from TOML or env)"
+        default=None, description="OpenAI API base URL (from TOML or env)"
     )
 
     # Anthropic Configuration (Sensitive - from .env)
     anthropic_api_key: Optional[SecretStr] = Field(
-        None, alias="ANTHROPIC_API_KEY", description="Anthropic API key"
+        default=None, alias="ANTHROPIC_API_KEY", description="Anthropic API key"
     )
     anthropic_base_url: Optional[str] = Field(
-        None, description="Anthropic API base URL (from TOML or env)"
+        default=None, description="Anthropic API base URL (from TOML or env)"
     )
 
     # Google Gemini Configuration (Sensitive - from .env)
     google_api_key: Optional[SecretStr] = Field(
-        None, alias="GOOGLE_API_KEY", description="Google API key for Gemini"
+        default=None, alias="GOOGLE_API_KEY", description="Google API key for Gemini"
     )
     google_base_url: Optional[str] = Field(
-        None, description="Google API base URL (from TOML or env)"
+        default=None, description="Google API base URL (from TOML or env)"
     )
 
     # DeepSeek Configuration (Sensitive - from .env)
     deepseek_api_key: Optional[SecretStr] = Field(
-        None, alias="DEEPSEEK_API_KEY", description="DeepSeek API key"
+        default=None, alias="DEEPSEEK_API_KEY", description="DeepSeek API key"
     )
     deepseek_base_url: Optional[str] = Field(
-        None, description="DeepSeek API base URL (from TOML or env)"
+        default=None, description="DeepSeek API base URL (from TOML or env)"
     )
 
     # Ollama Configuration (from .env)
@@ -141,8 +136,7 @@ class BugninjaSettings(BaseSettings):
             "max_steps": 100,
             "planner_interval": 5,
             "enable_vision": True,
-            "enable_memory": False,
-            "wait_between_actions": 1,
+            "wait_between_actions": 1.0,
         },
         description="Agent configuration settings",
     )

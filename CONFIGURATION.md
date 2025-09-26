@@ -56,7 +56,6 @@ timeout = 30000
 max_steps = 100
 planner_interval = 5
 enable_vision = true
-enable_memory = false
 wait_between_actions = 0.1
 
 [replicator]

@@ -178,10 +178,9 @@ class BugninjaAgentBase(Agent, ABC):
 
         # Initialize video recording manager if enabled
         self.video_recording_manager: Optional[VideoRecordingManager] = (
-            # TODO! temporal disable
-            # VideoRecordingManager(self.run_id, video_recording_config)
-            # if video_recording_config
-            None
+            VideoRecordingManager(self.run_id, video_recording_config, cli_mode=cli_mode)
+            if video_recording_config
+            else None
         )
 
         self.output_base_dir: Optional[Path] = output_base_dir
@@ -217,7 +216,6 @@ class BugninjaAgentBase(Agent, ABC):
     def _create_llm(
         self,
         llm_config: Optional[LLMConfig] = None,
-        temperature: Optional[float] = None,
     ) -> BaseChatModel:
         """Create LLM model using unified configuration.
 
@@ -226,7 +224,6 @@ class BugninjaAgentBase(Agent, ABC):
 
         Args:
             llm_config (Optional[LLMConfig]): Unified LLM configuration
-            temperature (Optional[float]): Temperature setting (overrides config)
 
         Returns:
             BaseChatModel: Configured LLM model instance
@@ -235,16 +232,13 @@ class BugninjaAgentBase(Agent, ABC):
             ValueError: If LLM configuration is invalid or missing
         """
         try:
-
             # Use provided LLM config or create from settings
             if llm_config is not None:
-
-                config = llm_config
-                if temperature is not None:
-                    config.temperature = temperature
-                return create_llm_model_from_config(config)
+                return create_llm_model_from_config(
+                    llm_config, cli_mode=self.bugninja_config.cli_mode
+                )
             else:
-                return create_provider_model_from_settings(temperature)
+                return create_provider_model_from_settings(cli_mode=self.bugninja_config.cli_mode)
         except Exception as e:
             raise ValueError(f"Failed to create LLM model: {e}")
 
@@ -473,11 +467,7 @@ class BugninjaAgentBase(Agent, ABC):
             current_page = await self.browser_session.get_current_page()
             self._log_step_context(current_page, browser_state_summary)
             # generate procedural memory if needed
-            if (
-                self.enable_memory
-                and self.memory
-                and self.state.n_steps % self.memory.config.memory_interval == 0
-            ):
+            if self.memory and self.state.n_steps % self.memory.config.memory_interval == 0:
                 self.memory.create_procedural_memory(self.state.n_steps)
             await self._raise_if_stopped_or_paused()
             # Update action models with page-specific actions
@@ -633,8 +623,11 @@ class BugninjaAgentBase(Agent, ABC):
         except Exception as e:
             result = await self._handle_step_error(e)
             self.state.last_result = result
+            if self.video_recording_manager:
+                await self.video_recording_manager.stop_recording()
         finally:
             step_end_time = time.time()
+
             if result:
                 if browser_state_summary:
                     metadata = StepMetadata(

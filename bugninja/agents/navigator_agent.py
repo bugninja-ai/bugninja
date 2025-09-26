@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import os
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -17,6 +18,7 @@ from browser_use.controller.registry.views import ActionModel  # type: ignore
 from cuid2 import Cuid as CUID
 from playwright._impl._api_structures import ViewportSize
 from playwright.async_api import CDPSession
+from rich import print as rich_print
 
 from bugninja.agents.bugninja_agent_base import (
     NAVIGATION_IDENTIFIERS,
@@ -28,6 +30,7 @@ from bugninja.prompts.prompt_factory import (
 )
 from bugninja.schemas.models import BugninjaConfig
 from bugninja.schemas.pipeline import (
+    ActionTimestamps,
     BugninjaBrowserConfig,
     BugninjaExtendedAction,
     Traversal,
@@ -246,34 +249,42 @@ class NavigatorAgent(BugninjaAgentBase):
 
         if not self._video_recording_initialized:
             if self.video_recording_manager and self.browser_session.browser_context:
-                cdp_session = await self.browser_session.browser_context.new_cdp_session(current_page)  # type: ignore
+                try:
+                    cdp_session = await self.browser_session.browser_context.new_cdp_session(current_page)  # type: ignore
 
-                # Start video recording
-                output_file = f"run_{self.run_id}"
-                await self.video_recording_manager.start_recording(output_file, cdp_session)
+                    # Start video recording
+                    output_file = f"run_{self.run_id}"
+                    await self.video_recording_manager.start_recording(output_file, cdp_session)
 
-                # Setup CDP screencast
-                await cdp_session.send(
-                    "Page.startScreencast",
-                    {
-                        "format": "jpeg",
-                        "quality": self.video_recording_manager.config.quality,
-                        "maxWidth": self.video_recording_manager.config.width,
-                        "maxHeight": self.video_recording_manager.config.height,
-                        "everyNthFrame": 1,
-                    },
-                )
+                    # Setup CDP screencast
+                    await cdp_session.send(
+                        "Page.startScreencast",
+                        {
+                            "format": "jpeg",
+                            "quality": self.video_recording_manager.config.quality,
+                            "maxWidth": self.video_recording_manager.config.width,
+                            "maxHeight": self.video_recording_manager.config.height,
+                            "everyNthFrame": 1,
+                        },
+                    )
 
-                # Setup frame handler
-                cdp_session.on(
-                    "Page.screencastFrame",
-                    lambda frame: asyncio.create_task(
-                        self._handle_screencast_frame(frame, cdp_session)
-                    ),
-                )
+                    # Setup frame handler
+                    cdp_session.on(
+                        "Page.screencastFrame",
+                        lambda frame: asyncio.create_task(
+                            self._handle_screencast_frame(frame, cdp_session)
+                        ),
+                    )
 
-                self._video_recording_initialized = True
-                logger.bugninja_log(f"🎥 Started video recording: {output_file}")
+                    self._video_recording_initialized = True
+                    logger.bugninja_log(f"🎥 Started video recording: {output_file}")
+                except Exception as e:
+                    logger.bugninja_log(
+                        f"⚠️ Video recording failed: {e}. Task will continue without video recording."
+                    )
+                    # Disable video recording for this session
+                    self.video_recording_manager = None
+                    self._video_recording_initialized = True
 
         # ? we create the brain state here since a single thought can belong to multiple actions
         brain_state_id: str = CUID().generate()
@@ -327,6 +338,25 @@ class NavigatorAgent(BugninjaAgentBase):
             action_idx_in_step
         ]
 
+        # Capture start video offset if video recording is enabled
+        if self.video_recording_manager and self.video_recording_manager.is_recording:
+            start_timestamp = time.time() * 1000  # UTC timestamp in milliseconds
+
+            # Calculate video offset
+            video_start_offset = self.video_recording_manager.get_video_offset(start_timestamp)
+
+            # Create timestamps object with only video offsets
+            extended_action.timestamps = ActionTimestamps(video_start_offset=video_start_offset)
+
+            logger.bugninja_log(f"🕐 Captured start video offset: {video_start_offset:.3f}s")
+        else:
+            logger.bugninja_log(
+                f"⚠️ Video recording not enabled: manager={self.video_recording_manager is not None}, recording={self.video_recording_manager.is_recording if self.video_recording_manager else False}"
+            )
+
+        rich_print("Current brain state:")
+        rich_print(self.agent_brain_states[extended_action.brain_state_id])
+
         # ? we take screenshot of every action BEFORE it happens except the "go_to_url" since it has to be taken after
         if extended_action.get_action_type() not in NAVIGATION_IDENTIFIERS:
             #! taking appropriate screenshot before each action
@@ -354,6 +384,23 @@ class NavigatorAgent(BugninjaAgentBase):
         extended_action: BugninjaExtendedAction = self.current_step_extended_actions[
             action_idx_in_step
         ]
+
+        # Capture end video offset if video recording is enabled and timestamps exist
+        if (
+            self.video_recording_manager
+            and self.video_recording_manager.is_recording
+            and extended_action.timestamps is not None
+        ):
+
+            end_timestamp = time.time() * 1000  # UTC timestamp in milliseconds
+
+            # Calculate video offset
+            video_end_offset = self.video_recording_manager.get_video_offset(end_timestamp)
+
+            # Update timestamps with end video offset
+            extended_action.timestamps.video_end_offset = video_end_offset
+
+            logger.bugninja_log(f"🕐 Captured end video offset: {video_end_offset:.3f}s")
 
         # ? we take screenshot of `go_to_url` action after it happens since before it the page is not loaded yet
         if extended_action.get_action_type() in NAVIGATION_IDENTIFIERS:
@@ -486,4 +533,9 @@ class NavigatorAgent(BugninjaAgentBase):
             except Exception:
                 pass
             finally:
-                await cdp_session.send("Page.screencastFrameAck", {"sessionId": frame["sessionId"]})
+                try:
+                    await cdp_session.send(
+                        "Page.screencastFrameAck", {"sessionId": frame["sessionId"]}
+                    )
+                except Exception:
+                    pass

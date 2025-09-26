@@ -576,8 +576,14 @@ def create_gitignore_template(path: Path) -> None:
 # Screenshots from automation runs
 screenshots/
 
+# Video recordings from automation runs
+videos/
+
 # Traversal files (recorded browser sessions)
 traversals/
+
+# Run histories of specific tasks
+run_history.json
 
 # Environment files with sensitive data
 *.env

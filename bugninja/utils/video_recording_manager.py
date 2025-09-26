@@ -34,6 +34,8 @@ stats = await video_manager.stop_recording()
 """
 
 import os
+import shutil
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -57,6 +59,7 @@ class VideoRecordingManager:
         cdp_session (Optional[CDPSession]): Chrome DevTools Protocol session
         output_dir (str): Directory for output video files
         config (VideoRecordingConfig): Video recording configuration
+        video_start_time (Optional[float]): UTC timestamp when video recording started (milliseconds)
 
     Example:
         ```python
@@ -78,22 +81,36 @@ class VideoRecordingManager:
         ```
     """
 
-    def __init__(self, run_id: str, config: VideoRecordingConfig) -> None:
+    def __init__(self, run_id: str, config: VideoRecordingConfig, cli_mode: bool = False) -> None:
         """Initialize the video recording manager.
 
         Args:
             run_id (str): Unique identifier for the current run
             config (VideoRecordingConfig): Video recording configuration
+            cli_mode (bool): Whether running in CLI mode (prevents automatic directory creation)
         """
         self.recorder = BugninjaVideoRecorder(config)
         self.run_id = run_id
         self.is_recording = False
         self.cdp_session: Optional[CDPSession] = None
         self.output_dir = config.output_dir
+        self.cli_mode = cli_mode
+        self.video_start_time: Optional[float] = None
 
         self.config = config
 
-        Path(config.output_dir).mkdir(parents=True, exist_ok=True)
+        # Only create directory if not in CLI mode
+        if not self.cli_mode:
+            Path(config.output_dir).mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def check_ffmpeg_availability() -> bool:
+        """Check if FFmpeg is available on the system.
+
+        Returns:
+            bool: True if FFmpeg is available, False otherwise
+        """
+        return shutil.which("ffmpeg") is not None
 
     async def start_recording(self, output_file: str, cdp_session: CDPSession) -> None:
         """Start video recording.
@@ -107,18 +124,32 @@ class VideoRecordingManager:
             await video_manager.start_recording("session_recording", cdp_session)
             ```
         """
+        # Check FFmpeg availability
+        if not self.check_ffmpeg_availability():
+            raise RuntimeError(
+                "FFmpeg is not available on this system. Please install FFmpeg to enable video recording."
+            )
+
         # Ensure output directory exists
         os.makedirs(self.output_dir, exist_ok=True)
 
-        # Create full output path
-        output_path = os.path.join(
-            self.output_dir, f"run_{self.run_id}.{self.recorder.config.output_format}"
-        )
+        # Create full output path - use simple {run_id}.mp4 format for CLI mode
+        if self.cli_mode:
+            output_path = os.path.join(
+                self.output_dir, f"{self.run_id}.{self.recorder.config.output_format}"
+            )
+        else:
+            output_path = os.path.join(
+                self.output_dir, f"run_{self.run_id}.{self.recorder.config.output_format}"
+            )
 
         # Start recording
         await self.recorder.start_recording(output_path)
         self.cdp_session = cdp_session
         self.is_recording = True
+
+        # Capture video start time for timestamp calculations
+        self.video_start_time = time.time() * 1000  # UTC timestamp in milliseconds
 
     async def stop_recording(self) -> dict[str, int]:
         """Stop video recording.
@@ -151,3 +182,24 @@ class VideoRecordingManager:
         """
         if self.is_recording:
             await self.recorder.add_frame(frame_data)
+
+    def get_video_offset(self, timestamp: float) -> Optional[float]:
+        """Calculate video offset for a given timestamp.
+
+        Args:
+            timestamp (float): UTC timestamp in milliseconds
+
+        Returns:
+            Optional[float]: Video offset in seconds, or None if video not started
+
+        Example:
+            ```python
+            offset = video_manager.get_video_offset(action_timestamp)
+            if offset is not None:
+                print(f"Action occurred at {offset:.2f}s into video")
+            ```
+        """
+        if self.video_start_time is None:
+            return None
+
+        return (timestamp - self.video_start_time) / 1000.0  # Convert to seconds

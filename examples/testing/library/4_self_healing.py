@@ -44,6 +44,9 @@ async def self_healing() -> None:
     # Execute the task
     result = await client.run_task(task=task)
 
+    if result.error:
+        raise Exception(result.error.message)
+
     if not result.traversal_file:
         raise Exception("Task execution failed for some reason; the `traversal_file` is empty")
 

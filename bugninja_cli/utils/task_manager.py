@@ -212,7 +212,6 @@ class TaskManager:
 
             # Create task files
             self._create_task_toml(task_dir, name, task_id)
-            self._create_task_env(task_dir, name)
 
             from bugninja.utils.logging_config import logger
 
@@ -288,7 +287,6 @@ class TaskManager:
                         folder_name=task_dir.name,
                         task_path=task_dir,
                         toml_path=toml_file,
-                        env_path=task_dir / f"task_{task_dir.name}.env",
                     )
             except (tomli.TOMLDecodeError, KeyError, FileNotFoundError):
                 continue
@@ -329,7 +327,6 @@ class TaskManager:
                 folder_name=folder_name,
                 task_path=task_dir,
                 toml_path=toml_file,
-                env_path=task_dir / f"task_{folder_name}.env",
             )
         except (tomli.TOMLDecodeError, KeyError, FileNotFoundError):
             return None
@@ -365,7 +362,6 @@ class TaskManager:
                     folder_name=task_dir.name,
                     task_path=task_dir,
                     toml_path=toml_file,
-                    env_path=task_dir / f"task_{task_dir.name}.env",
                 )
                 tasks.append(task_info)
             except (tomli.TOMLDecodeError, KeyError, FileNotFoundError):
@@ -413,19 +409,6 @@ class TaskManager:
         with open(toml_file, "w", encoding="utf-8") as f:
             f.write(content)
 
-    def _create_task_env(self, task_dir: Path, name: str) -> None:
-        """Create the task environment file.
-
-        Args:
-            task_dir (Path): Task directory path
-            name (str): Task name
-        """
-        env_file = task_dir / f"task_{name_to_snake_case(name)}.env"
-        content = self._get_task_env_template()
-
-        with open(env_file, "w", encoding="utf-8") as f:
-            f.write(content)
-
     def _get_task_toml_template(self, name: str, task_id: str) -> str:
         """Get the task TOML template.
 
@@ -437,7 +420,8 @@ class TaskManager:
             str: TOML template content
         """
         return f"""# Task Configuration for: {name}
-# This file contains task-specific configuration including description, run settings, and metadata
+# This file contains task-specific configuration including description and run settings
+# Run history is stored separately in run_history.json
 
 [task]
 name = "{name}"
@@ -448,39 +432,25 @@ extra_instructions = [
 ]
 allowed_domains = []  # Optional: List of allowed domains for web tasks
 
+[secrets]
+# Task-specific secrets - these will be passed to the NavigatorAgent
+# SECRET_KEY = "secret_value"
+# USERNAME = "your_username"
+# PASSWORD = "your_password"
+# API_KEY = "your_api_key"
+
 [run_config]
 # CLI-specific runtime configuration
 viewport_width = 1920
 viewport_height = 1080
 user_agent = ""
-wait_between_actions = 1
+wait_between_actions = 1.0
 enable_vision = true
-enable_memory = true
 enable_healing = true
 headless = false
+enable_video_recording = true
 
 [metadata]
 task_id = "{task_id}"
 created_date = "{datetime.now(UTC).isoformat()}Z"
-# latest_run_path = ""
-# latest_run_status = ""
-# latest_run_timestamp = ""
-"""
-
-    def _get_task_env_template(self) -> str:
-        """Get the task environment template.
-
-        Returns:
-            str: Environment template content
-        """
-        return """# Task-specific secrets
-# Add your task-specific secrets here
-# Variables listed in secret_variables in the TOML file
-
-SECRET_KEY=secret_value
-
-# Example secrets:
-# USERNAME=your_username
-# PASSWORD=your_password
-# API_KEY=your_api_key
 """

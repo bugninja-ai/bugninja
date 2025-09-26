@@ -160,3 +160,19 @@ def complete_boolean_values(
     """Complete boolean values for flag options."""
     incomplete_lower = incomplete.lower()
     return [v for v in ["true", "false"] if v.startswith(incomplete_lower)]
+
+
+def complete_project_names(
+    ctx: click.Context, param: click.Parameter, incomplete: str
+) -> List[str]:
+    """Complete project names for init command."""
+    # No existing projects to suggest for init
+    return []
+
+
+def complete_replay_task_names(
+    ctx: click.Context, param: click.Parameter, incomplete: str
+) -> List[str]:
+    """Complete task names for replay command (task-based replay only)."""
+    # Use the same logic as complete_task_names but only for tasks
+    return complete_task_names(ctx, param, incomplete)
