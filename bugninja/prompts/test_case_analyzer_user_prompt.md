@@ -30,6 +30,10 @@ As a **Senior Test Automation Engineer with ISTQB CTAL-TAE certification**, anal
 
 ## Analysis Instructions
 
+**CRITICAL REQUIREMENT**: You must find **ALL** possible test cases in the provided files. A single file may contain multiple test scenarios, and you must identify every single one without missing any. Be exhaustive in your analysis.
+
+**NO HALLUCINATION ALLOWED**: You must ONLY identify test cases that can be DIRECTLY inferred from the provided documents. NEVER create, invent, or assume test cases that are not explicitly or implicitly present in the source material.
+
 Please provide your analysis in the following **JSON format**:
 
 ```json
@@ -52,6 +56,7 @@ Please provide your analysis in the following **JSON format**:
     "test_data": "Description of test data found and its quality for browser automation",
     "number_of_potential_testcases": 2,
     "test_dependencies": {
+        "0": [],
         "1": [0],
         "2": [0, 1]
     }
@@ -83,5 +88,28 @@ Please provide your analysis in the following **JSON format**:
 - **Assess test data completeness** and relevance
 - **Determine Bugninja compatibility** for web automation
 - **Count potential test cases** accurately
+
+## MANDATORY: Exhaustive Test Case Discovery
+
+### **File-by-File Analysis Requirements**
+- **Excel/CSV Files**: Analyze EVERY row - each may be a separate test case
+- **Documentation**: Read EVERY section/paragraph - each may contain test scenarios
+- **Code Files**: Identify EVERY test function/method - each is a potential test case
+- **Gherkin Files**: Find EVERY scenario/example - each is a test case
+- **TOML Files**: Examine EVERY section - each may be a test configuration
+
+### **Critical Success Factors**
+- **NEVER miss a test case**: It's better to over-identify than to miss scenarios
+- **Examine all content**: Don't skip any part of the files
+- **Look for implicit scenarios**: Test cases that aren't explicitly labeled
+- **Count accurately**: The `number_of_potential_testcases` must reflect ALL found scenarios
+- **Be comprehensive**: Include all possible test cases, even if they seem similar
+
+### **Anti-Hallucination Requirements**
+- **Source-based only**: Every test case must be directly traceable to the provided documents
+- **No assumptions**: Do not add test cases based on general knowledge or assumptions
+- **Evidence required**: Each test case must have clear evidence in the source material
+- **Conservative approach**: When uncertain, exclude rather than include test cases
+- **Document verification**: Ensure every identified test case can be traced back to specific content
 
 Your analysis will determine whether these files can generate meaningful Bugninja test cases for browser automation testing.

@@ -274,5 +274,6 @@ videos
 /tasks
 /bugninja.toml
 /BUGNINJA_README.md
+PROJECT_DESC.md
 
 .scannerwork

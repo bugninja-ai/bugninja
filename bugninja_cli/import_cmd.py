@@ -297,10 +297,10 @@ def scan_directory_for_files(source_path: Path) -> Dict[str, str]:
     help="Mode of operation: 'import' for file-based analysis, 'generate' for AI-generated test cases",
 )
 @click.option(
-    "--n",
+    "-n",
     type=int,
-    default=4,
-    help="Number of test cases to generate (valid in both modes, default: 4)",
+    default=None,
+    help="Number of test cases: in import mode, limit to first N found (default: all); in generate mode, number to create (default: 4)",
 )
 @click.option(
     "--p-ratio",
@@ -313,7 +313,7 @@ def scan_directory_for_files(source_path: Path) -> Dict[str, str]:
     "--extra",
     type=str,
     default="",
-    help="Extra instructions for agents to customize test case generation",
+    help="Extra instructions for agents to customize test case generation (text must be in quotations)",
 )
 @require_bugninja_project
 def import_cmd(
@@ -330,7 +330,7 @@ def import_cmd(
         project_root (Path): Root directory of the Bugninja project
         mode (str): Mode of operation ('import' or 'generate')
         n (int): Number of test cases to generate
-        extra (str): Extra instructions for agents
+        extra (str): Extra instructions for agents (must be in quotations)
 
     Raises:
         click.Abort: If operation fails or parameters are invalid
@@ -339,10 +339,10 @@ def import_cmd(
         ```bash
         # Import mode (default)
         bugninja import /path/to/test-specs
-        bugninja import /path/to/test-specs --n 3 --extra "Focus on mobile testing"
+        bugninja import /path/to/test-specs -n 3 --extra "Focus on mobile testing"
 
         # Generation mode
-        bugninja import --mode generate --n 5 --extra "Generate e-commerce test cases"
+        bugninja import --mode generate -n 5 --extra "Generate e-commerce test cases"
         ```
 
     Notes:
@@ -400,7 +400,7 @@ def import_cmd(
 
 
 def _handle_import_mode(
-    source_path: Optional[Path], project_root: Path, n: int, extra: str
+    source_path: Optional[Path], project_root: Path, n: Optional[int], extra: str
 ) -> None:
     """Handle import mode - analyze files and generate test cases."""
     try:
@@ -536,9 +536,16 @@ def _handle_import_mode(
                 # Determine how many test cases to generate
                 available_scenarios = len(analysis.testing_scenarios)
                 if n is None:
-                    scenarios_to_generate = 1  # Default behavior
+                    scenarios_to_generate = available_scenarios  # Import ALL test cases by default
                 elif n > available_scenarios:
                     scenarios_to_generate = available_scenarios  # Use all available
+                    console.print(
+                        Panel(
+                            f"⚠️  Warning: Only {available_scenarios} test case(s) found, but you requested {n}. Importing all available test cases.",
+                            title="Insufficient Test Cases",
+                            border_style="yellow",
+                        )
+                    )
                 else:
                     scenarios_to_generate = n  # Use first n scenarios
 
@@ -663,8 +670,14 @@ def _handle_import_mode(
         raise click.Abort()
 
 
-def _handle_generation_mode(project_root: Path, n: int, p_ratio: float, extra: str) -> None:
+def _handle_generation_mode(
+    project_root: Path, n: Optional[int], p_ratio: float, extra: str
+) -> None:
     """Handle generation mode - create test cases from project description."""
+    # Set default n for generate mode if not provided
+    if n is None:
+        n = 4  # Default for generate mode
+
     try:
         console.print(
             Panel(
