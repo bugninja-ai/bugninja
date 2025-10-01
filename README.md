@@ -74,6 +74,41 @@ bugninja replay login_test --healing
 
 ## Quick Installation
 
+### Prerequisites
+
+**ffmpeg** is required for video recording functionality. Install it on your system:
+
+#### Linux (Ubuntu/Debian)
+```bash
+sudo apt update
+sudo apt install ffmpeg
+```
+
+#### Linux (CentOS/RHEL/Fedora)
+```bash
+# CentOS/RHEL
+sudo yum install ffmpeg
+
+# Fedora
+sudo dnf install ffmpeg
+```
+
+#### macOS
+```bash
+# Using Homebrew
+brew install ffmpeg
+```
+
+#### Windows
+Download from [ffmpeg.org](https://ffmpeg.org/download.html) or use package managers:
+```bash
+# Using Chocolatey
+choco install ffmpeg
+
+# Using Scoop
+scoop install ffmpeg
+```
+
 ### Using pip (Recommended)
 ```bash
 pip install --user .

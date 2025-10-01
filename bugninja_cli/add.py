@@ -48,8 +48,7 @@ def add(task_name: str, project_root: Path) -> None:
 
     This command creates a **complete task structure** including:
     - task directory with snake_case folder name
-    - task configuration file (task_{folder_name}.toml)
-    - task environment file (task_{folder_name}.env)
+    - task configuration file (task_{folder_name}.toml) with embedded secrets
     - task metadata embedded in TOML configuration
 
     Args:
@@ -87,17 +86,17 @@ def add(task_name: str, project_root: Path) -> None:
 
         success_text.append("📄 Created files:\n", style="bold")
         success_text.append(
-            f"  • {task_dir / f'task_{folder_name}.toml'} (task configuration)\n", style="blue"
-        )
-        success_text.append(
-            f"  • {task_dir / f'task_{folder_name}.env'} (task secrets)\n\n", style="blue"
+            f"  • {task_dir / f'task_{folder_name}.toml'} (task configuration and secrets)\n",
+            style="blue",
         )
 
         success_text.append("🚀 Next steps:\n", style="bold")
         success_text.append(
             f"  1. Edit the task configuration in task_{folder_name}.toml\n", style="cyan"
         )
-        success_text.append(f"  2. Add your secrets to task_{folder_name}.env file\n", style="cyan")
+        success_text.append(
+            "  2. Add your secrets in the [secrets] section of the TOML file\n", style="cyan"
+        )
         success_text.append(
             f"  3. Run 'bugninja run {folder_name}' or 'bugninja run {task_id}' to execute\n",
             style="cyan",

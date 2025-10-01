@@ -18,9 +18,3 @@ enable_video_recording = false
 [metadata]
 task_id = "y9r9b8vwa3nii3v8byo0qxjc"
 created_date = "2025-09-14T13:12:53.070072+00:00Z"
-
-[metadata.summary]
-total_ai_runs = 0
-total_replay_runs = 0
-successful_ai_runs = 0
-successful_replay_runs = 0

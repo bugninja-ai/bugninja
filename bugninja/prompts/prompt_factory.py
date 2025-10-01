@@ -169,10 +169,150 @@ def get_passed_brainstates_related_prompt(completed_brain_states: List[BugninjaB
     )
 
 
+def get_test_case_analyzer_user_prompt(
+    file_contents: Dict[str, str], project_description: str, extra: str = ""
+) -> str:
+    """Generate user prompt for test case analyzer agent.
+
+    Args:
+        file_contents (Dict[str, str]): Dictionary mapping file paths to their contents
+        project_description (str): Project description from PROJECT_DESC.md
+        extra (str): Extra instructions for customization
+
+    Returns:
+        str: Formatted user prompt for test case analysis
+
+    Example:
+        ```python
+        prompt = get_test_case_analyzer_user_prompt(
+            {"test.py": "def test_login(): pass"},
+            "E-commerce website testing",
+            "Focus on mobile testing"
+        )
+        ```
+    """
+    # Format file contents for analysis
+    formatted_contents = []
+    for file_path, content in file_contents.items():
+        formatted_contents.append(f"**File: {file_path}**\n```\n{content}\n```")
+
+    formatted_file_contents = "\n\n".join(formatted_contents)
+
+    return __parsed_prompt(
+        "test_case_analyzer_user_prompt.md",
+        {
+            "PROJECT_DESCRIPTION": project_description,
+            "FILE_CONTENTS": formatted_file_contents,
+            "EXTRA": extra if extra else "No specific requirements",
+        },
+    )
+
+
+def get_test_case_creator_user_prompt(
+    test_scenario: str, file_contents: Dict[str, str], project_description: str, extra: str = ""
+) -> str:
+    """Generate user prompt for test case creator agent.
+
+    Args:
+        test_scenario (str): The test scenario to generate a test case for
+        file_contents (Dict[str, str]): Dictionary mapping file paths to their contents
+        project_description (str): Project description from PROJECT_DESC.md
+        extra (str): Extra instructions for customization
+
+    Returns:
+        str: Formatted user prompt for test case creation
+
+    Example:
+        ```python
+        prompt = get_test_case_creator_user_prompt(
+            "User login flow",
+            {"login.py": "def login(): pass"},
+            "E-commerce website testing",
+            "Focus on mobile testing"
+        )
+        ```
+    """
+    # Format file contents for analysis
+    formatted_contents = []
+    for file_path, content in file_contents.items():
+        formatted_contents.append(f"**File: {file_path}**\n```\n{content}\n```")
+
+    formatted_file_contents = "\n\n".join(formatted_contents)
+
+    return __parsed_prompt(
+        "test_case_creator_user_prompt.md",
+        {
+            "TEST_SCENARIO": test_scenario,
+            "FILE_CONTENTS": formatted_file_contents,
+            "PROJECT_DESCRIPTION": project_description,
+            "EXTRA": extra if extra else "No specific requirements",
+        },
+    )
+
+
+def get_test_case_generator_user_prompt(
+    project_description: str, n: int, p_ratio: float, extra: str = ""
+) -> str:
+    """Generate user prompt for test case generator agent.
+
+    Args:
+        project_description (str): Project description from PROJECT_DESC.md
+        n (int): Number of test cases to generate
+        p_ratio (float): Positive test case ratio (0.0-1.0)
+        extra (str): Extra instructions for customization
+
+    Returns:
+        str: Formatted user prompt for test case generation
+
+    Example:
+        ```python
+        prompt = get_test_case_generator_user_prompt(
+            "E-commerce website",
+            5,
+            0.75,
+            "Focus on payment flows"
+        )
+        ```
+    """
+    import math
+
+    # Calculate positive and negative test case counts
+    positive_count = math.ceil(n * p_ratio)
+    negative_count = n - positive_count
+
+    # Format the ratio information
+    p_ratio_percent = int(p_ratio * 100)
+    n_ratio_percent = 100 - p_ratio_percent
+
+    ratio_info = f"{p_ratio_percent}% of test cases must be positive paths, and {n_ratio_percent}% must be negative, which for the {n} test cases should be {positive_count} positive and {negative_count} negative test"
+
+    return __parsed_prompt(
+        "test_case_generator_user_prompt.md",
+        {
+            "PROJECT_DESCRIPTION": project_description,
+            "N": str(n),
+            "TEST_DISTRIBUTION_INFO": ratio_info,
+            "EXTRA": extra if extra else "No specific requirements",
+        },
+    )
+
+
 BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT: str = __get_raw_prompt(
     prompt_markdown_name="navigator_agent_system_prompt.md"
 )
 
 HEALDER_AGENT_EXTRA_SYSTEM_PROMPT: str = __get_raw_prompt(
     prompt_markdown_name="healer_agent_extra_sytem_prompt.md"
+)
+
+TEST_CASE_ANALYZER_SYSTEM_PROMPT: str = __get_raw_prompt(
+    prompt_markdown_name="test_case_analyzer_system_prompt.md"
+)
+
+TEST_CASE_CREATOR_SYSTEM_PROMPT: str = __get_raw_prompt(
+    prompt_markdown_name="test_case_creator_system_prompt.md"
+)
+
+TEST_CASE_GENERATOR_SYSTEM_PROMPT: str = __get_raw_prompt(
+    prompt_markdown_name="test_case_generator_system_prompt.md"
 )
