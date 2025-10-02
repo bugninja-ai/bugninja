@@ -208,17 +208,15 @@ fi
 # Step 7: Install OpenGL dependencies (required for OpenCV)
 print_step "Step 7: Installing OpenGL dependencies..."
 
-# Try different package names depending on what's available
-if apt-cache show libgl1-mesa-glx >/dev/null 2>&1; then
-    sudo apt install -y libgl1-mesa-glx libglu1-mesa-dev
-elif apt-cache show libgl1 >/dev/null 2>&1; then
-    sudo apt install -y libgl1 libglu1-mesa-dev
-else
-    print_warning "OpenGL packages not found with standard names, trying mesa-utils..."
-    sudo apt install -y mesa-utils libglu1-mesa-dev || true
-fi
+# Install OpenGL libraries (use || true to continue if package doesn't exist)
+sudo apt install -y libgl1 libglu1-mesa-dev 2>/dev/null || \
+sudo apt install -y libgl1-mesa-glx libglu1-mesa-dev 2>/dev/null || \
+print_warning "Could not install libgl1-mesa-glx (may be obsolete), continuing..."
 
-print_success "OpenGL dependencies installed (or already present)"
+# Also install common OpenGL packages
+sudo apt install -y libglib2.0-0 libsm6 libxext6 libxrender-dev -y 2>/dev/null || true
+
+print_success "OpenGL dependencies installed"
 
 # Step 8: Install Playwright system dependencies
 print_step "Step 8: Installing Playwright system dependencies..."
