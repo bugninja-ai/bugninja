@@ -86,17 +86,54 @@ bugninja replay login_test --healing
 
 ## Quick Installation
 
-### Prerequisites
+### Automated Installation (Recommended)
 
-**ffmpeg** is required for video recording functionality. Install it on your system:
+We provide installation scripts that handle all dependencies automatically:
+
+#### macOS
+```bash
+chmod +x install/install-mac.sh
+./install/install-mac.sh
+```
 
 #### Linux (Ubuntu/Debian)
 ```bash
-sudo apt update
-sudo apt install ffmpeg
+chmod +x install/install-linux.sh
+./install/install-linux.sh
 ```
 
-#### Linux (CentOS/RHEL/Fedora)
+The installation script will:
+- Install Python 3.11+ (if needed)
+- Install pip, pipx, and uv package managers
+- Install ffmpeg for video recording
+- Install Playwright browsers with all dependencies
+- Install Bugninja CLI globally with pipx
+- Set up shell autocompletion (bash/zsh)
+
+**To update an existing installation:**
+```bash
+# macOS
+./install/install-mac.sh --update
+
+# Linux
+./install/install-linux.sh --update
+```
+
+### Manual Installation
+
+If you prefer to install manually, follow these steps:
+
+#### Prerequisites
+
+**ffmpeg** is required for video recording functionality. Install it on your system:
+
+**Linux (Ubuntu/Debian):**
+```bash
+sudo apt update
+sudo apt install ffmpeg libgl1-mesa-glx libglu1-mesa-dev
+```
+
+**Linux (CentOS/RHEL/Fedora):**
 ```bash
 # CentOS/RHEL
 sudo yum install ffmpeg
@@ -105,13 +142,13 @@ sudo yum install ffmpeg
 sudo dnf install ffmpeg
 ```
 
-#### macOS
+**macOS:**
 ```bash
 # Using Homebrew
 brew install ffmpeg
 ```
 
-#### Windows
+**Windows:**
 Download from [ffmpeg.org](https://ffmpeg.org/download.html) or use package managers:
 ```bash
 # Using Chocolatey
@@ -121,17 +158,24 @@ choco install ffmpeg
 scoop install ffmpeg
 ```
 
-### Using pip (Recommended)
+#### Install Options
+
+**Using pipx (Recommended for CLI tools):**
+```bash
+pipx install .
+```
+
+**Using pip:**
 ```bash
 pip install --user .
 ```
 
-### Using uv (Global Install)
+**Using uv (Global Install):**
 ```bash
 uv tool install -e .
 ```
 
-### From Source (Development)
+**From Source (Development):**
 ```bash
 cd bugninja
 uv sync
@@ -141,31 +185,29 @@ bugninja --help
 # ... etc
 ```
 
-### Install CLI tool with autocompletion
+#### Shell Autocompletion
 
+The installation script sets this up automatically. If installing manually, enable autocomplete:
+
+**bash:**
 ```bash
-pipx install .
+echo 'eval "$(_BUGNINJA_COMPLETE=bash_source bugninja)"' >> ~/.bashrc
 ```
 
-To enable autocomplete:
-
+**zsh:**
 ```bash
-# bash
-echo 'eval "$(_BUGNINJA_COMPLETE=bash_source bugninja)"' >> ~/.bashrc
-
-# zsh (make sure compinit is initialized first)
 echo -e '\n# Initialize zsh completion system\nautoload -Uz compinit\ncompinit\n\n# Bugninja CLI completion\neval "$(_BUGNINJA_COMPLETE=zsh_source bugninja)"' >> ~/.zshrc
 ```
 
-For `Fish` add this to `~/.config/fish/completions/foo-bar.fish`
-
+**Fish:**
+Add this to `~/.config/fish/completions/foo-bar.fish`:
 ```
 _BUGNINJA_COMPLETE=fish_source bugninja 
 ```
 
 ### Verify Installation
 ```bash
-bugninja
+bugninja --help
 ```
 
 ## Core Features
