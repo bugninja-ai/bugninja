@@ -44,6 +44,7 @@ from rich.console import Console
 
 if TYPE_CHECKING:
     from bugninja.schemas import TaskInfo
+    from bugninja.schemas.test_case_creation import TestCaseCreationOutput
 
 console = Console()
 
@@ -395,6 +396,65 @@ class TaskManager:
 
         return True
 
+    def create_imported_task(
+        self, creation_output: "TestCaseCreationOutput", source_files: list[str]
+    ) -> str:
+        """Create a new task from imported test case generation.
+
+        This method creates a complete task structure from AI-generated test case
+        content, including proper metadata for imported tasks.
+
+        Args:
+            creation_output (TestCaseCreationOutput): Generated test case content
+            source_files (list[str]): List of source file paths used for generation
+
+        Returns:
+            str: CUID2 identifier of the created task
+
+        Raises:
+            ValueError: If task name is invalid or already exists
+            OSError: If file system operations fail
+        """
+        # Validate task name
+        if not self.validate_task_name(creation_output.task_name):
+            raise ValueError(f"Invalid task name: {creation_output.task_name}")
+
+        # Convert name to snake_case folder name
+        folder_name = name_to_snake_case(creation_output.task_name)
+
+        # Check if task already exists (case-insensitive)
+        if self.task_exists(creation_output.task_name):
+            existing_path = self.get_existing_task_path(creation_output.task_name)
+            raise ValueError(
+                f"Task '{creation_output.task_name}' already exists at: {existing_path}"
+            )
+
+        # Generate unique task ID
+        task_id = CUID().generate()
+        task_dir = self.tasks_dir / folder_name
+
+        try:
+            # Create task directory
+            task_dir.mkdir(parents=False, exist_ok=False)
+
+            # Create task files
+            self._create_imported_task_toml(task_dir, creation_output, task_id, source_files)
+
+            from bugninja.utils.logging_config import logger
+
+            logger.info(
+                f"Created imported task '{creation_output.task_name}' with ID: {task_id} in folder: {folder_name}"
+            )
+            return task_id
+
+        except Exception as e:
+            # Clean up on failure
+            if task_dir.exists():
+                import shutil
+
+                shutil.rmtree(task_dir)
+            raise OSError(f"Failed to create imported task: {e}")
+
     def _create_task_toml(self, task_dir: Path, name: str, task_id: str) -> None:
         """Create the task TOML configuration file.
 
@@ -453,4 +513,93 @@ enable_video_recording = true
 [metadata]
 task_id = "{task_id}"
 created_date = "{datetime.now(UTC).isoformat()}Z"
+creation_type = "manually_added"
+"""
+
+    def _create_imported_task_toml(
+        self,
+        task_dir: Path,
+        creation_output: "TestCaseCreationOutput",
+        task_id: str,
+        source_files: list[str],
+    ) -> None:
+        """Create the imported task TOML configuration file.
+
+        Args:
+            task_dir (Path): Task directory path
+            creation_output (TestCaseCreationOutput): Generated test case content
+            task_id (str): Task CUID2 identifier
+            source_files (list[str]): List of source file paths
+        """
+        toml_file = task_dir / f"task_{name_to_snake_case(creation_output.task_name)}.toml"
+        content = self._get_imported_task_toml_template(creation_output, task_id, source_files)
+
+        with open(toml_file, "w", encoding="utf-8") as f:
+            f.write(content)
+
+    def _get_imported_task_toml_template(
+        self, creation_output: "TestCaseCreationOutput", task_id: str, source_files: list[str]
+    ) -> str:
+        """Get the imported task TOML template.
+
+        Args:
+            creation_output (TestCaseCreationOutput): Generated test case content
+            task_id (str): Task CUID2 identifier
+            source_files (list[str]): List of source file paths
+
+        Returns:
+            str: TOML template content
+        """
+        # Format secrets section
+        secrets_section = ""
+        if creation_output.secrets:
+            secrets_lines = []
+            for key, value in creation_output.secrets.items():
+                secrets_lines.append(f'{key} = "{value}"')
+            secrets_section = "\n".join(secrets_lines)
+        else:
+            secrets_section = "# No secrets found in source files"
+
+        # Format extra instructions
+        instructions_lines = []
+        for instruction in creation_output.extra_instructions:
+            instructions_lines.append(f'    "{instruction}"')
+        instructions_section = "[\n" + ",\n".join(instructions_lines) + "\n]"
+
+        # Format source files
+        source_files_lines = []
+        for source_file in source_files:
+            source_files_lines.append(f'    "{source_file}"')
+        source_files_section = "[\n" + ",\n".join(source_files_lines) + "\n]"
+
+        return f"""# Task Configuration for: {creation_output.task_name}
+# This file contains task-specific configuration including description and run settings
+# Run history is stored separately in run_history.json
+# Generated from imported files: {', '.join(source_files)}
+
+[task]
+name = "{creation_output.task_name}"
+description = "{creation_output.description}"
+extra_instructions = {instructions_section}
+allowed_domains = []  # Optional: List of allowed domains for web tasks
+
+[secrets]
+{secrets_section}
+
+[run_config]
+# CLI-specific runtime configuration
+viewport_width = 1920
+viewport_height = 1080
+user_agent = ""
+wait_between_actions = 1.0
+enable_vision = true
+enable_healing = true
+headless = false
+enable_video_recording = true
+
+[metadata]
+task_id = "{task_id}"
+created_date = "{datetime.now(UTC).isoformat()}Z"
+creation_type = "import_generated"
+source_files = {source_files_section}
 """

@@ -640,3 +640,161 @@ For more information, see the [Bugninja documentation](https://github.com/bugnin
 
     with open(path, "w", encoding="utf-8") as f:
         f.write(readme_content)
+
+
+def create_project_description_template(path: Path, project_name: str) -> None:
+    """Create a PROJECT_DESC.md template for the project.
+
+    This function creates a PROJECT_DESC.md file that users must fill with
+    information about their website/application for testing. This file is
+    used by the AI agent to understand the context when analyzing imported files.
+
+    Args:
+        path (Path): Path to create the PROJECT_DESC.md file
+        project_name (str): Name of the project
+
+    Example:
+        ```python
+        from bugninja_cli.utils.initialization import create_project_description_template
+
+        create_project_description_template(Path("./PROJECT_DESC.md"), "my-automation-project")
+        ```
+    """
+    project_desc_content = f"""# Project Description - {project_name}
+
+**IMPORTANT**: Please fill out this file with detailed information about your website/application for testing.
+
+## System Overview
+[Brief description of what your application does and its primary purpose]
+
+## Website Goal
+[The main business objectives and goals of your application]
+
+## System Architecture & Structure
+
+### Main Navigation Structure
+- **[Module 1]**: [Description of module and its purpose]
+- **[Module 2]**: [Description of module and its purpose]
+- **[Module 3]**: [Description of module and its purpose]
+
+### Key UI Elements & Layout
+
+#### Navigation Components
+- **Main Navigation Bar**: [Description of top-level navigation]
+- **Sidebar Menu**: [Description of sidebar navigation]
+- **Breadcrumb Navigation**: [Description of breadcrumb system]
+- **Quick Actions**: [Description of quick action buttons]
+
+#### Main Interface Components
+- **[Component 1]**: [Description of main interface components]
+- **[Component 2]**: [Description of form elements and controls]
+- **[Component 3]**: [Description of data display elements]
+
+#### Form Elements & Controls
+- **Input Fields**: [Description of text inputs, dropdowns, etc.]
+- **Action Buttons**: [Description of save, delete, create buttons]
+- **Data Tables**: [Description of grid/list views]
+- **Modal Dialogs**: [Description of popup dialogs]
+
+## Core Functionality
+
+### [Feature 1]
+- **Description**: [What this feature does]
+- **User Workflows**: [How users interact with this feature]
+- **Key Operations**: [Main actions users can perform]
+
+### [Feature 2]
+- **Description**: [What this feature does]
+- **User Workflows**: [How users interact with this feature]
+- **Key Operations**: [Main actions users can perform]
+
+### [Feature 3]
+- **Description**: [What this feature does]
+- **User Workflows**: [How users interact with this feature]
+- **Key Operations**: [Main actions users can perform]
+
+## Technical Features
+
+### User Interface
+- **Responsive Design**: [Mobile/desktop compatibility]
+- **Dynamic Loading**: [AJAX/real-time updates]
+- **Advanced Filtering**: [Search and filter capabilities]
+- **Bulk Operations**: [Mass data operations]
+
+### Integration Capabilities
+- **API Integration**: [Third-party integrations]
+- **Data Import/Export**: [Data management features]
+- **Workflow Automation**: [Business process automation]
+- **Notification System**: [User notification features]
+
+## Business Context
+[Description of the business domain and industry context]
+
+## User Roles & Permissions
+- **[Role 1]**: [Description of user role and permissions]
+- **[Role 2]**: [Description of user role and permissions]
+- **[Role 3]**: [Description of user role and permissions]
+
+## Example Entry
+
+```markdown
+# Project Description - E-commerce Store
+
+## System Overview
+MyShop is a comprehensive e-commerce platform designed for online retail operations, providing complete shopping cart functionality, payment processing, and customer management.
+
+## Website Goal
+The primary goal is to provide a seamless online shopping experience for customers while enabling efficient order management for administrators.
+
+## System Architecture & Structure
+
+### Main Navigation Structure
+- **Product Catalog**: Product browsing and search functionality
+- **Shopping Cart**: Cart management and checkout process
+- **User Account**: Customer profile and order history
+- **Admin Panel**: Administrative functions and reporting
+
+### Key UI Elements & Layout
+
+#### Navigation Components
+- **Main Navigation Bar**: Top-level category navigation
+- **Search Bar**: Product search with autocomplete
+- **User Menu**: Login/logout and account access
+- **Shopping Cart Icon**: Cart status and quick access
+
+#### Main Interface Components
+- **Product Grid**: Responsive product listing with filters
+- **Product Detail Pages**: Comprehensive product information
+- **Shopping Cart**: Item management and quantity controls
+- **Checkout Process**: Multi-step order completion
+
+## Core Functionality
+
+### Product Management
+- **Product Catalog**: Browse and search products
+- **Product Details**: View specifications and images
+- **Product Filtering**: Category and attribute filtering
+- **Product Reviews**: Customer feedback system
+
+### Shopping Cart
+- **Add to Cart**: Product selection and quantity
+- **Cart Management**: Item modification and removal
+- **Price Calculation**: Tax and shipping calculations
+- **Checkout Process**: Order completion workflow
+
+## Business Context
+Serves retail businesses that need comprehensive e-commerce functionality with focus on user experience and administrative efficiency.
+
+## User Roles & Permissions
+- **Customers**: Product browsing, purchasing, account management
+- **Administrators**: Product management, order processing, reporting
+- **Guests**: Limited browsing and checkout capabilities
+```
+
+---
+
+**Note**: The more detailed your description, the better the AI agent can analyze your imported files and generate relevant test cases. Focus on describing the actual functionality, user workflows, and business processes rather than technical implementation details.
+"""
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(project_desc_content)

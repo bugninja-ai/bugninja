@@ -41,6 +41,7 @@ from bugninja_cli.utils.completion import (
 from bugninja_cli.utils.initialization import (
     create_env_template,
     create_gitignore_template,
+    create_project_description_template,
     create_project_directories,
     create_readme_template,
     get_default_config_template,
@@ -172,6 +173,10 @@ def init(
         readme_file = current_dir / "BUGNINJA_README.md"
         create_readme_template(readme_file, project_name)
 
+        # Create PROJECT_DESC.md template
+        project_desc_file = current_dir / "PROJECT_DESC.md"
+        create_project_description_template(project_desc_file, project_name)
+
         # Success message
         success_text = Text()
         success_text.append("✅ ", style="green")
@@ -184,12 +189,16 @@ def init(
         success_text.append("  • bugninja.toml (project configuration)\n", style="blue")
         success_text.append("  • .env.example (environment template)\n", style="blue")
         success_text.append("  • .gitignore (git exclusions)\n", style="blue")
-        success_text.append("  • BUGNINJA_README.md (project documentation)\n\n", style="blue")
+        success_text.append("  • BUGNINJA_README.md (project documentation)\n", style="blue")
+        success_text.append("  • PROJECT_DESC.md (project description template)\n\n", style="blue")
 
         success_text.append("🚀 Next steps:\n", style="bold")
         success_text.append("  1. Copy .env.example to .env and add your API keys\n", style="cyan")
-        success_text.append("  2. Define your tasks in the tasks/ directory\n", style="cyan")
-        success_text.append("  3. Run 'bugninja run' to start automation\n", style="cyan")
+        success_text.append(
+            "  2. Fill out PROJECT_DESC.md with your application details\n", style="cyan"
+        )
+        success_text.append("  3. Define your tasks in the tasks/ directory\n", style="cyan")
+        success_text.append("  4. Run 'bugninja run' to start automation\n", style="cyan")
 
         console.print(Panel(success_text, title="🎉 Project Initialized", border_style="green"))
 

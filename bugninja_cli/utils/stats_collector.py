@@ -8,7 +8,7 @@ from task run history data across a Bugninja project.
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from bugninja_cli.utils.run_history_manager import RunHistoryManager
 
@@ -26,6 +26,7 @@ class TaskStats:
         self.last_run_timestamp: Optional[datetime] = None
         self.last_run_type = "-"
         self.error_type = "-"
+        self.creation_type = "-"
 
 
 class StatsCollector:
@@ -86,6 +87,9 @@ class StatsCollector:
         stats = TaskStats(task_name)
 
         try:
+            # Load creation type from TOML file
+            stats.creation_type = self._get_task_creation_type(task_dir)
+
             # Use RunHistoryManager to load the history
             history_manager = RunHistoryManager(task_dir)
             history_data = history_manager.load_history()
@@ -233,3 +237,36 @@ class StatsCollector:
         except Exception:
             # Fallback to current time if anything goes wrong
             return datetime.now()
+
+    def _get_task_creation_type(self, task_dir: Path) -> str:
+        """Get the creation type of a task from its TOML file.
+
+        Args:
+            task_dir: Directory containing the task
+
+        Returns:
+            Creation type of the task, or "Unknown" if not found
+        """
+        try:
+            import tomli
+
+            # Find the task TOML file
+            toml_files = list(task_dir.glob("task_*.toml"))
+            if not toml_files:
+                return "Unknown"
+
+            # Use the first TOML file found
+            toml_file = toml_files[0]
+
+            with open(toml_file, "rb") as f:
+                config = tomli.load(f)
+
+            # Get creation type from metadata section
+            metadata: Dict[str, Any] = config.get("metadata", {})
+            creation_type: str = metadata.get("creation_type", "Unknown")
+
+            return creation_type
+
+        except Exception:
+            # Fallback to Unknown if anything goes wrong
+            return "Unknown"

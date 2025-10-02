@@ -265,21 +265,15 @@ temp/
 .tmp/ 
 recording/
 
-data
-saved_paths
-recordings
-screen_recordings
-test_output
-graph.html
-
-
 data_dir
 user_data_dir
 logs
 screenshots
 traversals
+videos
 /tasks
 /bugninja.toml
 /BUGNINJA_README.md
+PROJECT_DESC.md
 
 .scannerwork

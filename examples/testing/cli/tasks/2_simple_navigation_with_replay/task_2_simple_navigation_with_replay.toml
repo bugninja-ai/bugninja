@@ -12,14 +12,8 @@ wait_between_actions = 1.0
 enable_vision = true
 enable_healing = true
 headless = false
-enable_video_recording = false
+enable_video_recording = true
 
 [metadata]
 task_id = "uvbm4guf0yigbgs8ldbck9dx"
 created_date = "2025-09-14T13:09:27.013352+00:00Z"
-
-[metadata.summary]
-total_ai_runs = 0
-total_replay_runs = 0
-successful_ai_runs = 0
-successful_replay_runs = 0

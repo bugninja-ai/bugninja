@@ -3,7 +3,8 @@ import asyncio
 from rich import print as rich_print
 
 from bugninja.api.client import BugninjaClient
-from bugninja.schemas.models import BugninjaTask
+from bugninja.config.video_recording import VideoRecordingConfig
+from bugninja.schemas.models import BugninjaConfig, BugninjaTask
 
 
 async def extra_rules_navigation() -> None:
@@ -11,15 +12,17 @@ async def extra_rules_navigation() -> None:
         description='Navigate to Amazon homepage, search for "wireless headphones", browse through product listings',
         extra_instructions=[
             "Open exactly three different(!) product pages after each other",
-            "On the product’s page read its average score",
+            "On the product's page read its average score",
             "Compare scores across all three products",
             "Navigate back to previously viewed products if necessary",
             "Add the product with the best single average score to the cart",
         ],
     )
 
-    # Execute the task
-    result = await BugninjaClient().run_task(task=task)
+    # Execute the task with video recording, using the default Bugninja config with the default video recording config
+    result = await BugninjaClient(
+        config=BugninjaConfig(video_recording=VideoRecordingConfig())
+    ).run_task(task=task)
 
     if result.error:
         raise Exception(result.error.message)
