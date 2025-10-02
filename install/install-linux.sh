@@ -220,6 +220,8 @@ print_success "OpenGL dependencies installed"
 
 # Step 8: Install Playwright system dependencies
 print_step "Step 8: Installing Playwright system dependencies..."
+
+# Install dependencies with fallbacks for obsolete packages
 sudo apt install -y \
     libnss3 \
     libnspr4 \
@@ -234,11 +236,15 @@ sudo apt install -y \
     libxfixes3 \
     libxrandr2 \
     libgbm1 \
-    libasound2 \
     libpango-1.0-0 \
     libcairo2 \
     libatspi2.0-0 \
-    libxshmfence1
+    libxshmfence1 2>/dev/null || true
+
+# Try to install libasound2 (may be obsolete in newer Ubuntu)
+sudo apt install -y libasound2 2>/dev/null || \
+sudo apt install -y libasound2t64 2>/dev/null || \
+print_warning "Could not install libasound2 (may use newer package name)"
 
 print_success "Playwright system dependencies installed"
 
