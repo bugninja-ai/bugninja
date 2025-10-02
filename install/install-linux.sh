@@ -144,12 +144,16 @@ else
 fi
 
 # Install pip for Python 3.11
-print_step "Installing/updating pip..."
+print_step "Checking for pip..."
 if ! python3 -m pip --version >/dev/null 2>&1; then
+    print_warning "pip not found. Installing pip..."
     curl -sS https://bootstrap.pypa.io/get-pip.py | python3
+    print_success "pip installed successfully"
+else
+    print_success "pip is already installed"
+    # Skip pip upgrade to avoid externally-managed-environment error
+    # pipx and other tools will handle their own environments
 fi
-python3 -m pip install --upgrade pip --user
-print_success "pip installed/updated successfully"
 
 # Step 4: Install pipx
 print_step "Step 4: Checking for pipx..."
