@@ -17,6 +17,7 @@ from bugninja.agents.data_extraction_agent import DataExtractionAgent
 from bugninja.prompts.prompt_factory import (
     BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
     HEALDER_AGENT_EXTRA_SYSTEM_PROMPT,
+    get_input_schema_prompt,
     get_io_extraction_prompt,
     get_passed_brainstates_related_prompt,
 )
@@ -86,6 +87,7 @@ class HealerAgent(BugninjaAgentBase):
         output_base_dir: Optional[Path] = None,
         screenshot_manager: Optional[ScreenshotManager] = None,
         io_schema: Optional[TestCaseSchema] = None,
+        runtime_inputs: Optional[Dict[str, Any]] = None,
         **kwargs,  # type:ignore
     ) -> None:
         """Initialize HealerAgent with healing-specific functionality.
@@ -99,6 +101,8 @@ class HealerAgent(BugninjaAgentBase):
             extend_system_message (str | None): Additional system message to extend the default
             already_completed_brainstates (List[BugninjaBrainState]): Previously completed brain states for context
             output_base_dir (Optional[Path]): Base directory for all output files (traversals, screenshots, videos)
+            io_schema (Optional[TestCaseSchema]): Input/output schema for data extraction and input handling
+            runtime_inputs (Optional[Dict[str, Any]]): Input data from dependent tasks to be included in system prompt
             **kwargs: Keyword arguments passed to the parent BugninjaAgentBase class
         """
 
@@ -124,7 +128,25 @@ class HealerAgent(BugninjaAgentBase):
 
         task += f"\n\n{get_passed_brainstates_related_prompt(completed_brain_states=already_completed_brainstates)}"
 
+        # Prepare input schema system prompt extension if input data is provided
+        input_schema_system_prompt = ""
+        if self.io_schema and self.io_schema.input_schema and runtime_inputs:
+            input_schema_system_prompt = get_input_schema_prompt(
+                self.io_schema.input_schema, runtime_inputs
+            )
+            if input_schema_system_prompt:
+                input_keys = list(self.io_schema.input_schema.keys())
+                logger.bugninja_log(
+                    f"📥 HealerAgent: Task configured with {len(input_keys)} input data keys: {input_keys}"
+                )
+
         system_message_to_extend_by: str = extend_system_message if extend_system_message else ""
+
+        # Combine input schema prompt with existing extension
+        if input_schema_system_prompt:
+            system_message_to_extend_by = (
+                f"{system_message_to_extend_by}\n\n{input_schema_system_prompt}".strip()
+            )
 
         super().__init__(
             *args,

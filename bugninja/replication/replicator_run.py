@@ -302,6 +302,19 @@ class ReplicatorRun(ReplicatorNavigator):
             )
             logger.bugninja_log("🩹 Using default LLM configuration for healing")
 
+        # Prepare I/O schema from replay traversal if available
+        io_schema = None
+        if hasattr(self.replay_traversal, "input_schema") and hasattr(
+            self.replay_traversal, "output_schema"
+        ):
+            if self.replay_traversal.input_schema or self.replay_traversal.output_schema:
+                from bugninja.schemas.test_case_io import TestCaseSchema
+
+                io_schema = TestCaseSchema(
+                    input_schema=self.replay_traversal.input_schema,
+                    output_schema=self.replay_traversal.output_schema,
+                )
+
         agent = HealerAgent(
             bugninja_config=self.config,
             task=self.replay_traversal.test_case,
@@ -313,6 +326,8 @@ class ReplicatorRun(ReplicatorNavigator):
             already_completed_brainstates=self.replay_state_machine.passed_brain_states,
             output_base_dir=self.output_base_dir,
             screenshot_manager=self.screenshot_manager,
+            io_schema=io_schema,
+            # Note: runtime_inputs not passed here as healing works from recorded traversal
         )
 
         # Share screenshot directory and counter with healing agent

@@ -1,0 +1,38 @@
+[task]
+name = "92_todolist_deletion"  # REQUIRED: Unique name for the task
+start_url = "https://freetodolist.com"  # REQUIRED: URL where the browser session should start
+description = "Login to FreeTodoList platform and delete the specified item from the TODO list"
+extra_instructions = [
+    "Login using the provided credentials",
+    "Navigate to the 'TODOs' list that was created in the previous task",
+    "Find and open the specific item that was provided as SELECTED_ITEM",
+    "Delete that selected item from the TODO list",
+    "Confirm the item has been successfully removed from the list",
+    "After deleting the item, delete the parent list as well",
+]
+allowed_domains = ["freetodolist.com", "www.freetodolist.com"]
+dependencies = ["91_todolist_creation"]
+
+[secrets]
+EMAIL_CREDENTIAL = "cekijit723@ampdial.com"
+PASSWORD_CREDENTIAL = "bugninja_test_2025"
+
+[task.io_schema]
+input_schema.SELECTED_ITEM = "Item to be deleted from the TODO list"
+output_schema.DELETED_ITEM = "Item that was successfully deleted from the TODO list"
+
+[run_config]
+# CLI-specific runtime configuration
+viewport_width = 1920
+viewport_height = 1080
+user_agent = ""
+wait_between_actions = 1.0
+enable_vision = true
+enable_healing = true
+headless = false
+enable_video_recording = true
+
+[metadata]
+task_id = "kpo0wmdhi73qe9obs6k95qvw"
+created_date = "2025-10-09T09:20:22.403896+00:00Z"
+creation_type = "manually_added"

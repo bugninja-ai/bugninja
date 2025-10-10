@@ -604,11 +604,11 @@ class BugninjaClient:
             llm = self._create_llm()
 
             # Create and run agent with task parameters
-            # Merge runtime inputs with original secrets for agent, but keep original task.secrets intact
-            effective_secrets = task.secrets or {}
+            # Pass runtime inputs directly to agent (no longer merged with secrets)
             if runtime_inputs:
-                effective_secrets = {**effective_secrets, **runtime_inputs}
-                logger.info(f"🔗 Client: Merged {len(runtime_inputs)} runtime inputs with secrets")
+                logger.info(
+                    f"🔗 Client: Passing {len(runtime_inputs)} runtime inputs to agent system prompt"
+                )
                 for key, value in runtime_inputs.items():
                     logger.info(f"📋 Client: Runtime input - {key} = {value}")
 
@@ -620,13 +620,14 @@ class BugninjaClient:
                 llm=llm,
                 browser_session=browser_session,
                 browser_profile=browser_session.browser_profile,
-                sensitive_data=effective_secrets,
+                sensitive_data=task.secrets or {},
                 extra_instructions=task.extra_instructions,
                 video_recording_config=self.config.video_recording,
                 output_base_dir=self.config.output_base_dir,
                 cli_mode=self.config.cli_mode,
                 io_schema=task.io_schema,
                 dependencies=task.dependencies,
+                runtime_inputs=runtime_inputs,
                 original_task_secrets=task.secrets,
             )
 

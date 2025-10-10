@@ -6,46 +6,49 @@ from bugninja.schemas.test_case_io import TestCaseSchema
 
 
 async def main() -> None:
-    amazon_price = BugninjaTask(
-        start_url="https://www.amazon.com/",
-        description="We will search for a book called 'Of Mice and Men' on Amazon",
+    create_todo_list = BugninjaTask(
+        start_url="https://freetodolist.com/dashboard",
+        description="Login to FreeTodoList platform and create a TODO list with 5 items",
         extra_instructions=[
-            "Search for the book 'Of Mice and Men'",
-            "Extract the FIRST price of the book from the search results.",
+            "Login using credentials: cekijit723@ampdial.com / bugninja_test_2025",
+            "Create a new list called 'TODOs' if one doesn't already exist",
+            "Add exactly 5 different todo items to the list (make them realistic tasks)",
+            "After adding all items, select one item randomly and extract its text as the output",
         ],
         io_schema=TestCaseSchema(
             output_schema={
-                "BOOK_PRICE": "First price of the book on Amazon",
+                "SELECTED_ITEM": "Randomly selected item from the TODO list",
             }
         ),
     )
 
-    ebay_price = BugninjaTask(
-        start_url="https://www.ebay.com/",
-        description="We will search for a book called 'Of Mice and Men' on Ebay",
+    delete_todo_item = BugninjaTask(
+        start_url="https://freetodolist.com/dashboard",
+        description="Login to FreeTodoList platform and delete the specified item from the TODO list",
         max_steps=60,
         extra_instructions=[
-            "Search for the book 'Of Mice and Men'",
-            "Extract the FIRST price of the book from the search results.",
+            "Login using credentials: cekijit723@ampdial.com / bugninja_test_2025",
+            "Navigate to the 'TODOs' list that was created in the previous task",
+            "Find and delete the specific item provided in the input schema",
+            "Confirm the item has been successfully removed from the list",
         ],
         io_schema=TestCaseSchema(
             input_schema={
-                "BOOK_PRICE": "First price of the book on Amazon",
+                "SELECTED_ITEM": "Item to be deleted from the TODO list",
             },
             output_schema={
-                "BOOK_AMAZON_PRICE": "First price of the book on Amazon",
-                "BOOK_EBAY_PRICE": "First price of the book on Ebay",
+                "DELETED_ITEM": "Item that was successfully deleted from the TODO list",
             },
         ),
     )
 
     await (
         BugninjaPipeline()
-        .testcase("amazon_price", TaskSpec(task=amazon_price))
-        .testcase("ebay_price", TaskSpec(task=ebay_price))
+        .testcase("create_todo_list", TaskSpec(task=create_todo_list))
+        .testcase("delete_todo_item", TaskSpec(task=delete_todo_item))
         .depends(
-            "ebay_price",
-            parents=["amazon_price"],
+            "delete_todo_item",
+            parents=["create_todo_list"],
         )
         .validate_io()
         .print_plan()
