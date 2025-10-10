@@ -298,12 +298,12 @@ def replay(
                     # Set task info for proper video recording directory
                     if task_info_for_replay:
                         executor.task_info = task_info_for_replay
-                    # If replaying by task name, use Pipeline for dependency management
+                    # If replaying by task name, use BugninjaPipeline for dependency management
                     if is_task_name and task_info_for_replay:
                         task_manager = TaskManager(project_root)
                         pipeline_executor = PipelineExecutor(project_root)
 
-                        # Use Pipeline to handle dependencies
+                        # Use BugninjaPipeline to handle dependencies
                         result = await pipeline_executor.execute_with_dependencies(
                             task_info_for_replay, task_manager
                         )

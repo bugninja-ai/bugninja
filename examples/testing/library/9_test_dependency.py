@@ -1,7 +1,7 @@
 import asyncio
 
 from bugninja import BugninjaTask
-from bugninja.api.pipeline import Pipeline, TaskSpec
+from bugninja.api.bugninja_pipeline import BugninjaPipeline, TaskSpec
 from bugninja.schemas.test_case_io import TestCaseSchema
 
 
@@ -40,7 +40,7 @@ async def main() -> None:
     )
 
     await (
-        Pipeline()
+        BugninjaPipeline()
         .testcase("amazon_price", TaskSpec(task=amazon_price))
         .testcase("ebay_price", TaskSpec(task=ebay_price))
         .depends(

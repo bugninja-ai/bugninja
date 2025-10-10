@@ -29,7 +29,7 @@ class _Node(BaseModel):
     depends_on: List[str] = Field(default_factory=list)  # List of parent task names/descriptions
 
 
-class Pipeline:
+class BugninjaPipeline:
     def __init__(
         self,
         default_run_config: Optional[TaskRunConfig] = None,
@@ -77,7 +77,7 @@ class Pipeline:
             for id_, task in self._dag_nodes.items():
                 key = self._node_key(_Node(task=task, depends_on=[]))
                 if isinstance(task, TaskSpec):
-                    # Update the task's dependencies based on Pipeline's dependency graph
+                    # Update the task's dependencies based on BugninjaPipeline's dependency graph
                     task_deps = self._dag_edges.get(id_, [])
                     # Create a new TaskSpec with updated dependencies
                     updated_task = TaskSpec(
@@ -99,13 +99,13 @@ class Pipeline:
 
     def add(
         self, task: Union[TaskRef, TaskSpec], depends_on: Optional[List[str]] = None
-    ) -> "Pipeline":
+    ) -> "BugninjaPipeline":
         """Add a task to the pipeline with optional dependencies."""
         self._nodes.append(_Node(task=task, depends_on=depends_on or []))
         return self
 
     # DAG-first API
-    def testcase(self, id: str, task: Union[TaskRef, TaskSpec]) -> "Pipeline":
+    def testcase(self, id: str, task: Union[TaskRef, TaskSpec]) -> "BugninjaPipeline":
         """Add a testcase to the DAG."""
         if id in self._dag_nodes:
             raise ValueError(f"Duplicate testcase id: {id}")
@@ -117,7 +117,7 @@ class Pipeline:
         self,
         child: str,
         parents: List[str],
-    ) -> "Pipeline":
+    ) -> "BugninjaPipeline":
         if child not in self._dag_nodes:
             raise ValueError(f"Unknown child testcase id: {child}")
         for p in parents:
@@ -130,19 +130,19 @@ class Pipeline:
                 self._dag_edges[child].append(p)
         return self
 
-    def materialize(self, resolver: Callable[[TaskRef], BugninjaTask]) -> "Pipeline":
+    def materialize(self, resolver: Callable[[TaskRef], BugninjaTask]) -> "BugninjaPipeline":
         """Materialize TaskRef nodes to TaskSpec nodes using a resolver function.
 
-        This method creates a new Pipeline where all TaskRef nodes are replaced
+        This method creates a new BugninjaPipeline where all TaskRef nodes are replaced
         with TaskSpec nodes containing resolved BugninjaTask instances.
 
         Args:
             resolver: Function that takes a TaskRef and returns a BugninjaTask
 
         Returns:
-            Pipeline: New pipeline with TaskSpec nodes instead of TaskRef nodes
+            BugninjaPipeline: New pipeline with TaskSpec nodes instead of TaskRef nodes
         """
-        materialized = Pipeline(default_run_config=self._default_run_config)
+        materialized = BugninjaPipeline(default_run_config=self._default_run_config)
 
         # Materialize DAG nodes
         if self._dag_nodes:
@@ -262,10 +262,10 @@ class Pipeline:
                 if indeg[v] == 0:
                     queue.append(v)
         if len(order) != len(ids):
-            raise ValueError("Cyclic dependency detected in Pipeline")
+            raise ValueError("Cyclic dependency detected in BugninjaPipeline")
         return order
 
-    def validate_io(self) -> "Pipeline":
+    def validate_io(self) -> "BugninjaPipeline":
         """Validate I/O schema compatibility between tasks."""
         # DAG-mode validation
         if self._dag_nodes:
@@ -326,7 +326,7 @@ class Pipeline:
                 )
         return self
 
-    def print_plan(self) -> "Pipeline":
+    def print_plan(self) -> "BugninjaPipeline":
         """Print execution plan."""
         order = self._toposort()
         # Resolve to names where possible
@@ -485,13 +485,13 @@ class Pipeline:
         merged_inputs: Dict[str, str] = {}
 
         logger.info(
-            f"🔗 Pipeline: Processing task '{payload.task.description[:40]}...' with {len(parents)} parent dependencies"
+            f"🔗 BugninjaPipeline: Processing task '{payload.task.description[:40]}...' with {len(parents)} parent dependencies"
         )
 
         if parents:
-            logger.info(f"📤 Pipeline: Parent keys available for merging: {list(parents)}")
+            logger.info(f"📤 BugninjaPipeline: Parent keys available for merging: {list(parents)}")
         else:
-            logger.info("📤 Pipeline: Task has no parent dependencies")
+            logger.info("📤 BugninjaPipeline: Task has no parent dependencies")
 
         # Build merged inputs from parents' extracted_data
         for parent_key in parents:
@@ -500,15 +500,15 @@ class Pipeline:
             if parent_key in produced_outputs:
                 parent_outputs = produced_outputs[parent_key]
                 logger.info(
-                    f"📊 Pipeline: Found {len(parent_outputs)} outputs from parent '{parent_key}': {list(parent_outputs.keys())}"
+                    f"📊 BugninjaPipeline: Found {len(parent_outputs)} outputs from parent '{parent_key}': {list(parent_outputs.keys())}"
                 )
 
                 # Log each parent output for debugging
                 for out_key, out_value in parent_outputs.items():
-                    logger.info(f"📋 Pipeline: Parent output {out_key} = {out_value}")
+                    logger.info(f"📋 BugninjaPipeline: Parent output {out_key} = {out_value}")
             else:
                 logger.warning(
-                    f"⚠️ Pipeline: No outputs found from parent '{parent_key}' - dependency may have failed"
+                    f"⚠️ BugninjaPipeline: No outputs found from parent '{parent_key}' - dependency may have failed"
                 )
 
             # Merge with conflict detection and enhanced logging
@@ -520,13 +520,15 @@ class Pipeline:
                         f"Conflict for input key '{k_inp}': '{merged_inputs[k_inp]}' vs '{v_inp}'"
                     )
                     Console().print(f"⛔ {error_msg}")
-                    logger.error(f"⛔ Pipeline: Input conflict detected - {error_msg}")
-                    raise RuntimeError(f"Pipeline execution stopped: {error_msg}")
+                    logger.error(f"⛔ BugninjaPipeline: Input conflict detected - {error_msg}")
+                    raise RuntimeError(f"BugninjaPipeline execution stopped: {error_msg}")
 
                 merged_inputs[k_inp] = v_inp
-                logger.info(f"✅ Pipeline: Merged input {k_inp} = {v_inp}")
+                logger.info(f"✅ BugninjaPipeline: Merged input {k_inp} = {v_inp}")
 
-        logger.info(f"📥 Pipeline: Final merged inputs for task: {list(merged_inputs.keys())}")
+        logger.info(
+            f"📥 BugninjaPipeline: Final merged inputs for task: {list(merged_inputs.keys())}"
+        )
 
         # Enhanced validation with comprehensive logging
         required_keys: Set[str] = set()
@@ -535,16 +537,18 @@ class Pipeline:
         if payload.task.io_schema and payload.task.io_schema.input_schema:
             required_keys = set(payload.task.io_schema.input_schema.keys())
             logger.info(
-                f"🔍 Pipeline: Task requires {len(required_keys)} inputs: {list(required_keys)}"
+                f"🔍 BugninjaPipeline: Task requires {len(required_keys)} inputs: {list(required_keys)}"
             )
         else:
-            logger.info("🔍 Pipeline: Task has no input schema requirements")
+            logger.info("🔍 BugninjaPipeline: Task has no input schema requirements")
 
         if payload.task.secrets:
             child_secrets_keys = set(payload.task.secrets.keys())
-            logger.info(f"🔐 Pipeline: Task has {len(child_secrets_keys)} secrets configured")
+            logger.info(
+                f"🔐 BugninjaPipeline: Task has {len(child_secrets_keys)} secrets configured"
+            )
         else:
-            logger.info("🔐 Pipeline: Task has no secrets configured")
+            logger.info("🔐 BugninjaPipeline: Task has no secrets configured")
 
         # Check for conflicts between input_schema and secrets
         conflicts = required_keys & child_secrets_keys
@@ -553,8 +557,8 @@ class Pipeline:
 
             error_msg = f"Key conflicts between input_schema and secrets: {sorted(conflicts)}"
             Console().print(f"⛔ {error_msg}")
-            logger.error(f"⛔ Pipeline: Schema conflict - {error_msg}")
-            raise RuntimeError(f"Pipeline execution stopped: {error_msg}")
+            logger.error(f"⛔ BugninjaPipeline: Schema conflict - {error_msg}")
+            raise RuntimeError(f"BugninjaPipeline execution stopped: {error_msg}")
 
         # Validate all required inputs are available
         missing_required = [k for k in required_keys if k not in merged_inputs]
@@ -563,16 +567,16 @@ class Pipeline:
 
             error_msg = f"Missing required inputs for child: {sorted(missing_required)}"
             Console().print(f"⛔ {error_msg}")
-            logger.error(f"⛔ Pipeline: Missing inputs - {error_msg}")
-            logger.info(f"📋 Pipeline: Available inputs: {list(merged_inputs.keys())}")
-            logger.info(f"📋 Pipeline: Required inputs: {list(required_keys)}")
-            raise RuntimeError(f"Pipeline execution stopped: {error_msg}")
+            logger.error(f"⛔ BugninjaPipeline: Missing inputs - {error_msg}")
+            logger.info(f"📋 BugninjaPipeline: Available inputs: {list(merged_inputs.keys())}")
+            logger.info(f"📋 BugninjaPipeline: Required inputs: {list(required_keys)}")
+            raise RuntimeError(f"BugninjaPipeline execution stopped: {error_msg}")
 
         # Log successful validation
         if required_keys:
-            logger.info(f"✅ Pipeline: All {len(required_keys)} required inputs satisfied")
+            logger.info(f"✅ BugninjaPipeline: All {len(required_keys)} required inputs satisfied")
 
-        logger.info(f"🚀 Pipeline: Executing task with {len(merged_inputs)} runtime inputs")
+        logger.info(f"🚀 BugninjaPipeline: Executing task with {len(merged_inputs)} runtime inputs")
 
         # Execute the task
         from rich.console import Console
@@ -603,7 +607,7 @@ class Pipeline:
                 Console().print(f"🖼️ Screenshots dir: {result.screenshots_dir}")
 
             # Raise exception to stop pipeline execution
-            raise RuntimeError(f"Pipeline execution stopped: {error_msg}")
+            raise RuntimeError(f"BugninjaPipeline execution stopped: {error_msg}")
 
         # Record produced outputs for children with robust state management
         extracted_outputs: Dict[str, str] = {}
@@ -616,28 +620,28 @@ class Pipeline:
                 try:
                     extracted_outputs = dict(exd)
                     logger.info(
-                        f"🔗 Pipeline: Extracted {len(extracted_outputs)} outputs from traversal for task '{payload.task.description[:40]}...'"
+                        f"🔗 BugninjaPipeline: Extracted {len(extracted_outputs)} outputs from traversal for task '{payload.task.description[:40]}...'"
                     )
                     for out_key, out_value in extracted_outputs.items():
-                        logger.info(f"📊 Pipeline output: {out_key} = {out_value}")
+                        logger.info(f"📊 BugninjaPipeline output: {out_key} = {out_value}")
                 except Exception as e:
                     logger.warning(
-                        f"⚠️ Pipeline: Failed to convert traversal extracted_data to dict: {e}"
+                        f"⚠️ BugninjaPipeline: Failed to convert traversal extracted_data to dict: {e}"
                     )
                     extracted_outputs = {}
             else:
                 logger.warning(
-                    f"⚠️ Pipeline: Traversal exists but has no extracted_data for task '{payload.task.description[:40]}...'"
+                    f"⚠️ BugninjaPipeline: Traversal exists but has no extracted_data for task '{payload.task.description[:40]}...'"
                 )
         else:
             logger.warning(
-                f"⚠️ Pipeline: No traversal object in result for task '{payload.task.description[:40]}...'"
+                f"⚠️ BugninjaPipeline: No traversal object in result for task '{payload.task.description[:40]}...'"
             )
 
         # Fallback: Try to load traversal from file if available
         if not extracted_outputs and result.traversal_file:
             logger.info(
-                f"🔄 Pipeline: Attempting fallback extraction from traversal file: {result.traversal_file}"
+                f"🔄 BugninjaPipeline: Attempting fallback extraction from traversal file: {result.traversal_file}"
             )
             try:
                 import json
@@ -651,35 +655,35 @@ class Pipeline:
                         if file_extracted_data:
                             extracted_outputs = dict(file_extracted_data)
                             logger.info(
-                                f"✅ Pipeline: Recovered {len(extracted_outputs)} outputs from traversal file"
+                                f"✅ BugninjaPipeline: Recovered {len(extracted_outputs)} outputs from traversal file"
                             )
                             for out_key, out_value in extracted_outputs.items():
                                 logger.info(
-                                    f"📊 Pipeline recovered output: {out_key} = {out_value}"
+                                    f"📊 BugninjaPipeline recovered output: {out_key} = {out_value}"
                                 )
                         else:
                             logger.warning(
-                                "⚠️ Pipeline: Traversal file exists but contains no extracted_data"
+                                "⚠️ BugninjaPipeline: Traversal file exists but contains no extracted_data"
                             )
                 else:
                     logger.warning(
-                        f"⚠️ Pipeline: Traversal file path exists in result but file not found: {traversal_path}"
+                        f"⚠️ BugninjaPipeline: Traversal file path exists in result but file not found: {traversal_path}"
                     )
             except Exception as e:
                 logger.warning(
-                    f"⚠️ Pipeline: Failed to load traversal from file {result.traversal_file}: {e}"
+                    f"⚠️ BugninjaPipeline: Failed to load traversal from file {result.traversal_file}: {e}"
                 )
 
         # Final validation and storage
         if extracted_outputs:
             produced_outputs[key] = extracted_outputs
             logger.info(
-                f"✅ Pipeline: Successfully stored {len(extracted_outputs)} outputs for downstream tasks"
+                f"✅ BugninjaPipeline: Successfully stored {len(extracted_outputs)} outputs for downstream tasks"
             )
         else:
             produced_outputs[key] = {}
             logger.warning(
-                f"⚠️ Pipeline: No extracted outputs found for task '{payload.task.description[:40]}...' - downstream tasks may fail"
+                f"⚠️ BugninjaPipeline: No extracted outputs found for task '{payload.task.description[:40]}...' - downstream tasks may fail"
             )
 
         # Return execution metadata

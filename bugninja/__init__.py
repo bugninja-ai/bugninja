@@ -28,7 +28,7 @@ task execution with built-in error recovery mechanisms.
 from bugninja.agents.navigator_agent import NavigatorAgent
 from bugninja.agents.healer_agent import HealerAgent
 from bugninja.replication.replicator_run import ReplicatorRun
-from bugninja.api.pipeline import Pipeline, TaskRef, TaskSpec
+from bugninja.api.bugninja_pipeline import BugninjaPipeline, TaskRef, TaskSpec
 from bugninja.schemas.pipeline import Traversal, BugninjaBrowserConfig, BugninjaExtendedAction
 
 from bugninja.config import (
@@ -87,8 +87,8 @@ __all__ = [
     "SessionReplayError",
     "ConfigurationError",
     "LLMError",
-    # Pipeline API
-    "Pipeline",
+    # BugninjaPipeline API
+    "BugninjaPipeline",
     "TaskRef",
     "TaskSpec",
     "Dependency",

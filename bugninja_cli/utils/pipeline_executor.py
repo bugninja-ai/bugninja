@@ -1,8 +1,8 @@
 """
-CLI Pipeline Executor for Bugninja CLI commands.
+CLI BugninjaPipeline Executor for Bugninja CLI commands.
 
-This module provides a CLI wrapper for Pipeline functionality, enabling
-dependency management and execution using the unified Pipeline API.
+This module provides a CLI wrapper for BugninjaPipeline functionality, enabling
+dependency management and execution using the unified BugninjaPipeline API.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, List
 from rich.console import Console
 from rich.panel import Panel
 
-from bugninja.api.pipeline import Pipeline, TaskRef, TaskSpec
+from bugninja.api.bugninja_pipeline import BugninjaPipeline, TaskRef, TaskSpec
 from bugninja.schemas.cli_schemas import TaskExecutionResult, TaskInfo, TaskRunConfig
 from bugninja.utils.logging_config import logger
 from bugninja_cli.utils.task_executor import TaskExecutor
@@ -25,10 +25,10 @@ if TYPE_CHECKING:
 
 
 class PipelineExecutor:
-    """CLI wrapper for Pipeline functionality.
+    """CLI wrapper for BugninjaPipeline functionality.
 
     This class provides a bridge between CLI TaskInfo objects and the
-    Pipeline API, handling dependency resolution and execution with
+    BugninjaPipeline API, handling dependency resolution and execution with
     rich console output.
     """
 
@@ -44,7 +44,7 @@ class PipelineExecutor:
     async def execute_with_dependencies(
         self, target_task: TaskInfo, task_manager: TaskManager
     ) -> TaskExecutionResult:
-        """Execute task with all dependencies using Pipeline.
+        """Execute task with all dependencies using BugninjaPipeline.
 
         Args:
             target_task: The target task to execute
@@ -57,7 +57,7 @@ class PipelineExecutor:
 
         start_time = datetime.now()
 
-        # Convert to Pipeline with TaskRef nodes
+        # Convert to BugninjaPipeline with TaskRef nodes
         pipeline = self._convert_to_pipeline(target_task, task_manager)
 
         # Create resolver function that converts TaskRef to BugninjaTask
@@ -87,7 +87,7 @@ class PipelineExecutor:
                 success=False, execution_time=execution_time, result=None, error_message=str(e)
             )
 
-        # Use Pipeline's built-in validation and execution
+        # Use BugninjaPipeline's built-in validation and execution
         try:
             # Note: Skipping upfront I/O validation for CLI mode as inputs are generated dynamically
             # materialized_pipeline.validate_io()
@@ -97,7 +97,7 @@ class PipelineExecutor:
 
             # Create client factory that generates task-specific clients
             from bugninja.api import BugninjaClient
-            from bugninja.api.pipeline import TaskRef
+            from bugninja.api.bugninja_pipeline import TaskRef
             from bugninja.schemas.models import BugninjaConfig
 
             # Get the execution order from the materialized pipeline (with resolved TaskSpec objects)
@@ -108,7 +108,7 @@ class PipelineExecutor:
             all_tasks = self._build_dependency_graph(target_task, task_manager)
             task_order = [task.folder_name for task in all_tasks]
 
-            logger.info(f"🗂️ Pipeline execution order: {' → '.join(task_order)}")
+            logger.info(f"🗂️ BugninjaPipeline execution order: {' → '.join(task_order)}")
 
             # Track which task we're on
             task_counter = {"index": 0}
@@ -167,7 +167,7 @@ class PipelineExecutor:
 
                 return BugninjaClient(config=config)
 
-            # Execute using Pipeline's run method with client factory
+            # Execute using BugninjaPipeline's run method with client factory
             logger.info(
                 f"🚀 PipelineExecutor: Starting pipeline execution for {len(task_order)} tasks"
             )
@@ -177,7 +177,7 @@ class PipelineExecutor:
 
             # Post-execution validation and logging
             logger.info(
-                f"✅ PipelineExecutor: Pipeline execution completed with {len(execution_results)} results"
+                f"✅ PipelineExecutor: BugninjaPipeline execution completed with {len(execution_results)} results"
             )
 
             # Validate and log results for each task
@@ -220,7 +220,7 @@ class PipelineExecutor:
         except Exception as e:
             self.console.print(
                 Panel(
-                    f"❌ Pipeline execution failed: {str(e)}",
+                    f"❌ BugninjaPipeline execution failed: {str(e)}",
                     title="Execution Error",
                     border_style="red",
                 )
@@ -230,17 +230,19 @@ class PipelineExecutor:
                 success=False, execution_time=execution_time, result=None, error_message=str(e)
             )
 
-    def _convert_to_pipeline(self, target_task: TaskInfo, task_manager: TaskManager) -> Pipeline:
-        """Convert CLI tasks to Pipeline with TaskRef objects.
+    def _convert_to_pipeline(
+        self, target_task: TaskInfo, task_manager: TaskManager
+    ) -> BugninjaPipeline:
+        """Convert CLI tasks to BugninjaPipeline with TaskRef objects.
 
         Args:
             target_task: The target task to execute
             task_manager: Task manager instance
 
         Returns:
-            Pipeline: Configured pipeline with dependencies
+            BugninjaPipeline: Configured pipeline with dependencies
         """
-        pipeline = Pipeline()
+        pipeline = BugninjaPipeline()
 
         # Build dependency graph from target task
         all_tasks = self._build_dependency_graph(target_task, task_manager)
