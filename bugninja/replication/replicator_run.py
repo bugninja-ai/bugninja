@@ -22,7 +22,7 @@ import base64
 import json
 import time
 from pathlib import Path
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
@@ -115,6 +115,7 @@ class ReplicatorRun(ReplicatorNavigator):
         event_manager: Optional[EventPublisherManager] = None,
         healing_llm_config: Optional[LLMConfig] = None,
         output_base_dir: Optional[Path] = None,
+        overlay_secrets: Optional[Dict[str, Any]] = None,
     ):
         """Initialize the ReplicatorRun with comprehensive configuration.
 
@@ -176,7 +177,12 @@ class ReplicatorRun(ReplicatorNavigator):
         self.pause_after_each_step = pause_after_each_step
         self.enable_healing = enable_healing
         self.healing_llm_config: Optional[LLMConfig] = healing_llm_config
-        self.secrets = self.replay_traversal.secrets
+        # Merge overlay secrets with original traversal secrets
+        original_secrets = self.replay_traversal.secrets or {}
+        if overlay_secrets:
+            self.secrets = {**original_secrets, **overlay_secrets}
+        else:
+            self.secrets = original_secrets
 
         # Get the number of actions from the actions dictionary
         self.total_actions = len(self.replay_traversal.actions)
@@ -388,6 +394,26 @@ class ReplicatorRun(ReplicatorNavigator):
                 logger.bugninja_log(f"🎯 Started replay run: {self.run_id}")
             except Exception as e:
                 logger.warning(f"Failed to initialize event tracking: {e}")
+
+        # Automatically navigate to start_url from traversal
+        if self.replay_traversal.start_url is None:
+            raise ValueError(
+                "start_url is required but not found in the traversal file. The traversal may be from an older version that doesn't include start_url."
+            )
+
+        logger.bugninja_log(
+            f"🌐 Automatically navigating to start URL from traversal: {self.replay_traversal.start_url}"
+        )
+        try:
+            current_page = await self.browser_session.get_current_page()
+            await current_page.goto(self.replay_traversal.start_url)
+            await self.wait_proper_load_state(current_page)
+            logger.bugninja_log(f"✅ Successfully navigated to: {self.replay_traversal.start_url}")
+        except Exception as e:
+            logger.error(
+                f"❌ Failed to navigate to start URL {self.replay_traversal.start_url}: {e}"
+            )
+            raise
 
         # ? we go until the self healing state is not finished
 

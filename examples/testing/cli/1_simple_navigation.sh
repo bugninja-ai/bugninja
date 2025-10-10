@@ -1,1 +1,1 @@
-uv run bugninja run --task 1_simple_navigation
+uv run bugninja run 1_simple_navigation

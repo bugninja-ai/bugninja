@@ -1,8 +1,10 @@
 [task]
 name = "3_mobile_viewport"
-description = "Navigate to ebay and search for home surveillance.\nOrder the list from cheapest to most expensive, and scroll down until the the result page options are visible.\nNavigate to the second page of the results, and from the second page open the first product."
+start_url = "https://ebay.com"  # REQUIRED: URL where the browser session should start
+description = "Search for home surveillance.\nOrder the list from cheapest to most expensive, and scroll down until the the result page options are visible.\nNavigate to the second page of the results, and from the second page open the first product."
 extra_instructions = []
-allowed_domains = []
+allowed_domains = []  # Optional: List of allowed domains for web tasks
+dependencies = []  # Optional: List of task folder names or CUIDs that this task depends on
 
 [run_config]
 viewport_width = 390
@@ -14,7 +16,7 @@ enable_healing = true
 headless = false
 enable_video_recording = false
 
-
 [metadata]
-task_id = "y9r9b8vwa3nii3v8byo0qxjc"
-created_date = "2025-09-14T13:12:53.070072+00:00Z"
+task_id = "bcf4q4lvd21n24oypvac4i3x"
+created_date = "2025-10-09T17:07:14.893094+00:00Z"
+creation_type = "manually_added"

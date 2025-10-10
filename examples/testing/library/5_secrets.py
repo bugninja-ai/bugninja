@@ -6,13 +6,14 @@ from bugninja.api.client import BugninjaClient
 from bugninja.schemas.models import BugninjaTask
 
 LOGIN_PRACTICE_PROMPT = """
-Go to practicetestautomation.com/practice-test-login/ and with the provided credentials, try to log in!
+With the provided credentials, try to log in!
 Verify the successful login, and after that log out and close the browser!
 """.strip()
 
 
 async def secrets() -> None:
     task = BugninjaTask(
+        start_url="https://practicetestautomation.com/practice-test-login/",
         description=LOGIN_PRACTICE_PROMPT,
         #! secrets stored this way are not visible by the model directly
         secrets={"EMAIL_SECRET": "student", "PASSWORD_SECRET": "Password123"},

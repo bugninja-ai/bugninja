@@ -130,6 +130,8 @@ def _display_task_statistics_table(task_stats: List[TaskStats]) -> None:
     table.add_column("Total Runs", justify="right", style="bold")
     table.add_column("AI Runs", justify="right", style="blue")
     table.add_column("Replay Runs", justify="right", style="green")
+    table.add_column("Latest Runtime", justify="right", style="yellow")
+    table.add_column("Avg Runtime", justify="right", style="bright_yellow")
     table.add_column("Error Type", style="red")
 
     # Add rows
@@ -143,6 +145,8 @@ def _display_task_statistics_table(task_stats: List[TaskStats]) -> None:
             str(stats.total_runs),
             str(stats.ai_runs),
             str(stats.replay_runs),
+            stats.latest_runtime,
+            stats.average_runtime,
             stats.error_type,
         )
 

@@ -135,19 +135,35 @@ class BugninjaBrowserConfig(BaseModel):
 
 
 class Traversal(BaseModel):
-    """Complete test case data including browser configuration, brain states, and actions.
+    """Complete test case data including start URL, browser configuration, brain states, and actions.
 
     This model represents a complete test case with all necessary components
-    for browser automation including configuration, credentials, brain states,
+    for browser automation including start URL, configuration, credentials, brain states,
     and action sequences.
     """
 
     test_case: str
+    start_url: Optional[str]
     browser_config: BugninjaBrowserConfig
     brain_states: Dict[str, AgentBrain]
     actions: Dict[str, BugninjaExtendedAction]
     extra_instructions: List[str] = Field(default_factory=list)
     secrets: Optional[Dict[str, str]] = Field(default_factory=dict)
+    # Dependency metadata (static per task)
+    dependencies: List[str] = Field(default_factory=list)
+
+    # I/O Schema support
+    input_schema: Optional[Dict[str, Any]] = Field(
+        default=None, description="Input schema for this traversal"
+    )
+
+    output_schema: Optional[Dict[str, str]] = Field(
+        default=None, description="Output schema for this traversal"
+    )
+
+    extracted_data: Dict[str, Any] = Field(
+        default_factory=dict, description="Data extracted during execution based on output_schema"
+    )
 
     class Config:
         arbitrary_types_allowed = True

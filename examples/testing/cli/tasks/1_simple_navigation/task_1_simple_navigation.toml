@@ -1,8 +1,16 @@
 [task]
 name = "1_simple_navigation"
-description = "Go to app.bacprep.ro/en, login to the platform via email authentication with the \nprovided credentials:\n\nemail: feligaf715@lewou.com\npassword: 9945504JA\n\nEdit the name of the user to another plausible name!\nIf successful log out and close the browser!"
+start_url = "https://app.bacprep.ro/en"  # REQUIRED: URL where the browser session should start
+description = "Login to the platform via email authentication with the provided credentials:\n\nemail: feligaf715@lewou.com\npassword: 9945504JA\n\nEdit the name of the user to another plausible name!\nIf successful log out and close the browser!"
 extra_instructions = []
-allowed_domains = []
+allowed_domains = []  # Optional: List of allowed domains for web tasks
+dependencies = []  # Optional: List of task folder names or CUIDs that this task depends on
+
+# I/O Schema Configuration (Optional)
+# Uncomment and configure if you need data extraction capabilities
+[task.io_schema]
+output_schema.PREVIOUS_USERNAME = "previous name of the user before the update"
+output_schema.NEW_USERNAME = "new username of the user before the update"
 
 [run_config]
 viewport_width = 1920
@@ -15,5 +23,6 @@ headless = false
 enable_video_recording = true
 
 [metadata]
-task_id = "ln70dwbp4l8g8bxzoafsv75b"
-created_date = "2025-09-14T12:44:24.995366+00:00Z"
+task_id = "eyfhemjm3ea2oblgx3bnou3h"
+created_date = "2025-10-09T17:01:12.276240+00:00Z"
+creation_type = "manually_added"

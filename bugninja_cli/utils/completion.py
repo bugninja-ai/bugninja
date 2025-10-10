@@ -33,20 +33,29 @@ def replay_command(traversal):
 """
 
 import os
+import time
 from pathlib import Path
 from typing import List, Optional
 
 import click
 
+from bugninja_cli.utils.initialization import get_project_root
 
-def _get_project_root() -> Optional[Path]:
-    """Get project root without caching to avoid stale results."""
-    try:
-        from bugninja_cli.utils.initialization import get_project_root
+# Simple caching for project root to avoid repeated directory walks
+_cached_project_root: Optional[Path] = None
+_cache_timestamp: float = 0
+CACHE_TTL = 5.0  # 5 seconds cache
 
-        return get_project_root()
-    except Exception:
-        return None
+
+def _get_cached_project_root() -> Optional[Path]:
+    """Get cached project root, refresh if stale."""
+    global _cached_project_root, _cache_timestamp
+
+    if _cached_project_root is None or time.time() - _cache_timestamp > CACHE_TTL:
+        _cached_project_root = get_project_root()
+        _cache_timestamp = time.time()
+
+    return _cached_project_root
 
 
 def _get_task_names(tasks_dir: str) -> List[str]:
@@ -85,7 +94,7 @@ def _get_traversal_ids(traversals_dir: str) -> List[str]:
 
 def complete_task_names(ctx: click.Context, param: click.Parameter, incomplete: str) -> List[str]:
     """Complete available task names for run and replay commands."""
-    project_root = _get_project_root()
+    project_root = _get_cached_project_root()
     if not project_root:
         return []
 
@@ -113,7 +122,7 @@ def complete_traversal_ids(
     ctx: click.Context, param: click.Parameter, incomplete: str
 ) -> List[str]:
     """Complete available traversal IDs for replay commands."""
-    project_root = _get_project_root()
+    project_root = _get_cached_project_root()
     if not project_root:
         return []
 

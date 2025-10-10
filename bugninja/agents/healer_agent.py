@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from browser_use.agent.views import (  # type: ignore
     AgentOutput,
@@ -13,13 +13,16 @@ from bugninja.agents.bugninja_agent_base import (
     NAVIGATION_IDENTIFIERS,
     BugninjaAgentBase,
 )
+from bugninja.agents.data_extraction_agent import DataExtractionAgent
 from bugninja.prompts.prompt_factory import (
     BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
     HEALDER_AGENT_EXTRA_SYSTEM_PROMPT,
+    get_io_extraction_prompt,
     get_passed_brainstates_related_prompt,
 )
 from bugninja.schemas.models import BugninjaConfig
 from bugninja.schemas.pipeline import BugninjaBrainState, BugninjaExtendedAction
+from bugninja.schemas.test_case_io import TestCaseSchema
 from bugninja.utils.logging_config import logger
 from bugninja.utils.screenshot_manager import ScreenshotManager
 
@@ -82,6 +85,7 @@ class HealerAgent(BugninjaAgentBase):
         already_completed_brainstates: List[BugninjaBrainState] = [],
         output_base_dir: Optional[Path] = None,
         screenshot_manager: Optional[ScreenshotManager] = None,
+        io_schema: Optional[TestCaseSchema] = None,
         **kwargs,  # type:ignore
     ) -> None:
         """Initialize HealerAgent with healing-specific functionality.
@@ -97,6 +101,26 @@ class HealerAgent(BugninjaAgentBase):
             output_base_dir (Optional[Path]): Base directory for all output files (traversals, screenshots, videos)
             **kwargs: Keyword arguments passed to the parent BugninjaAgentBase class
         """
+
+        # Store unified schema
+        self.io_schema = io_schema
+
+        # Initialize data extraction agent if output schema is defined
+        self.data_extraction_agent: Optional[DataExtractionAgent] = None
+        self.extracted_data: Dict[str, Any] = {}
+
+        # Check if output schema exists and initialize extraction agent
+        if self.io_schema and self.io_schema.output_schema:
+            self.data_extraction_agent = DataExtractionAgent(
+                cli_mode=getattr(self, "cli_mode", False)
+            )
+
+        # Add I/O extraction prompt to task description if output schema is defined
+        if self.io_schema and self.io_schema.output_schema:
+            io_prompt = get_io_extraction_prompt(self.io_schema.output_schema)
+            if io_prompt:
+                # Append to the task description
+                task += f"\n\n{io_prompt}"
 
         task += f"\n\n{get_passed_brainstates_related_prompt(completed_brain_states=already_completed_brainstates)}"
 
@@ -158,6 +182,67 @@ class HealerAgent(BugninjaAgentBase):
         - publishes final run status to event managers
         - logs completion status for monitoring
         """
+        # Extract data if test case was successful AND extraction agent is available
+        # Use same logic as client for consistency - success means no errors occurred
+        if (
+            self.state.last_result
+            and not any(
+                result.error
+                for result in self.state.last_result
+                if hasattr(result, "error") and result.error
+            )
+            and self.data_extraction_agent
+            and self.io_schema
+            and self.io_schema.output_schema
+        ):
+
+            try:
+                self.extracted_data = (
+                    await self.data_extraction_agent.extract_data_from_brain_states(
+                        self.agent_brain_states, self.io_schema.output_schema
+                    )
+                )
+
+                # Post-process extracted data to resolve secret references
+                self.extracted_data = self._resolve_secret_references(self.extracted_data)
+
+                logger.bugninja_log(f"📊 Extracted data: {self.extracted_data}")
+
+                # Check if extraction was successful (at least one value is not None)
+                if all(value is None for value in self.extracted_data.values()):
+                    logger.warning("⚠️ Data extraction failed - no data extracted")
+                    # Mark as failed test case
+                    from browser_use.agent.views import ActionResult
+
+                    self.state.last_result = [
+                        ActionResult(
+                            success=False,
+                            error="Data extraction failed - necessary info extraction did not happen",
+                        )
+                    ]
+                else:
+                    # Log partial success
+                    extracted_count = sum(
+                        1 for value in self.extracted_data.values() if value is not None
+                    )
+                    total_count = len(self.extracted_data)
+                    logger.bugninja_log(
+                        f"📊 Data extraction successful: {extracted_count}/{total_count} values extracted"
+                    )
+
+            except Exception as e:
+                logger.warning(f"Failed to extract data: {e}")
+                self.extracted_data = {key: None for key in self.io_schema.output_schema.keys()}
+                # Mark as failed test case
+                from browser_use.agent.views import ActionResult
+
+                self.state.last_result = [
+                    ActionResult(
+                        success=False,
+                        error="Data extraction failed - necessary info extraction did not happen",
+                    )
+                ]
+
         # Complete event tracking for healing run
         if self.event_manager and self.run_id:
             try:

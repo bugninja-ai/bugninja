@@ -1,1 +1,1 @@
-uv run bugninja run --task 6_extra_instructions_navigation
+uv run bugninja run 6_extra_instructions_navigation

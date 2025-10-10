@@ -46,6 +46,7 @@ if TYPE_CHECKING:
     from bugninja.schemas import TaskExecutionResult, TaskInfo, TaskRunConfig
     from bugninja.schemas.models import BugninjaConfig
     from bugninja.schemas.pipeline import Traversal
+    from bugninja_cli.utils.task_manager import TaskManager
 
 
 console = Console()
@@ -115,13 +116,18 @@ class TaskExecutor:
             from bugninja.events import EventPublisherManager
             from bugninja.schemas.models import BugninjaConfig
 
+            # Choose configuration mode based on context:
+            # - CLI mode (TOML) when executing a concrete CLI task (TaskInfo provided)
+            # - Library mode (env) for in-code TaskSpec usage (no TaskInfo)
+            use_cli_mode = task_info is not None
+
             # Create configuration with task-specific settings if provided
             config = BugninjaConfig(
                 headless=self.task_run_config.headless,
                 viewport_width=self.task_run_config.viewport_width,
                 viewport_height=self.task_run_config.viewport_height,
                 user_agent=self.task_run_config.user_agent,
-                cli_mode=True,  # Enable CLI mode to prevent automatic directory creation
+                cli_mode=use_cli_mode,
             )
 
             # Set task-specific output directory if task_info is provided
@@ -132,7 +138,8 @@ class TaskExecutor:
                 # Set correct screenshots directory for CLI mode
                 config.screenshots_dir = task_output_dir / "screenshots"
             else:
-                # For CLI mode without task_info, don't create default screenshots directory
+                # For library-mode (in-code TaskSpec), let BugninjaConfig use its defaults
+                # and avoid forcing a CLI-style screenshots directory
                 config.screenshots_dir = None
 
             # Handle video recording if enabled and task_info is provided
@@ -269,6 +276,138 @@ class TaskExecutor:
         except Exception:
             # Return default configuration if loading fails
             return TaskRunConfig()
+
+    # ---------------- Dependency resolution utilities -----------------
+    def _resolve_task_by_identifier(
+        self, task_identifier: str, task_manager: "TaskManager"
+    ) -> "TaskInfo":
+        ti = task_manager.get_task_by_name(task_identifier)
+        if ti:
+            return ti
+        ti = task_manager.get_task_by_cuid(task_identifier)
+        if ti:
+            return ti
+        raise ValueError(f"Dependency not found: {task_identifier}")
+
+    def _load_task_config(self, toml_path: Path) -> Dict[str, Any]:
+        from bugninja.config.factory import ConfigurationFactory
+
+        return ConfigurationFactory.load_task_config(toml_path)
+
+    def _collect_output_keys(self, task_info: "TaskInfo") -> set[str]:
+        cfg = self._load_task_config(task_info.toml_path)
+        output = cfg.get("task.output_schema") or {}
+        if not isinstance(output, dict):
+            return set()
+        return set(output.keys())
+
+    def _collect_input_keys(self, task_info: "TaskInfo") -> set[str]:
+        cfg = self._load_task_config(task_info.toml_path)
+        input_schema = cfg.get("task.input_schema") or {}
+        if not isinstance(input_schema, dict):
+            return set()
+        return set(input_schema.keys())
+
+    def _resolve_dependencies_toposort(
+        self, root: "TaskInfo", task_manager: "TaskManager"
+    ) -> list["TaskInfo"]:
+        # DFS topo with cycle detection
+        from collections import defaultdict
+
+        graph: dict[str, list[str]] = defaultdict(list)
+        nodes: dict[str, TaskInfo] = {}
+
+        def load_deps(ti: "TaskInfo") -> list[str]:
+            cfg = self._load_task_config(ti.toml_path)
+            deps = cfg.get("task.dependencies") or []
+            return [str(d) for d in deps if isinstance(d, (str, int))]
+
+        # build graph on the fly
+        def get_key(ti: "TaskInfo") -> str:
+            return ti.folder_name
+
+        stack: list[TaskInfo] = [root]
+        visited: set[str] = set()
+        while stack:
+            cur = stack.pop()
+            key = get_key(cur)
+            if key in visited:
+                continue
+            visited.add(key)
+            nodes[key] = cur
+            for dep_id in load_deps(cur):
+                dep_ti = self._resolve_task_by_identifier(dep_id, task_manager)
+                graph[get_key(dep_ti)].append(key)  # edge dep -> cur
+                stack.append(dep_ti)
+
+        # topo sort
+        indeg: dict[str, int] = {k: 0 for k in nodes}
+        for u, outs in graph.items():
+            for v in outs:
+                indeg[v] = indeg.get(v, 0) + 1
+
+        queue = [k for k, d in indeg.items() if d == 0]
+        order: list[str] = []
+        while queue:
+            u = queue.pop()
+            order.append(u)
+            for v in graph.get(u, []):
+                indeg[v] -= 1
+                if indeg[v] == 0:
+                    queue.append(v)
+
+        if len(order) != len(nodes):
+            raise ValueError("Cyclic dependency detected among tasks")
+
+        # map to TaskInfo and store resolved dependencies
+        result = [nodes[k] for k in order]
+
+        # Store resolved dependencies for the root task
+        resolved_deps = []
+        for ti in result[:-1]:  # all except the last (root) task
+            resolved_deps.append({"folder": ti.folder_name, "task_id": ti.task_id})
+
+        # Store in the root task for later use in traversal
+        if hasattr(root, "resolved_dependencies"):
+            root.resolved_dependencies = resolved_deps
+
+        return result
+
+    def _validate_cross_io(self, task_info: "TaskInfo", parents: list["TaskInfo"]) -> None:
+        # union of parents' outputs must be subset of child's inputs
+        required_keys: set[str] = set()
+        for p in parents:
+            required_keys |= self._collect_output_keys(p)
+        if not required_keys:
+            return
+        child_keys = self._collect_input_keys(task_info)
+        missing = required_keys - child_keys
+        if missing:
+            # group by parent for precise diff
+            details: dict[str, list[str]] = {}
+            for p in parents:
+                k = p.folder_name
+                need = self._collect_output_keys(p) - child_keys
+                if need:
+                    details[k] = sorted(list(need))
+            raise ValueError(
+                f"Input/Output schema mismatch for '{task_info.name}'. Missing keys: {sorted(list(missing))}. Per-parent: {details}"
+            )
+
+    def get_latest_traversal_for_task(self, task_info: "TaskInfo") -> Optional[Path]:
+        """Return the latest traversal file for a given task, if any.
+
+        Args:
+            task_info: Task to look up traversals for
+
+        Returns:
+            Optional[Path]: Path to the latest traversal JSON, or None if not found
+        """
+        traversals_dir = self._ensure_traversals_directory(task_info)
+        traversal_files = list(traversals_dir.glob("*.json"))
+        if not traversal_files:
+            return None
+        return max(traversal_files, key=lambda f: f.stat().st_mtime)
 
     @staticmethod
     def find_traversal_by_id(traversal_id: str, project_root: Path) -> Path:
@@ -424,7 +563,10 @@ class TaskExecutor:
             raise ValueError(f"Failed to update task metadata: {e}")
 
     async def replay_traversal(
-        self, traversal_path: Path, enable_healing: bool = False
+        self,
+        traversal_path: Path,
+        enable_healing: bool = False,
+        extra_secrets: Optional[Dict[str, Any]] = None,
     ) -> TaskExecutionResult:
         """Replay a recorded traversal.
 
@@ -451,7 +593,7 @@ class TaskExecutor:
             # Execute replay using BugninjaClient
             console.print(f"🔄 Replaying traversal: {traversal_path.name}")
             result = await self.client.replay_session(
-                session=traversal_path, enable_healing=enable_healing
+                session=traversal_path, enable_healing=enable_healing, extra_secrets=extra_secrets
             )
 
             # Calculate execution time
@@ -597,7 +739,11 @@ class TaskExecutor:
             self.logger.error(f"Failed to initialize Bugninja client for replay: {e}")
             raise
 
-    async def execute_task(self, task_info: TaskInfo) -> TaskExecutionResult:
+    async def execute_task(
+        self,
+        task_info: TaskInfo,
+        extra_secrets: Optional[Dict[str, Any]] = None,
+    ) -> TaskExecutionResult:
         """Execute a single task.
 
         Args:
@@ -624,7 +770,10 @@ class TaskExecutor:
 
             # Execute task
             console.print(f"🔄 Executing task: {task_info.name}")
-            result = await self.client.run_task(task)
+            result = await self.client.run_task(
+                task,
+                runtime_inputs=extra_secrets,
+            )
 
             # Calculate execution time
             execution_time = (datetime.now() - start_time).total_seconds()

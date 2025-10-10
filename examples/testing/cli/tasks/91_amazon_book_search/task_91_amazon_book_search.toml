@@ -1,0 +1,30 @@
+[task]
+name = "91_amazon_book_search"
+start_url = "https://www.amazon.com/"  # REQUIRED: URL where the browser session should start
+description = "We will search for a book called 'Of Mice and Men' on Amazon"
+extra_instructions = [
+    "Search for the book 'Of Mice and Men'",
+    "Extract the FIRST price of the book from the search results."
+]
+allowed_domains = ["amazon.com", "www.amazon.com"]
+dependencies = []  # Optional: List of task folder names or CUIDs that this task depends on
+
+
+[task.io_schema]
+output_schema.BOOK_PRICE = "First price of the book on Amazon"
+
+[run_config]
+# CLI-specific runtime configuration
+viewport_width = 1920
+viewport_height = 1080
+user_agent = ""
+wait_between_actions = 1.0
+enable_vision = true
+enable_healing = true
+headless = false
+enable_video_recording = true
+
+[metadata]
+task_id = "h8lwst762t2ypxb6o5zy40ac"
+created_date = "2025-10-09T08:57:43.059648+00:00Z"
+creation_type = "manually_added"

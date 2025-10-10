@@ -540,7 +540,11 @@ class BugninjaClient:
             # Log any unexpected cleanup errors but don't raise
             logger.warning(f"Unexpected cleanup error: {e}")
 
-    async def run_task(self, task: BugninjaTask) -> BugninjaTaskResult:
+    async def run_task(
+        self,
+        task: BugninjaTask,
+        runtime_inputs: Optional[Dict[str, Any]] = None,
+    ) -> BugninjaTaskResult:
         """Execute a browser automation task.
 
         This method creates a `NavigatorAgent` and executes the specified task,
@@ -600,18 +604,30 @@ class BugninjaClient:
             llm = self._create_llm()
 
             # Create and run agent with task parameters
+            # Merge runtime inputs with original secrets for agent, but keep original task.secrets intact
+            effective_secrets = task.secrets or {}
+            if runtime_inputs:
+                effective_secrets = {**effective_secrets, **runtime_inputs}
+                logger.info(f"🔗 Client: Merged {len(runtime_inputs)} runtime inputs with secrets")
+                for key, value in runtime_inputs.items():
+                    logger.info(f"📋 Client: Runtime input - {key} = {value}")
+
             agent = NavigatorAgent(
                 bugninja_config=self.config,
                 run_id=task.run_id,
                 task=task.description,
+                start_url=task.start_url,
                 llm=llm,
                 browser_session=browser_session,
                 browser_profile=browser_session.browser_profile,
-                sensitive_data=task.secrets,
+                sensitive_data=effective_secrets,
                 extra_instructions=task.extra_instructions,
                 video_recording_config=self.config.video_recording,
                 output_base_dir=self.config.output_base_dir,
                 cli_mode=self.config.cli_mode,
+                io_schema=task.io_schema,
+                dependencies=task.dependencies,
+                original_task_secrets=task.secrets,
             )
 
             # Set event manager if available
@@ -628,14 +644,16 @@ class BugninjaClient:
             traversal_file = None
             screenshots_dir = None
 
-            # Find the most recent traversal file
-            traversal_files = list(self.config.traversals_dir.glob("*.json"))
+            # Find the most recent traversal file using effective directory
+            effective_traversals_dir = self.config.get_effective_traversals_dir()
+            traversal_files = list(effective_traversals_dir.glob("*.json"))
             if traversal_files:
                 traversal_file = max(traversal_files, key=lambda f: f.stat().st_mtime)
 
                 # Create screenshots directory based on traversal file name
-                if traversal_file and self.config.screenshots_dir:
-                    screenshots_dir = self.config.screenshots_dir / traversal_file.stem
+                effective_screenshots_dir = self.config.get_effective_screenshots_dir()
+                if traversal_file and effective_screenshots_dir:
+                    screenshots_dir = effective_screenshots_dir / traversal_file.stem
 
             # Check if the agent actually succeeded by examining its state
             agent_success = True
@@ -769,6 +787,7 @@ class BugninjaClient:
                     bugninja_config=self.config,
                     run_id=task.run_id,
                     task=task.description,
+                    start_url=task.start_url,
                     llm=self._create_llm(),
                     browser_session=browser_session,
                     sensitive_data=task.secrets,
@@ -860,6 +879,7 @@ class BugninjaClient:
         session: Union[Path, Traversal],
         pause_after_each_step: bool = False,
         enable_healing: bool = True,
+        extra_secrets: Optional[Dict[str, Any]] = None,
     ) -> BugninjaTaskResult:
         """Replay a recorded browser session.
 
@@ -941,6 +961,7 @@ class BugninjaClient:
                 enable_healing=enable_healing,
                 healing_llm_config=self._llm_config,  # Pass client's LLM config
                 output_base_dir=self.config.output_base_dir,
+                overlay_secrets=extra_secrets,
             )
 
             # Override screenshots directory for task-specific organization
@@ -1507,6 +1528,54 @@ class BugninjaClient:
         sessions.sort(key=lambda s: s.created_at, reverse=True)
 
         return sessions
+
+    def reconfigure_from_toml(self, toml_path: Path) -> None:
+        """Reconfigure client from TOML file settings.
+
+        Args:
+            toml_path: Path to TOML file with [run_config] section
+
+        Focus: Only TOML-specific settings like viewport, healing, video recording
+        """
+        from bugninja_cli.utils.task_executor import TaskExecutor
+
+        # Load TOML config
+        config = TaskExecutor._load_task_run_config(toml_path)
+
+        # Update only TOML-specific settings
+        if hasattr(self.config, "viewport_width"):
+            self.config.viewport_width = config.viewport_width
+        if hasattr(self.config, "viewport_height"):
+            self.config.viewport_height = config.viewport_height
+        if hasattr(self.config, "enable_healing"):
+            self.config.enable_healing = config.enable_healing
+        if hasattr(self.config, "enable_video_recording"):
+            self.config.enable_video_recording = config.enable_video_recording
+        if hasattr(self.config, "headless"):
+            self.config.headless = config.headless
+        if hasattr(self.config, "wait_between_actions"):
+            self.config.wait_between_actions = config.wait_between_actions
+        if hasattr(self.config, "enable_vision"):
+            self.config.enable_vision = config.enable_vision
+
+        # Update dependent components
+        self._update_dependent_components()
+
+    def _update_dependent_components(self) -> None:
+        """Update components that depend on configuration changes."""
+        # Update video recording config if needed
+        if hasattr(self.config, "video_recording") and self.config.video_recording is not None:
+            if hasattr(self.config.video_recording, "enabled"):
+                self.config.video_recording.enabled = self.config.enable_video_recording
+
+        # Update browser config if needed
+        if hasattr(self.config, "browser_config"):
+            if hasattr(self.config.browser_config, "viewport_width"):
+                self.config.browser_config.viewport_width = self.config.viewport_width
+            if hasattr(self.config.browser_config, "viewport_height"):
+                self.config.browser_config.viewport_height = self.config.viewport_height
+            if hasattr(self.config.browser_config, "headless"):
+                self.config.browser_config.headless = self.config.headless
 
     async def cleanup(self) -> None:
         """Clean up client resources.

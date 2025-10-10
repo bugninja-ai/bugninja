@@ -37,11 +37,13 @@ from .prompt_factory import (
     HEALDER_AGENT_EXTRA_SYSTEM_PROMPT,
     get_extra_instructions_related_prompt,
     get_passed_brainstates_related_prompt,
+    get_io_extraction_prompt,
 )
 
 __all__ = [
     "get_extra_instructions_related_prompt",
     "get_passed_brainstates_related_prompt",
+    "get_io_extraction_prompt",
     "BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT",
     "HEALDER_AGENT_EXTRA_SYSTEM_PROMPT",
 ]

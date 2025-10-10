@@ -6,7 +6,7 @@ from bugninja.api.client import BugninjaClient
 from bugninja.schemas.models import BugninjaConfig, BugninjaTask
 
 REDDIT_MOBILE_NAVIGATION_PROMPT = """
-Navigate to ebay and search for home surveillance.
+Search for home surveillance.
 Order the list from cheapest to most expensive, and scroll down until the the result page options are visible.
 Navigate to the second page of the results, and from the second page open the first product.
 """.strip()
@@ -16,7 +16,7 @@ IPHONE_BROWSER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) A
 
 async def mobile_viewport() -> None:
 
-    task = BugninjaTask(description=REDDIT_MOBILE_NAVIGATION_PROMPT)
+    task = BugninjaTask(start_url="https://ebay.com", description=REDDIT_MOBILE_NAVIGATION_PROMPT)
     mobile_config = BugninjaConfig(
         viewport_height=844, viewport_width=390, user_agent=IPHONE_BROWSER_AGENT
     )

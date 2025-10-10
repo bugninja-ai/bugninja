@@ -27,6 +27,8 @@ class TaskStats:
         self.last_run_type = "-"
         self.error_type = "-"
         self.creation_type = "-"
+        self.average_runtime = "-"
+        self.latest_runtime = "-"
 
 
 class StatsCollector:
@@ -169,11 +171,35 @@ class StatsCollector:
                         stats.last_run_time = stats.last_run_timestamp.strftime("%Y-%m-%d %H:%M:%S")
                     except (ValueError, TypeError):
                         stats.last_run_time = timestamp_str
+
+                # Calculate runtime statistics
+                execution_times = []
+                for run in all_runs:
+                    exec_time = run.get("execution_time")
+                    if exec_time is not None and isinstance(exec_time, (int, float)):
+                        execution_times.append(exec_time)
+
+                if execution_times:
+                    # Latest runtime (from the most recent run)
+                    latest_exec_time = latest_run.get("execution_time")
+                    if latest_exec_time is not None and isinstance(latest_exec_time, (int, float)):
+                        stats.latest_runtime = f"{latest_exec_time:.1f}s"
+                    else:
+                        stats.latest_runtime = "-"
+
+                    # Average runtime
+                    avg_runtime = sum(execution_times) / len(execution_times)
+                    stats.average_runtime = f"{avg_runtime:.1f}s"
+                else:
+                    stats.average_runtime = "-"
+                    stats.latest_runtime = "-"
             else:
                 stats.last_status = "⏸️ Never"
                 stats.last_run_time = "-"
                 stats.last_run_type = "-"
                 stats.error_type = "-"
+                stats.average_runtime = "-"
+                stats.latest_runtime = "-"
 
         except FileNotFoundError:
             # Handle missing run history files - task has never been run
@@ -181,12 +207,16 @@ class StatsCollector:
             stats.last_run_time = "-"
             stats.last_run_type = "-"
             stats.error_type = "-"
+            stats.average_runtime = "-"
+            stats.latest_runtime = "-"
         except (ValueError, json.JSONDecodeError):
             # Handle corrupted run history files
             stats.last_status = "⚠️ Error"
             stats.last_run_time = "-"
             stats.last_run_type = "-"
             stats.error_type = "-"
+            stats.average_runtime = "-"
+            stats.latest_runtime = "-"
 
         return stats
 

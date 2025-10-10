@@ -1,6 +1,7 @@
 [task]
 name = "6_extra_instructions_navigation"
-description = "Navigate to Amazon homepage, search for \"wireless headphones\", browse through product listings"
+start_url = "https://amazon.com"  # REQUIRED: URL where the browser session should start
+description = "Search for \"wireless headphones\", browse through product listings"
 extra_instructions = [
     "Open exactly three different(!) product pages after each other",
     "On the product’s page read its average score",
@@ -10,8 +11,10 @@ extra_instructions = [
     "Close the browser afterwards",
 ]
 allowed_domains = []
+dependencies = []  # Optional: List of task folder names or CUIDs that this task depends on
 
 [run_config]
+# CLI-specific runtime configuration
 viewport_width = 1920
 viewport_height = 1080
 user_agent = ""
@@ -21,7 +24,7 @@ enable_healing = true
 headless = false
 enable_video_recording = true
 
-
 [metadata]
-task_id = "go14qu2zci8afirdpyuwn5ks"
-created_date = "2025-09-14T13:47:21.792228+00:00Z"
+task_id = "bpqrwe5s1hkswjbalcd8zw4k"
+created_date = "2025-10-09T17:19:15.850365+00:00Z"
+creation_type = "manually_added"

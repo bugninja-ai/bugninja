@@ -1,5 +1,6 @@
 import asyncio
 import inspect
+import re
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -162,7 +163,13 @@ class BugninjaAgentBase(Agent, ABC):
 
         custom_controller = BugninjaController()
 
-        super().__init__(*args, **kwargs, task=task, controller=custom_controller)
+        super().__init__(
+            *args,
+            **kwargs,
+            task=task,
+            controller=custom_controller,
+            extend_system_message=extend_system_message or "",
+        )
         # Initialize extended actions storage
         self.current_step_extended_actions: List["BugninjaExtendedAction"] = []
         self._action_to_extended_index: Dict[int, int] = {}
@@ -866,3 +873,62 @@ class BugninjaAgentBase(Agent, ABC):
             )
             for action_idx, action in enumerate(model_output.action)
         ]
+
+    def _resolve_secret_references(self, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Resolve <secret>KEY</secret> references in extracted data with actual secret values.
+
+        This method post-processes extracted data to replace any `<secret>KEY</secret>` patterns
+        with the actual values from the agent's sensitive_data. This allows the agent to reference
+        secure input data without exposing it in the task description or prompts.
+
+        Args:
+            extracted_data (Dict[str, Any]): Extracted data that may contain secret references
+
+        Returns:
+            Dict[str, Any]: Extracted data with secret references resolved to actual values
+
+        Example:
+            Input: {"PRICE": "<secret>BOOK_PRICE</secret>", "STORE": "Amazon"}
+            Output: {"PRICE": "HUF 2,521.13", "STORE": "Amazon"}
+        """
+        # Check if sensitive_data is available and is a dictionary
+        if (
+            not hasattr(self, "sensitive_data")
+            or not self.sensitive_data
+            or not isinstance(self.sensitive_data, dict)
+        ):
+            from bugninja.utils.logging_config import logger
+
+            logger.bugninja_log("📋 No sensitive_data available for secret resolution")
+            return extracted_data
+
+        resolved_data = {}
+        secret_pattern = re.compile(r"<secret>([^<]+)</secret>")
+
+        # Type-safe reference to sensitive_data
+        sensitive_data_dict = self.sensitive_data
+
+        for key, value in extracted_data.items():
+            if isinstance(value, str):
+                # Look for secret references in the string
+                def replace_secret(match: re.Match[str]) -> str:
+                    secret_key = match.group(1)
+                    if isinstance(secret_key, str) and secret_key in sensitive_data_dict:
+                        actual_value = sensitive_data_dict[secret_key]
+                        from bugninja.utils.logging_config import logger
+
+                        logger.bugninja_log(f"🔐 Resolved secret {secret_key} = {actual_value}")
+                        return str(actual_value)
+                    else:
+                        from bugninja.utils.logging_config import logger
+
+                        logger.warning(f"⚠️ Secret key '{secret_key}' not found in sensitive_data")
+                        return str(match.group(0))  # Return original if not found
+
+                resolved_value = secret_pattern.sub(replace_secret, value)
+                resolved_data[key] = resolved_value
+            else:
+                # Non-string values are kept as-is
+                resolved_data[key] = value
+
+        return resolved_data

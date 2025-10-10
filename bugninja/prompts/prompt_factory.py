@@ -297,6 +297,61 @@ def get_test_case_generator_user_prompt(
     )
 
 
+def get_io_extraction_prompt(output_schema: Dict[str, str]) -> str:
+    """Generate I/O extraction prompt from output schema.
+
+    Args:
+        output_schema (Dict[str, str]): Dictionary mapping variable names to descriptions
+
+    Returns:
+        str: Formatted prompt with extraction instructions, or empty string if no outputs
+
+    Example:
+        ```python
+        prompt = get_io_extraction_prompt({
+            "USER_ID": "ID of the newly registered user",
+            "CONFIRMATION_CODE": "Email confirmation code"
+        })
+        ```
+    """
+    if not output_schema:
+        return ""
+
+    # Format expected outputs as a list
+    outputs_list = "\n".join(
+        [f"- **{key}**: {description}" for key, description in output_schema.items()]
+    )
+
+    return __parsed_prompt("io_extraction_prompt.md", {"EXPECTED_OUTPUTS_LIST": outputs_list})
+
+
+def get_data_extraction_prompt(brain_states_text: str, expected_outputs_text: str) -> str:
+    """Generate data extraction prompt from brain states and output schema.
+
+    Args:
+        brain_states_text (str): Formatted brain states text
+        expected_outputs_text (str): Formatted expected outputs text
+
+    Returns:
+        str: Formatted prompt for data extraction
+
+    Example:
+        ```python
+        prompt = get_data_extraction_prompt(
+            brain_states_text="Brain State 1: Memory: ...",
+            expected_outputs_text="- USER_ID: ID of the user"
+        )
+        ```
+    """
+    return __parsed_prompt(
+        "data_extraction_prompt.md",
+        {
+            "EXPECTED_OUTPUTS_LIST": expected_outputs_text,
+            "BRAIN_STATES_TEXT": brain_states_text,
+        },
+    )
+
+
 BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT: str = __get_raw_prompt(
     prompt_markdown_name="navigator_agent_system_prompt.md"
 )
