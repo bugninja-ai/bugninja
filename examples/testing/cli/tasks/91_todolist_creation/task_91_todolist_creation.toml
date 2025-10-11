@@ -1,0 +1,35 @@
+[task]
+name = "91_todolist_creation"  # REQUIRED: Unique name for the task
+start_url = "https://freetodolist.com"  # REQUIRED: URL where the browser session should start
+description = "Login to FreeTodoList platform and create a TODO list with 5 items"
+extra_instructions = [
+    "Login using the provided credentials",
+    "Create a new list called 'TODOs' if one doesn't already exist",
+    "Add exactly 5 different todo items to the list (make them realistic tasks)",
+    "After adding all items, select one item randomly and extract its text as the output"
+]
+allowed_domains = ["freetodolist.com", "www.freetodolist.com"]
+dependencies = []  # Optional: List of task folder names or CUIDs that this task depends on
+
+[secrets]
+EMAIL_CREDENTIAL = "cekijit723@ampdial.com"
+PASSWORD_CREDENTIAL = "bugninja_test_2025"
+
+[task.io_schema]
+output_schema.SELECTED_ITEM = "Randomly selected item from the TODO list"
+
+[run_config]
+# CLI-specific runtime configuration
+viewport_width = 1920
+viewport_height = 1080
+user_agent = ""
+wait_between_actions = 1.0
+enable_vision = true
+enable_healing = true
+headless = false
+enable_video_recording = true
+
+[metadata]
+task_id = "h8lwst762t2ypxb6o5zy40ac"
+created_date = "2025-10-09T08:57:43.059648+00:00Z"
+creation_type = "manually_added"

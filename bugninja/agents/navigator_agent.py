@@ -28,6 +28,7 @@ from bugninja.agents.data_extraction_agent import DataExtractionAgent
 from bugninja.config.video_recording import VideoRecordingConfig
 from bugninja.prompts.prompt_factory import (
     BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
+    get_input_schema_prompt,
     get_io_extraction_prompt,
 )
 from bugninja.schemas.models import BugninjaConfig
@@ -109,6 +110,7 @@ class NavigatorAgent(BugninjaAgentBase):
         io_schema: Optional[TestCaseSchema] = None,
         dependencies: Optional[List[str]] = None,
         original_task_secrets: Optional[Dict[str, Any]] = None,
+        runtime_inputs: Optional[Dict[str, Any]] = None,
         **kwargs,  # type:ignore
     ) -> None:
         """Initialize NavigatorAgent with navigation-specific functionality.
@@ -122,6 +124,10 @@ class NavigatorAgent(BugninjaAgentBase):
             extra_instructions (List[str]): Additional instructions to append to the task
             video_recording_config (VideoRecordingConfig | None): Video recording configuration for session recording
             output_base_dir (Optional[Path]): Base directory for all output files (traversals, screenshots, videos)
+            io_schema (Optional[TestCaseSchema]): Input/output schema for data extraction and input handling
+            dependencies (Optional[List[str]]): List of task dependencies
+            original_task_secrets (Optional[Dict[str, Any]]): Original task secrets (kept separate from runtime inputs)
+            runtime_inputs (Optional[Dict[str, Any]]): Input data from dependent tasks to be included in system prompt
             **kwargs: Keyword arguments passed to the parent BugninjaAgentBase class
         """
 
@@ -148,21 +154,17 @@ class NavigatorAgent(BugninjaAgentBase):
                 # Append to the task description
                 task += f"\n\n{io_prompt}"
 
-        # Add input schema information if input data is expected (but don't expose the actual values)
-        if self.io_schema and self.io_schema.input_schema:
-            input_keys = list(self.io_schema.input_schema.keys())
-            input_descriptions = [
-                f"- **{key}**: {desc}" for key, desc in self.io_schema.input_schema.items()
-            ]
-
-            input_context = "\n\n### Available Input Data\n\nYou have access to the following data from previous tasks:\n\n"
-            input_context += "\n".join(input_descriptions)
-            input_context += "\n\nThese values are available to you during task execution through your secure data access. Reference them as needed for your task."
-
-            task += input_context
-            logger.bugninja_log(
-                f"📥 Agent: Task configured with {len(input_keys)} input data keys: {input_keys}"
+        # Prepare input schema system prompt extension if input data is provided
+        input_schema_system_prompt: Optional[str] = None
+        if self.io_schema and self.io_schema.input_schema and runtime_inputs:
+            input_schema_system_prompt = get_input_schema_prompt(
+                self.io_schema.input_schema, runtime_inputs
             )
+            if input_schema_system_prompt:
+                input_keys = list(self.io_schema.input_schema.keys())
+                logger.bugninja_log(
+                    f"📥 Agent: Task configured with {len(input_keys)} input data keys: {input_keys}"
+                )
 
         super().__init__(
             *args,
@@ -170,7 +172,7 @@ class NavigatorAgent(BugninjaAgentBase):
             bugninja_config=bugninja_config,
             video_recording_config=video_recording_config,
             override_system_message=override_system_message,
-            extend_system_message=None,
+            extend_system_message=input_schema_system_prompt,
             extra_instructions=extra_instructions,
             task=task,
             output_base_dir=output_base_dir,

@@ -54,8 +54,14 @@ uv run bugninja run 8_comprehensive_test
 echo "Task 8 completed."
 echo ""
 
-# Task 92: eBay Book Search (depends on task 91)
-echo "Running Task 92: eBay Book Search..."
+# Task 91: Create TODO List (dependency for task 92)
+echo "Running Task 91: Create TODO List..."
+uv run bugninja run 91_amazon_book_search
+echo "Task 91 completed."
+echo ""
+
+# Task 92: Delete TODO Item (depends on task 91)
+echo "Running Task 92: Delete TODO Item..."
 uv run bugninja run 92_ebay_book_search
 echo "Task 92 completed."
 echo ""
