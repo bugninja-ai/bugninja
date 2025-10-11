@@ -1,1 +1,1 @@
-uv run bugninja run --task 5_secrets
+uv run bugninja run 5_secrets

@@ -83,6 +83,12 @@ class TOMLConfigLoader:
                 if key == "secrets":
                     for secret_key, secret_value in value.items():
                         flattened[f"secrets.{secret_key}"] = secret_value
+                # Handle I/O schema section specially - keep as nested dictionary
+                elif key == "io_schema" and prefix == "task":
+                    flattened[full_key] = value
+                # Handle I/O schema sections specially - keep as nested dictionaries
+                elif key in ["input_schema", "output_schema"] and prefix == "task":
+                    flattened[full_key] = value
                 else:
                     # Recursively flatten nested dictionaries
                     flattened.update(self._flatten_config(value, full_key))

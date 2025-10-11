@@ -34,21 +34,19 @@ from pathlib import Path
 
 import rich_click as click
 from rich.console import Console
-from rich.panel import Panel
 
 from bugninja_cli.utils.completion import complete_boolean_values, complete_task_names
+from bugninja_cli.utils.pipeline_executor import PipelineExecutor
 from bugninja_cli.utils.project_validator import (
     display_project_info,
     require_bugninja_project,
 )
 from bugninja_cli.utils.result_display import (
-    display_execution_error,
     display_task_failure,
     display_task_not_found,
     display_task_success,
 )
 from bugninja_cli.utils.style import MARKDOWN_CONFIG
-from bugninja_cli.utils.task_executor import TaskExecutor
 from bugninja_cli.utils.task_lookup import (
     get_available_tasks_list,
     get_task_by_identifier,
@@ -154,64 +152,21 @@ def run(
             display_task_not_found(task, available_tasks)
             return
 
-        # Load task run configuration from TOML
-        task_run_config = TaskExecutor._load_task_run_config(task_info.toml_path)
+        # Use PipelineExecutor for dependency management
+        pipeline_executor = PipelineExecutor(project_root)
+        result = await pipeline_executor.execute_with_dependencies(task_info, task_manager)
 
-        """Async function to run tasks."""
-        async with TaskExecutor(
-            task_run_config=task_run_config,
-            project_root=project_root,
-            enable_logging=enable_logging,
-        ) as executor:
-            # if all_flag:
-            #     await _run_all_tasks(executor, task_manager)
-            # elif task:
-            await _run_single_task(executor, task_manager, task)
-            # elif multiple:
-            #     await _run_multiple_tasks(executor, task_manager, multiple)
-            # else:
-            #     _show_no_task_error()
+        # Display result
+        if result.success:
+            display_task_success(task_info, result)
+        else:
+            display_task_failure(task_info, result)
 
     # Run the async function
     asyncio.run(run_tasks())
 
 
-async def _run_single_task(
-    executor: TaskExecutor, task_manager: TaskManager, task_identifier: str
-) -> None:
-    """Run a single task.
-
-    Args:
-        executor (TaskExecutor): Task executor instance
-        task_manager (TaskManager): Task manager instance
-        task_identifier (str): Task identifier (folder name or CUID)
-    """
-    # Find the task
-    task_info = get_task_by_identifier(task_manager, task_identifier)
-
-    if not task_info:
-        available_tasks = get_available_tasks_list(task_manager)
-        display_task_not_found(task_identifier, available_tasks)
-        return
-
-    # Execute the task
-    console.print(
-        Panel(f"🔄 Running task: {task_info.name}", title="Run Command", border_style="blue")
-    )
-
-    # Show which config files are being used
-    console.print(f"📄 Using configuration: {task_info.toml_path}")
-
-    try:
-        result = await executor.execute_task(task_info)
-
-        # Show summary
-        if result.success:
-            display_task_success(task_info, result)
-        else:
-            display_task_failure(task_info, result)
-    except Exception as e:
-        display_execution_error(task_info, e)
+# Old _run_single_task function removed - now using PipelineExecutor
 
 
 # async def _run_multiple_tasks(

@@ -22,7 +22,7 @@ import base64
 import json
 import time
 from pathlib import Path
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
@@ -115,6 +115,7 @@ class ReplicatorRun(ReplicatorNavigator):
         event_manager: Optional[EventPublisherManager] = None,
         healing_llm_config: Optional[LLMConfig] = None,
         output_base_dir: Optional[Path] = None,
+        overlay_secrets: Optional[Dict[str, Any]] = None,
     ):
         """Initialize the ReplicatorRun with comprehensive configuration.
 
@@ -176,7 +177,12 @@ class ReplicatorRun(ReplicatorNavigator):
         self.pause_after_each_step = pause_after_each_step
         self.enable_healing = enable_healing
         self.healing_llm_config: Optional[LLMConfig] = healing_llm_config
-        self.secrets = self.replay_traversal.secrets
+        # Merge overlay secrets with original traversal secrets
+        original_secrets = self.replay_traversal.secrets or {}
+        if overlay_secrets:
+            self.secrets = {**original_secrets, **overlay_secrets}
+        else:
+            self.secrets = original_secrets
 
         # Get the number of actions from the actions dictionary
         self.total_actions = len(self.replay_traversal.actions)
@@ -296,6 +302,19 @@ class ReplicatorRun(ReplicatorNavigator):
             )
             logger.bugninja_log("🩹 Using default LLM configuration for healing")
 
+        # Prepare I/O schema from replay traversal if available
+        io_schema = None
+        if hasattr(self.replay_traversal, "input_schema") and hasattr(
+            self.replay_traversal, "output_schema"
+        ):
+            if self.replay_traversal.input_schema or self.replay_traversal.output_schema:
+                from bugninja.schemas.test_case_io import TestCaseSchema
+
+                io_schema = TestCaseSchema(
+                    input_schema=self.replay_traversal.input_schema,
+                    output_schema=self.replay_traversal.output_schema,
+                )
+
         agent = HealerAgent(
             bugninja_config=self.config,
             task=self.replay_traversal.test_case,
@@ -307,6 +326,8 @@ class ReplicatorRun(ReplicatorNavigator):
             already_completed_brainstates=self.replay_state_machine.passed_brain_states,
             output_base_dir=self.output_base_dir,
             screenshot_manager=self.screenshot_manager,
+            io_schema=io_schema,
+            # Note: runtime_inputs not passed here as healing works from recorded traversal
         )
 
         # Share screenshot directory and counter with healing agent
@@ -388,6 +409,26 @@ class ReplicatorRun(ReplicatorNavigator):
                 logger.bugninja_log(f"🎯 Started replay run: {self.run_id}")
             except Exception as e:
                 logger.warning(f"Failed to initialize event tracking: {e}")
+
+        # Automatically navigate to start_url from traversal
+        if self.replay_traversal.start_url is None:
+            raise ValueError(
+                "start_url is required but not found in the traversal file. The traversal may be from an older version that doesn't include start_url."
+            )
+
+        logger.bugninja_log(
+            f"🌐 Automatically navigating to start URL from traversal: {self.replay_traversal.start_url}"
+        )
+        try:
+            current_page = await self.browser_session.get_current_page()
+            await current_page.goto(self.replay_traversal.start_url)
+            await self.wait_proper_load_state(current_page)
+            logger.bugninja_log(f"✅ Successfully navigated to: {self.replay_traversal.start_url}")
+        except Exception as e:
+            logger.error(
+                f"❌ Failed to navigate to start URL {self.replay_traversal.start_url}: {e}"
+            )
+            raise
 
         # ? we go until the self healing state is not finished
 

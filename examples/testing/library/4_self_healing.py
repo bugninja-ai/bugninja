@@ -32,13 +32,13 @@ def corrupt_traversal_file(traversal_file_path: Path, action_to_corrupt: str) ->
 
 
 WIKIPEDIA_NAVIGATION_PROMPT = """
-Navigate to wikipedia.com and search for Artificial Intelligence, and them open the first article.
+Search for Artificial Intelligence, and them open the first article.
 """.strip()
 
 
 async def self_healing() -> None:
 
-    task = BugninjaTask(description=WIKIPEDIA_NAVIGATION_PROMPT)
+    task = BugninjaTask(start_url="https://wikipedia.com", description=WIKIPEDIA_NAVIGATION_PROMPT)
     client = BugninjaClient()
 
     # Execute the task

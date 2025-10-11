@@ -1,1 +1,1 @@
-uv run bugninja run --task 7_secrets_scrolling_replay
+uv run bugninja run 7_secrets_scrolling_replay

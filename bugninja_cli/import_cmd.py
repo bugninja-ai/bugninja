@@ -26,11 +26,13 @@ bugninja import ./test-files
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import rich_click as click
+from pydantic import ValidationError
 from rich import print as rich_print
 from rich.console import Console
 from rich.panel import Panel
@@ -44,6 +46,8 @@ if TYPE_CHECKING:
     from bugninja.schemas.test_case_creation import TestCaseCreationOutput
     from bugninja.schemas.test_case_import import TestScenario
     from bugninja_cli.utils.task_manager import TaskManager
+
+from bugninja.schemas.test_case_io import TestCaseSchema
 
 
 def generate_file_aliases(file_paths: List[Path]) -> Tuple[Dict[str, Path], Dict[Path, str]]:
@@ -315,9 +319,28 @@ def scan_directory_for_files(source_path: Path) -> Dict[str, str]:
     default="",
     help="Extra instructions for agents to customize test case generation (text must be in quotations)",
 )
+@click.option(
+    "--expected-inputs",
+    type=str,
+    default=None,
+    help='JSON string defining expected inputs for the test case (e.g., \'{"USER_EMAIL": "test@example.com"}\')',
+)
+@click.option(
+    "--expected-outputs",
+    type=str,
+    default=None,
+    help='JSON string defining expected outputs for extraction (e.g., \'{"USER_ID": "user ID from login"}\')',
+)
 @require_bugninja_project
 def import_cmd(
-    source_path: Optional[Path], project_root: Path, mode: str, n: int, p_ratio: float, extra: str
+    source_path: Optional[Path],
+    project_root: Path,
+    mode: str,
+    n: int,
+    p_ratio: float,
+    extra: str,
+    expected_inputs: Optional[str],
+    expected_outputs: Optional[str],
 ) -> None:
     """Import or generate test cases.
 
@@ -351,6 +374,33 @@ def import_cmd(
         - Both modes support parallel test case generation
         - Extra instructions are passed to all agents
     """
+    # Parse unified schema from JSON strings
+    schema: Optional[TestCaseSchema] = None
+
+    if expected_inputs or expected_outputs:
+        try:
+            input_schema = json.loads(expected_inputs) if expected_inputs else None
+            output_schema = json.loads(expected_outputs) if expected_outputs else None
+            schema = TestCaseSchema(input_schema=input_schema, output_schema=output_schema)
+        except json.JSONDecodeError as e:
+            console.print(
+                Panel(
+                    f"❌ Invalid JSON for schema: {e}",
+                    title="Parameter Error",
+                    border_style="red",
+                )
+            )
+            raise click.Abort()
+        except ValidationError as e:
+            console.print(
+                Panel(
+                    f"❌ Invalid schema format: {e}",
+                    title="Schema Error",
+                    border_style="red",
+                )
+            )
+            raise click.Abort()
+
     # Validate parameters
     if mode == "import" and source_path is None:
         console.print(
@@ -394,13 +444,17 @@ def import_cmd(
 
     # Route to appropriate mode
     if mode == "generate":
-        _handle_generation_mode(project_root, n, p_ratio, extra)
+        _handle_generation_mode(project_root, n, p_ratio, extra, schema)
     else:
-        _handle_import_mode(source_path, project_root, n, extra)
+        _handle_import_mode(source_path, project_root, n, extra, schema)
 
 
 def _handle_import_mode(
-    source_path: Optional[Path], project_root: Path, n: Optional[int], extra: str
+    source_path: Optional[Path],
+    project_root: Path,
+    n: Optional[int],
+    extra: str,
+    schema: Optional["TestCaseSchema"] = None,
 ) -> None:
     """Handle import mode - analyze files and generate test cases."""
     try:
@@ -574,6 +628,7 @@ def _handle_import_mode(
                             project_description,
                             extra,
                             project_root,
+                            schema,
                         )
                     )
 
@@ -583,6 +638,25 @@ def _handle_import_mode(
                         f"✅ Generated {len(saved_tasks)} test case(s) successfully!\n\n",
                         style="green",
                     )
+
+                    # Show I/O schema information if provided
+                    if schema:
+                        success_text.append("🔧 Data Extraction Configuration:\n", style="bold")
+                        if schema.input_schema:
+                            success_text.append(
+                                f"   • Input Schema: {list(schema.input_schema.keys())}\n",
+                                style="yellow",
+                            )
+                        if schema.output_schema:
+                            success_text.append(
+                                f"   • Output Schema: {list(schema.output_schema.keys())}\n",
+                                style="yellow",
+                            )
+                        success_text.append(
+                            "   • Data extraction enabled for these test cases\n\n",
+                            style="yellow",
+                        )
+
                     success_text.append("📋 Generated Test Cases:\n", style="bold")
 
                     for i, (test_case, task_id, source_files) in enumerate(saved_tasks, 1):
@@ -599,6 +673,8 @@ def _handle_import_mode(
                             success_text.append(
                                 f"   Secrets: {len(test_case.secrets)} found\n", style="dim"
                             )
+                        if schema:
+                            success_text.append("   Data Extraction: Enabled\n", style="yellow")
                         success_text.append(
                             f"   Source Files: {len(source_files)} files\n", style="dim"
                         )
@@ -671,7 +747,11 @@ def _handle_import_mode(
 
 
 def _handle_generation_mode(
-    project_root: Path, n: Optional[int], p_ratio: float, extra: str
+    project_root: Path,
+    n: Optional[int],
+    p_ratio: float,
+    extra: str,
+    schema: Optional["TestCaseSchema"] = None,
 ) -> None:
     """Handle generation mode - create test cases from project description."""
     # Set default n for generate mode if not provided
@@ -735,7 +815,7 @@ def _handle_generation_mode(
             # Generate test cases in parallel
             console.print("💾 Saving test cases...")
             saved_tasks = asyncio.run(
-                _save_test_cases_parallel(task_manager, test_cases, project_description)
+                _save_test_cases_parallel(task_manager, test_cases, project_description, schema)
             )
 
             # Display success message
@@ -743,6 +823,22 @@ def _handle_generation_mode(
             success_text.append(
                 f"✅ Generated {len(saved_tasks)} test cases successfully!\n\n", style="green"
             )
+
+            # Show I/O schema information if provided
+            if schema:
+                success_text.append("🔧 Data Extraction Configuration:\n", style="bold")
+                if schema.input_schema:
+                    success_text.append(
+                        f"   • Input Schema: {list(schema.input_schema.keys())}\n", style="yellow"
+                    )
+                if schema.output_schema:
+                    success_text.append(
+                        f"   • Output Schema: {list(schema.output_schema.keys())}\n", style="yellow"
+                    )
+                success_text.append(
+                    "   • Data extraction enabled for these test cases\n\n", style="yellow"
+                )
+
             success_text.append("📋 Generated Test Cases:\n", style="bold")
 
             for i, (test_case, task_id) in enumerate(saved_tasks, 1):
@@ -756,6 +852,8 @@ def _handle_generation_mode(
                     success_text.append(
                         f"   Secrets: {len(test_case.secrets)} found\n", style="dim"
                     )
+                if schema:
+                    success_text.append("   Data Extraction: Enabled\n", style="yellow")
                 success_text.append("\n")
 
             console.print(Panel(success_text, title="Test Cases Generated", border_style="green"))
@@ -778,7 +876,10 @@ def _handle_generation_mode(
 
 
 async def _save_test_cases_parallel(
-    task_manager: TaskManager, test_cases: List["TestCaseCreationOutput"], project_description: str
+    task_manager: TaskManager,
+    test_cases: List["TestCaseCreationOutput"],
+    project_description: str,
+    schema: Optional["TestCaseSchema"] = None,
 ) -> List[tuple["TestCaseCreationOutput", str]]:
     """Save test cases in parallel with proper error handling."""
 
@@ -791,7 +892,7 @@ async def _save_test_cases_parallel(
             source_files = [f"generated_test_case_{index + 1}"]
 
             # Create the imported task
-            task_id = task_manager.create_imported_task(test_case, source_files)
+            task_id = task_manager.create_imported_task(test_case, source_files, schema)
             return (test_case, task_id)
         except Exception as e:
             console.print(f"⚠️  Failed to save test case {index + 1}: {e}", style="yellow")
@@ -824,6 +925,7 @@ async def _generate_import_test_cases_parallel(
     project_description: str,
     extra: str,
     project_root: Path,
+    schema: Optional["TestCaseSchema"] = None,
 ) -> List[Tuple["TestCaseCreationOutput", str, List[str]]]:
     """Generate test cases from import scenarios in parallel."""
 
@@ -860,7 +962,7 @@ async def _generate_import_test_cases_parallel(
                     source_files.append(dep_file)
 
             # Create the imported task
-            task_id = task_manager.create_imported_task(test_case, source_files)
+            task_id = task_manager.create_imported_task(test_case, source_files, schema)
             return (test_case, task_id, source_files)
         except Exception as e:
             console.print(f"⚠️  Failed to generate test case {index + 1}: {e}", style="yellow")

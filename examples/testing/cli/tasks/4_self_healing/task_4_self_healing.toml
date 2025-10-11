@@ -1,10 +1,13 @@
 [task]
 name = "4_self_healing"
-description = "Navigate to wikipedia.com and search for Artificial Intelligence, and them open the first article."
+start_url = "https://wikipedia.com"  # REQUIRED: URL where the browser session should start
+description = "Search for Artificial Intelligence, and them open the first article."
 extra_instructions = []
-allowed_domains = []
+allowed_domains = []  # Optional: List of allowed domains for web tasks
+dependencies = []  # Optional: List of task folder names or CUIDs that this task depends on
 
 [run_config]
+# CLI-specific runtime configuration
 viewport_width = 1920
 viewport_height = 1080
 user_agent = ""
@@ -15,5 +18,6 @@ headless = false
 enable_video_recording = true
 
 [metadata]
-task_id = "c58h39d1yo351k9p2j5g5b4d"
-created_date = "2025-09-14T13:19:09.364270+00:00Z"
+task_id = "nvxavgsoz41944bj5bwhshsh"
+created_date = "2025-10-09T17:10:32.147612+00:00Z"
+creation_type = "manually_added"

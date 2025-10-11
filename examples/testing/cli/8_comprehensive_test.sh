@@ -1,1 +1,1 @@
-uv run bugninja run --task 8_comprehensive_test
+uv run bugninja run 8_comprehensive_test

@@ -9,7 +9,8 @@ from bugninja.schemas.models import BugninjaConfig, BugninjaTask
 
 async def extra_rules_navigation() -> None:
     task = BugninjaTask(
-        description='Navigate to Amazon homepage, search for "wireless headphones", browse through product listings',
+        start_url="https://amazon.com",
+        description='Search for "wireless headphones", browse through product listings',
         extra_instructions=[
             "Open exactly three different(!) product pages after each other",
             "On the product's page read its average score",

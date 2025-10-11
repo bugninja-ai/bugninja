@@ -45,6 +45,7 @@ from rich.console import Console
 if TYPE_CHECKING:
     from bugninja.schemas import TaskInfo
     from bugninja.schemas.test_case_creation import TestCaseCreationOutput
+    from bugninja.schemas.test_case_io import TestCaseSchema
 
 console = Console()
 
@@ -172,7 +173,7 @@ class TaskManager:
         if not self.tasks_dir.is_dir():
             raise ValueError(f"Tasks path is not a directory: {self.tasks_dir}")
 
-    def create_task(self, name: str) -> str:
+    def create_task(self, name: str, dependencies: Optional[List[str]] = None) -> str:
         """Create a new task with the given name.
 
         This method creates a complete task structure including:
@@ -183,6 +184,7 @@ class TaskManager:
 
         Args:
             name (str): Human-readable name for the task
+            dependencies (Optional[List[str]]): Optional list of dependency testcase names
 
         Returns:
             str: CUID2 identifier of the created task
@@ -203,6 +205,34 @@ class TaskManager:
             existing_path = self.get_existing_task_path(name)
             raise ValueError(f"Task '{name}' already exists at: {existing_path}")
 
+        # Resolve dependencies to canonical folder names
+        resolved_deps: List[str] = []
+        if dependencies:
+            seen = set()
+            for dep in dependencies:
+                dep = dep.strip()
+                if not dep:
+                    continue
+                # prevent self-dependency by name or folder
+                if dep.lower() == name.lower() or name_to_snake_case(dep) == folder_name:
+                    raise ValueError("A task cannot depend on itself")
+
+                # Resolve to folder name if task exists
+                dep_path = self.get_existing_task_path(dep)
+                if dep_path is None:
+                    # Also try direct folder name path under tasks
+                    candidate = self.tasks_dir / name_to_snake_case(dep)
+                    if candidate.exists() and candidate.is_dir():
+                        dep_path = candidate
+
+                if dep_path is None:
+                    raise ValueError(f"Dependency not found: {dep}")
+
+                dep_folder = dep_path.name
+                if dep_folder not in seen:
+                    seen.add(dep_folder)
+                    resolved_deps.append(dep_folder)
+
         # Generate unique task ID
         task_id = CUID().generate()
         task_dir = self.tasks_dir / folder_name
@@ -212,7 +242,7 @@ class TaskManager:
             task_dir.mkdir(parents=False, exist_ok=False)
 
             # Create task files
-            self._create_task_toml(task_dir, name, task_id)
+            self._create_task_toml(task_dir, name, task_id, resolved_deps)
 
             from bugninja.utils.logging_config import logger
 
@@ -397,7 +427,10 @@ class TaskManager:
         return True
 
     def create_imported_task(
-        self, creation_output: "TestCaseCreationOutput", source_files: list[str]
+        self,
+        creation_output: "TestCaseCreationOutput",
+        source_files: list[str],
+        schema: Optional["TestCaseSchema"] = None,
     ) -> str:
         """Create a new task from imported test case generation.
 
@@ -438,7 +471,9 @@ class TaskManager:
             task_dir.mkdir(parents=False, exist_ok=False)
 
             # Create task files
-            self._create_imported_task_toml(task_dir, creation_output, task_id, source_files)
+            self._create_imported_task_toml(
+                task_dir, creation_output, task_id, source_files, schema
+            )
 
             from bugninja.utils.logging_config import logger
 
@@ -455,42 +490,66 @@ class TaskManager:
                 shutil.rmtree(task_dir)
             raise OSError(f"Failed to create imported task: {e}")
 
-    def _create_task_toml(self, task_dir: Path, name: str, task_id: str) -> None:
+    def _create_task_toml(
+        self, task_dir: Path, name: str, task_id: str, dependencies: Optional[List[str]] = None
+    ) -> None:
         """Create the task TOML configuration file.
 
         Args:
             task_dir (Path): Task directory path
             name (str): Task name
             task_id (str): Task CUID2 identifier
+            dependencies (Optional[List[str]]): Resolved dependency folder names
         """
         toml_file = task_dir / f"task_{name_to_snake_case(name)}.toml"
-        content = self._get_task_toml_template(name, task_id)
+        content = self._get_task_toml_template(name, task_id, dependencies or [])
 
         with open(toml_file, "w", encoding="utf-8") as f:
             f.write(content)
 
-    def _get_task_toml_template(self, name: str, task_id: str) -> str:
+    def _get_task_toml_template(self, name: str, task_id: str, dependencies: List[str]) -> str:
         """Get the task TOML template.
 
         Args:
             name (str): Task name
             task_id (str): Task CUID2 identifier
+            dependencies (List[str]): Resolved dependency folder names
 
         Returns:
             str: TOML template content
         """
+        # Format dependencies list as TOML array
+        if not dependencies:
+            deps_line = (
+                "[]  # Optional: List of task folder names or CUIDs that this task depends on"
+            )
+        else:
+            quoted = ", ".join(f'"{d}"' for d in dependencies)
+            deps_line = f"[{quoted}]"
+
         return f"""# Task Configuration for: {name}
 # This file contains task-specific configuration including description and run settings
 # Run history is stored separately in run_history.json
 
 [task]
 name = "{name}"
+start_url = "https://example.com"  # REQUIRED: URL where the browser session should start
 description = "Describe your task here..."
 extra_instructions = [
     "Add specific instructions for this task",
     "Each instruction should be on a separate line"
 ]
 allowed_domains = []  # Optional: List of allowed domains for web tasks
+dependencies = {deps_line}
+
+# I/O Schema Configuration (Optional)
+# Uncomment and configure if you need data extraction capabilities
+[task.io_schema]
+# input schema is defined as a dictionary of input field names to descriptions
+# input_schema.USER_EMAIL = "test@example.com"
+
+# output schema is defined as a dictionary of output field names to descriptions
+# output_schema.USER_ID = "ID of the registered user"
 
 [secrets]
 # Task-specific secrets - these will be passed to the NavigatorAgent
@@ -522,6 +581,7 @@ creation_type = "manually_added"
         creation_output: "TestCaseCreationOutput",
         task_id: str,
         source_files: list[str],
+        schema: Optional["TestCaseSchema"] = None,
     ) -> None:
         """Create the imported task TOML configuration file.
 
@@ -532,13 +592,19 @@ creation_type = "manually_added"
             source_files (list[str]): List of source file paths
         """
         toml_file = task_dir / f"task_{name_to_snake_case(creation_output.task_name)}.toml"
-        content = self._get_imported_task_toml_template(creation_output, task_id, source_files)
+        content = self._get_imported_task_toml_template(
+            creation_output, task_id, source_files, schema
+        )
 
         with open(toml_file, "w", encoding="utf-8") as f:
             f.write(content)
 
     def _get_imported_task_toml_template(
-        self, creation_output: "TestCaseCreationOutput", task_id: str, source_files: list[str]
+        self,
+        creation_output: "TestCaseCreationOutput",
+        task_id: str,
+        source_files: list[str],
+        schema: Optional["TestCaseSchema"] = None,
     ) -> str:
         """Get the imported task TOML template.
 
@@ -572,6 +638,28 @@ creation_type = "manually_added"
             source_files_lines.append(f'    "{source_file}"')
         source_files_section = "[\n" + ",\n".join(source_files_lines) + "\n]"
 
+        # Format unified schema section
+        schema_section = ""
+        if schema:
+            schema_lines = []
+            if schema.input_schema:
+                input_lines = []
+                for key, value in schema.input_schema.items():
+                    if isinstance(value, str):
+                        input_lines.append(f'    "{key}" = "{value}"')
+                    else:
+                        input_lines.append(f'    "{key}" = {value}')
+                schema_lines.append("input_schema = {\n" + ",\n".join(input_lines) + "\n}")
+
+            if schema.output_schema:
+                output_lines = []
+                for key, value in schema.output_schema.items():
+                    output_lines.append(f'    "{key}" = "{value}"')
+                schema_lines.append("output_schema = {\n" + ",\n".join(output_lines) + "\n}")
+
+            if schema_lines:
+                schema_section = "\n[task.schema]\n" + "\n".join(schema_lines)
+
         return f"""# Task Configuration for: {creation_output.task_name}
 # This file contains task-specific configuration including description and run settings
 # Run history is stored separately in run_history.json
@@ -581,7 +669,7 @@ creation_type = "manually_added"
 name = "{creation_output.task_name}"
 description = "{creation_output.description}"
 extra_instructions = {instructions_section}
-allowed_domains = []  # Optional: List of allowed domains for web tasks
+allowed_domains = []  # Optional: List of allowed domains for web tasks{schema_section}
 
 [secrets]
 {secrets_section}

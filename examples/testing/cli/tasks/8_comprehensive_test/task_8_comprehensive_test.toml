@@ -1,6 +1,7 @@
 [task]
 name = "8_comprehensive_test"
-description = "Navigate to https://parabank.parasoft.com/, login using credentials and perform banking operations with the custom instructions"
+start_url = "https://parabank.parasoft.com/"  # REQUIRED: URL where the browser session should start
+description = "Login using credentials and perform banking operations with the custom instructions"
 extra_instructions = [
     "Login to the website using the provided credentials",
     "Go to 'Open new account' section",
@@ -11,12 +12,14 @@ extra_instructions = [
     "Log out of the platform",
 ]
 allowed_domains = []
+dependencies = []  # Optional: List of task folder names or CUIDs that this task depends on
 
 [secrets]
 USERNAME = "test_account_username"
 PASSWORD = "password_123"
 
 [run_config]
+# CLI-specific runtime configuration
 viewport_width = 1920
 viewport_height = 1080
 user_agent = ""
@@ -26,7 +29,7 @@ enable_healing = true
 headless = false
 enable_video_recording = true
 
-
 [metadata]
-task_id = "y5ripr9cy3u1mp5mfkfrxvoj"
-created_date = "2025-09-14T18:52:04.121309+00:00Z"
+task_id = "gg86nspifrcfpj2h6vfvmd11"
+created_date = "2025-10-09T17:23:49.240944+00:00Z"
+creation_type = "manually_added"

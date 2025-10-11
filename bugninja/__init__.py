@@ -28,6 +28,7 @@ task execution with built-in error recovery mechanisms.
 from bugninja.agents.navigator_agent import NavigatorAgent
 from bugninja.agents.healer_agent import HealerAgent
 from bugninja.replication.replicator_run import ReplicatorRun
+from bugninja.api.bugninja_pipeline import BugninjaPipeline, TaskRef, TaskSpec
 from bugninja.schemas.pipeline import Traversal, BugninjaBrowserConfig, BugninjaExtendedAction
 
 from bugninja.config import (
@@ -60,7 +61,7 @@ warnings.filterwarnings(
     "ignore", message="builtin type .* has no __module__ attribute", category=DeprecationWarning
 )
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __all__ = [
     # Core components
     "NavigatorAgent",
@@ -86,4 +87,9 @@ __all__ = [
     "SessionReplayError",
     "ConfigurationError",
     "LLMError",
+    # BugninjaPipeline API
+    "BugninjaPipeline",
+    "TaskRef",
+    "TaskSpec",
+    "Dependency",
 ]

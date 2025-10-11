@@ -29,6 +29,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
+from bugninja_cli.utils.completion import complete_task_names
 from bugninja_cli.utils.project_validator import require_bugninja_project
 from bugninja_cli.utils.style import MARKDOWN_CONFIG
 from bugninja_cli.utils.task_manager import TaskManager, name_to_snake_case
@@ -42,8 +43,15 @@ console = Console()
     "task_name",
     type=str,
 )
+@click.option(
+    "--depends",
+    "depends",
+    multiple=True,
+    shell_complete=complete_task_names,
+    help="Names of testcases this task depends on (provide multiple).",
+)
 @require_bugninja_project
-def add(task_name: str, project_root: Path) -> None:
+def add(task_name: str, project_root: Path, depends: tuple[str, ...]) -> None:
     """Create a new task in the current Bugninja project.
 
     This command creates a **complete task structure** including:
@@ -54,6 +62,7 @@ def add(task_name: str, project_root: Path) -> None:
     Args:
         task_name (str): Name of the task to create
         project_root (Path): Root directory of the Bugninja project
+        depends (Tuple[str, ...]): Optional dependency testcase names
 
     Raises:
         click.Abort: If task already exists or creation fails
@@ -63,8 +72,8 @@ def add(task_name: str, project_root: Path) -> None:
         # Create a new task
         bugninja add "Login Flow"
 
-        # Create another task
-        bugninja add "User Registration"
+        # Create another task with dependencies
+        bugninja add "Checkout Flow" --depends "Login Flow" "Add To Cart"
         ```
     """
     try:
@@ -72,7 +81,8 @@ def add(task_name: str, project_root: Path) -> None:
         task_manager = TaskManager(project_root)
 
         # Create the task
-        task_id = task_manager.create_task(task_name)
+        deps_list = list(depends) if depends else None
+        task_id = task_manager.create_task(task_name, dependencies=deps_list)
         folder_name = name_to_snake_case(task_name)
 
         # Build success message
@@ -90,15 +100,26 @@ def add(task_name: str, project_root: Path) -> None:
             style="blue",
         )
 
+        if deps_list:
+            success_text.append("\n🔗 Dependencies added:\n", style="bold")
+            for d in deps_list:
+                success_text.append(f"  • {d}\n", style="cyan")
+
         success_text.append("🚀 Next steps:\n", style="bold")
         success_text.append(
             f"  1. Edit the task configuration in task_{folder_name}.toml\n", style="cyan"
         )
         success_text.append(
-            "  2. Add your secrets in the [secrets] section of the TOML file\n", style="cyan"
+            "  2. Update the start_url field with your target website URL\n", style="cyan"
         )
         success_text.append(
-            f"  3. Run 'bugninja run {folder_name}' or 'bugninja run {task_id}' to execute\n",
+            "  3. Add your secrets in the [secrets] section of the TOML file\n", style="cyan"
+        )
+        success_text.append(
+            "  4. Configure I/O schemas for data extraction if needed\n", style="cyan"
+        )
+        success_text.append(
+            f"  5. Run 'bugninja run {folder_name}' or 'bugninja run {task_id}' to execute\n",
             style="cyan",
         )
 

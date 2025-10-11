@@ -39,7 +39,7 @@ brain_states_prompt = get_passed_brainstates_related_prompt(completed_brain_stat
 import importlib.resources
 import json
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from bugninja.schemas.pipeline import BugninjaBrainState
 
@@ -294,6 +294,102 @@ def get_test_case_generator_user_prompt(
             "TEST_DISTRIBUTION_INFO": ratio_info,
             "EXTRA": extra if extra else "No specific requirements",
         },
+    )
+
+
+def get_io_extraction_prompt(output_schema: Dict[str, str]) -> str:
+    """Generate I/O extraction prompt from output schema.
+
+    Args:
+        output_schema (Dict[str, str]): Dictionary mapping variable names to descriptions
+
+    Returns:
+        str: Formatted prompt with extraction instructions, or empty string if no outputs
+
+    Example:
+        ```python
+        prompt = get_io_extraction_prompt({
+            "USER_ID": "ID of the newly registered user",
+            "CONFIRMATION_CODE": "Email confirmation code"
+        })
+        ```
+    """
+    if not output_schema:
+        return ""
+
+    # Format expected outputs as a list
+    outputs_list = "\n".join(
+        [f"- **{key}**: {description}" for key, description in output_schema.items()]
+    )
+
+    return __parsed_prompt("io_extraction_prompt.md", {"EXPECTED_OUTPUTS_LIST": outputs_list})
+
+
+def get_data_extraction_prompt(brain_states_text: str, expected_outputs_text: str) -> str:
+    """Generate data extraction prompt from brain states and output schema.
+
+    Args:
+        brain_states_text (str): Formatted brain states text
+        expected_outputs_text (str): Formatted expected outputs text
+
+    Returns:
+        str: Formatted prompt for data extraction
+
+    Example:
+        ```python
+        prompt = get_data_extraction_prompt(
+            brain_states_text="Brain State 1: Memory: ...",
+            expected_outputs_text="- USER_ID: ID of the user"
+        )
+        ```
+    """
+    return __parsed_prompt(
+        "data_extraction_prompt.md",
+        {
+            "EXPECTED_OUTPUTS_LIST": expected_outputs_text,
+            "BRAIN_STATES_TEXT": brain_states_text,
+        },
+    )
+
+
+def get_input_schema_prompt(input_schema: Dict[str, str], input_values: Dict[str, Any]) -> str:
+    """Generate input schema prompt with descriptions and values from dependent tasks.
+
+    Args:
+        input_schema (Dict[str, str]): Dictionary mapping input keys to their descriptions
+        input_values (Dict[str, Any]): Dictionary mapping input keys to their actual values
+
+    Returns:
+        str: Formatted prompt with input schema information, or empty string if no input schema
+
+    Example:
+        ```python
+        prompt = get_input_schema_prompt(
+            {"USER_ID": "ID of the user", "TOKEN": "Authentication token"},
+            {"USER_ID": "12345", "TOKEN": "abc123"}
+        )
+        ```
+    """
+    if not input_schema or not input_values:
+        return ""
+
+    # Create structured input information with descriptions and values
+    input_info_items = []
+    for key in input_schema.keys():
+        description = input_schema.get(key, "No description available")
+        value = input_values.get(key, "Value not provided")
+
+        input_info_items.append(f"- **{key}**")
+        input_info_items.append(f"  - **Description**: {description}")
+        input_info_items.append(f"  - **Value**: `{value}`")
+        input_info_items.append("")  # Empty line for spacing
+
+    # Join all items and remove the last empty line
+    input_schema_info = "\n".join(input_info_items).rstrip()
+
+    return __parsed_prompt(
+        "input_schema_prompt.md",
+        {"INPUT_SCHEMA_INFO": input_schema_info},
     )
 
 

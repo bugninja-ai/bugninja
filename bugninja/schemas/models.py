@@ -44,6 +44,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from bugninja.config.video_recording import VideoRecordingConfig
 from bugninja.schemas.pipeline import Traversal
+from bugninja.schemas.test_case_io import TestCaseSchema
 
 
 class OperationType(Enum):
@@ -85,6 +86,7 @@ class BugninjaTask(BaseModel):
     Attributes:
         task_config_path (Optional[Path]): Path to task_{name}.toml configuration file
         description (str): Human-readable description of the task to perform (1-1000 chars)
+        start_url (Optional[str]): URL where the browser session should start before executing the task
         extra_instructions (List[str]): List of extra instructions for navigation
         max_steps (int): Maximum number of steps to execute (1-1000, default: 100)
         enable_healing (bool): Enable self-healing capabilities for replay tasks (default: True)
@@ -102,12 +104,14 @@ class BugninjaTask(BaseModel):
 
         # Direct task (backward compatibility)
         task = BugninjaTask(
-            description="Navigate to example.com and click login"
+            description="Navigate to example.com and click login",
+            start_url="https://example.com"
         )
 
         # Advanced task with all options
         task = BugninjaTask(
             description="Complete user registration flow",
+            start_url="https://example.com/register",
             extra_instructions=["Take screenshot after each step"],
             max_steps=75,
             enable_healing=True,
@@ -120,7 +124,12 @@ class BugninjaTask(BaseModel):
         ```
     """
 
-    # Config file support (NEW)
+    start_url: Optional[str] = Field(
+        default=None,
+        description="URL where the browser session should start before executing the task",
+    )
+
+    # Config file support
     task_config_path: Optional[Path] = Field(
         default=None, description="Path to task_{name}.toml configuration file"
     )
@@ -162,6 +171,18 @@ class BugninjaTask(BaseModel):
 
     secrets: Optional[Dict[str, Any]] = Field(
         default=None, description="Sensitive data for authentication and task execution"
+    )
+
+    # Task dependency configuration (static, not run-specific)
+    # Each entry may be a task folder name or a CUID; resolution prefers folder name, then CUID.
+    dependencies: List[str] = Field(
+        default_factory=list,
+        description="List of task identifiers (folder or CUID) this task depends on",
+    )
+
+    # I/O Schema support
+    io_schema: Optional["TestCaseSchema"] = Field(
+        default=None, description="Unified input and output schema for this test case"
     )
 
     @field_validator("description")
@@ -224,6 +245,7 @@ class BugninjaTask(BaseModel):
         """
         # Update task description and instructions (config is flattened)
         self.description = task_config.get("task.description", "")
+        self.start_url = task_config.get("task.start_url", None)
         self.extra_instructions = task_config.get("task.extra_instructions", [])
 
         # Update secrets from TOML config
@@ -236,12 +258,31 @@ class BugninjaTask(BaseModel):
             if allowed_domains and len(allowed_domains):
                 self.allowed_domains = allowed_domains
 
+        # Update dependencies if present
+        if "task.dependencies" in task_config:
+            deps = task_config.get("task.dependencies")
+            # Accept only list[str]; ignore invalid forms silently to avoid breaking existing tasks
+            if isinstance(deps, list):
+                # keep only string-like identifiers
+                self.dependencies = [str(d) for d in deps]
+
+        # Update I/O schemas if present
+        io_schema_data = task_config.get("task.io_schema", {})
+        input_schema_data = io_schema_data.get("input_schema")
+        output_schema_data = io_schema_data.get("output_schema")
+
+        if input_schema_data or output_schema_data:
+            self.io_schema = TestCaseSchema(
+                input_schema=input_schema_data, output_schema=output_schema_data
+            )
+
     class Config:
         """Pydantic configuration for BugninjaTask model."""
 
         json_schema_extra = {
             "example": {
                 "description": "Navigate to example.com and click the login button",
+                "start_url": "https://example.com",
                 "max_steps": 50,
                 "enable_healing": True,
                 "allowed_domains": ["example.com"],

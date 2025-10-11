@@ -1,0 +1,1 @@
+uv run bugninja run 92_ebay_book_search

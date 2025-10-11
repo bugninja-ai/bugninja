@@ -44,6 +44,7 @@ from .pipeline import (
     BugninjaBrainState,
     ReplayWithHealingStateMachine,
 )
+from .test_case_io import TestCaseSchema
 from .progress import RunProgressState, RunType, RunStatus
 from .cli_schemas import TaskInfo, TaskRunConfig, BugninjaTaskResult, TaskExecutionResult
 
@@ -53,6 +54,7 @@ __all__ = [
     "Traversal",
     "BugninjaBrainState",
     "ReplayWithHealingStateMachine",
+    "TestCaseSchema",
     "RunProgressState",
     "RunType",
     "RunStatus",

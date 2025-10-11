@@ -24,9 +24,12 @@ from bugninja.agents.bugninja_agent_base import (
     NAVIGATION_IDENTIFIERS,
     BugninjaAgentBase,
 )
+from bugninja.agents.data_extraction_agent import DataExtractionAgent
 from bugninja.config.video_recording import VideoRecordingConfig
 from bugninja.prompts.prompt_factory import (
     BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
+    get_input_schema_prompt,
+    get_io_extraction_prompt,
 )
 from bugninja.schemas.models import BugninjaConfig
 from bugninja.schemas.pipeline import (
@@ -35,6 +38,7 @@ from bugninja.schemas.pipeline import (
     BugninjaExtendedAction,
     Traversal,
 )
+from bugninja.schemas.test_case_io import TestCaseSchema
 from bugninja.utils.logging_config import logger
 from bugninja.utils.screenshot_manager import ScreenshotManager
 
@@ -95,14 +99,18 @@ class NavigatorAgent(BugninjaAgentBase):
         self,
         *args,
         task: str,
+        start_url: Optional[str],
         bugninja_config: BugninjaConfig,
         run_id: str | None = None,
         override_system_message: str = BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT,
         extra_instructions: List[str] = [],
-        extend_planner_system_message: str = "",
         video_recording_config: VideoRecordingConfig | None = None,
         output_base_dir: Optional[Path] = None,
         screenshot_manager: Optional[ScreenshotManager] = None,
+        io_schema: Optional[TestCaseSchema] = None,
+        dependencies: Optional[List[str]] = None,
+        original_task_secrets: Optional[Dict[str, Any]] = None,
+        runtime_inputs: Optional[Dict[str, Any]] = None,
         **kwargs,  # type:ignore
     ) -> None:
         """Initialize NavigatorAgent with navigation-specific functionality.
@@ -110,14 +118,53 @@ class NavigatorAgent(BugninjaAgentBase):
         Args:
             *args: Arguments passed to the parent BugninjaAgentBase class
             task (str): The navigation task description for the agent to execute
+            start_url (Optional[str]): URL where the browser session should start before executing the task
             run_id (str | None): Unique identifier for the current run. If None, generates a new CUID
             override_system_message (str): System message to override the default (defaults to navigator prompt)
             extra_instructions (List[str]): Additional instructions to append to the task
-            extend_planner_system_message (str): Additional system message to extend the planner prompt
             video_recording_config (VideoRecordingConfig | None): Video recording configuration for session recording
             output_base_dir (Optional[Path]): Base directory for all output files (traversals, screenshots, videos)
+            io_schema (Optional[TestCaseSchema]): Input/output schema for data extraction and input handling
+            dependencies (Optional[List[str]]): List of task dependencies
+            original_task_secrets (Optional[Dict[str, Any]]): Original task secrets (kept separate from runtime inputs)
+            runtime_inputs (Optional[Dict[str, Any]]): Input data from dependent tasks to be included in system prompt
             **kwargs: Keyword arguments passed to the parent BugninjaAgentBase class
         """
+
+        # Store unified schema and dependencies
+        self.start_url = start_url
+        self.io_schema = io_schema
+        self.dependencies = dependencies or []
+        self.original_task_secrets = original_task_secrets or {}
+
+        # Initialize data extraction agent if output schema is defined
+        self.data_extraction_agent: Optional[DataExtractionAgent] = None
+        self.extracted_data: Dict[str, Any] = {}
+
+        # Check if output schema exists and initialize extraction agent
+        if self.io_schema and self.io_schema.output_schema:
+            self.data_extraction_agent = DataExtractionAgent(
+                cli_mode=getattr(self, "cli_mode", False)
+            )
+
+        # Add I/O extraction prompt to task description if output schema is defined
+        if self.io_schema and self.io_schema.output_schema:
+            io_prompt = get_io_extraction_prompt(self.io_schema.output_schema)
+            if io_prompt:
+                # Append to the task description
+                task += f"\n\n{io_prompt}"
+
+        # Prepare input schema system prompt extension if input data is provided
+        input_schema_system_prompt: Optional[str] = None
+        if self.io_schema and self.io_schema.input_schema and runtime_inputs:
+            input_schema_system_prompt = get_input_schema_prompt(
+                self.io_schema.input_schema, runtime_inputs
+            )
+            if input_schema_system_prompt:
+                input_keys = list(self.io_schema.input_schema.keys())
+                logger.bugninja_log(
+                    f"📥 Agent: Task configured with {len(input_keys)} input data keys: {input_keys}"
+                )
 
         super().__init__(
             *args,
@@ -125,7 +172,7 @@ class NavigatorAgent(BugninjaAgentBase):
             bugninja_config=bugninja_config,
             video_recording_config=video_recording_config,
             override_system_message=override_system_message,
-            extend_planner_system_message=extend_planner_system_message,
+            extend_system_message=input_schema_system_prompt,
             extra_instructions=extra_instructions,
             task=task,
             output_base_dir=output_base_dir,
@@ -143,6 +190,7 @@ class NavigatorAgent(BugninjaAgentBase):
         - logging the start of the navigation session
         - setting up browser isolation using run_id
         - setting up video recording if enabled
+        - automatically navigating to the start_url programmatically
         """
         logger.bugninja_log("🏁 BEFORE-Run hook called")
 
@@ -181,6 +229,22 @@ class NavigatorAgent(BugninjaAgentBase):
             except Exception as e:
                 logger.warning(f"Failed to initialize event tracking: {e}")
 
+        # Automatically navigate to start_url programmatically
+        if self.start_url is None:
+            raise ValueError(
+                "start_url is required but not provided. Please set the start_url field in your BugninjaTask or task configuration file."
+            )
+
+        logger.bugninja_log(f"🌐 Automatically navigating to start URL: {self.start_url}")
+        try:
+            current_page = await self.browser_session.get_current_page()
+            await current_page.goto(self.start_url)
+            await self.wait_proper_load_state(current_page)
+            logger.bugninja_log(f"✅ Successfully navigated to: {self.start_url}")
+        except Exception as e:
+            logger.error(f"❌ Failed to navigate to start URL {self.start_url}: {e}")
+            raise
+
     async def _after_run_hook(self) -> None:
         """Complete navigation session and save traversal data.
 
@@ -202,6 +266,67 @@ class NavigatorAgent(BugninjaAgentBase):
             logger.bugninja_log(
                 f"🎥 Stopped video recording. Frames processed: {stats['frames_processed']}"
             )
+
+        # Extract data if test case was successful AND extraction agent is available
+        # Use same logic as client for consistency - success means no errors occurred
+        if (
+            self.state.last_result
+            and not any(
+                result.error
+                for result in self.state.last_result
+                if hasattr(result, "error") and result.error
+            )
+            and self.data_extraction_agent
+            and self.io_schema
+            and self.io_schema.output_schema
+        ):
+
+            try:
+                self.extracted_data = (
+                    await self.data_extraction_agent.extract_data_from_brain_states(
+                        self.agent_brain_states, self.io_schema.output_schema
+                    )
+                )
+
+                # Post-process extracted data to resolve secret references
+                self.extracted_data = self._resolve_secret_references(self.extracted_data)
+
+                logger.bugninja_log(f"📊 Extracted data: {self.extracted_data}")
+
+                # Check if extraction was successful (at least one value is not None)
+                if all(value is None for value in self.extracted_data.values()):
+                    logger.warning("⚠️ Data extraction failed - no data extracted")
+                    # Mark as failed test case
+                    from browser_use.agent.views import ActionResult
+
+                    self.state.last_result = [
+                        ActionResult(
+                            success=False,
+                            error="Data extraction failed - necessary info extraction did not happen",
+                        )
+                    ]
+                else:
+                    # Log partial success
+                    extracted_count = sum(
+                        1 for value in self.extracted_data.values() if value is not None
+                    )
+                    total_count = len(self.extracted_data)
+                    logger.bugninja_log(
+                        f"📊 Data extraction successful: {extracted_count}/{total_count} values extracted"
+                    )
+
+            except Exception as e:
+                logger.warning(f"Failed to extract data: {e}")
+                self.extracted_data = {key: None for key in self.io_schema.output_schema.keys()}
+                # Mark as failed test case
+                from browser_use.agent.views import ActionResult
+
+                self.state.last_result = [
+                    ActionResult(
+                        success=False,
+                        error="Data extraction failed - necessary info extraction did not happen",
+                    )
+                ]
 
         # Save agent actions and store traversal
         self._traversal = self.save_agent_actions()
@@ -475,8 +600,12 @@ class NavigatorAgent(BugninjaAgentBase):
 
             actions[f"action_{idx}"] = model_taken_action.model_dump()
 
+        # Use the unified schema object (already processed by client)
+        schema_obj = self.io_schema
+
         traversal = Traversal(
             test_case=self.raw_task,
+            start_url=self.start_url,
             extra_instructions=self.extra_instructions,
             # TODO! saving here does not seem proper
             browser_config=BugninjaBrowserConfig.from_browser_profile(
@@ -486,9 +615,13 @@ class NavigatorAgent(BugninjaAgentBase):
                     height=self.bugninja_config.viewport_height,
                 ),
             ),
-            secrets=self.sensitive_data,
+            secrets=self.original_task_secrets,
             brain_states=self.agent_brain_states,
             actions=actions,
+            input_schema=schema_obj.input_schema if schema_obj else None,
+            output_schema=schema_obj.output_schema if schema_obj else None,
+            extracted_data=self.extracted_data,
+            dependencies=getattr(self, "dependencies", []),
         )
 
         with open(traversal_file, "w") as f:

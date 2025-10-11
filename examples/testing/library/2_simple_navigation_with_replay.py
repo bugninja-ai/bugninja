@@ -6,14 +6,14 @@ from bugninja.api.client import BugninjaClient
 from bugninja.schemas.models import BugninjaConfig, BugninjaTask
 
 METEOBLUE_NAVIGATION_PROMPT = """
-Navigate to meteoblue.com, and search for New York City!
+Search for New York City!
 Access the settings, toggle temperature units twice (from Celsius → to Fahrenheit → and back to Celsius)!
 """.strip()
 
 
 async def simple_navigation_with_replay() -> None:
 
-    task = BugninjaTask(description=METEOBLUE_NAVIGATION_PROMPT)
+    task = BugninjaTask(start_url="https://meteoblue.com", description=METEOBLUE_NAVIGATION_PROMPT)
 
     client = BugninjaClient(config=BugninjaConfig(viewport_width=1920, viewport_height=1080))
 

@@ -33,7 +33,8 @@ def corrupt_traversal_file(traversal_file_path: Path, action_to_corrupt: str) ->
 
 async def comprehensive_test() -> None:
     task = BugninjaTask(
-        description="Navigate to https://parabank.parasoft.com/, login using credentials and perform banking operations with the custom instructions",
+        start_url="https://parabank.parasoft.com/",
+        description="Login using credentials and perform banking operations with the custom instructions",
         extra_instructions=[
             "Login to the website using the provided credentials",
             "Go to 'Open new account' section",

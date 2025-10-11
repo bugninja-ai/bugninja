@@ -1,6 +1,6 @@
 [project]
 name = "bugninja"
-version = "0.1.0"
+version = "0.1.1"
 description = "AI-Powered Browser Automation"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -99,5 +99,10 @@ shell = "uv run python replay.py"
 
 [tool.poe.tasks.lint]
 help   = "Lints the whole project searching for inefficiencies in the code"
-shell = "uv run ruff check --fix bugninja bugninja_cli . && uv run isort bugninja bugninja_cli . && uv run black bugninja bugninja_cli . && uv run mypy bugninja bugninja_cli"
+shell = """
+uv run ruff check --fix bugninja bugninja_cli examples/testing/library . && 
+uv run isort bugninja bugninja_cli examples/testing/library . && 
+uv run black bugninja bugninja_cli examples/testing/library . && 
+uv run mypy bugninja bugninja_cli examples/testing/library
+"""
 

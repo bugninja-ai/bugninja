@@ -41,11 +41,13 @@ from bugninja_cli.utils.completion import (
     complete_replay_task_names,
     complete_traversal_ids,
 )
+from bugninja_cli.utils.pipeline_executor import PipelineExecutor
 from bugninja_cli.utils.project_validator import (
     display_project_info,
     require_bugninja_project,
 )
 from bugninja_cli.utils.style import MARKDOWN_CONFIG
+from bugninja_cli.utils.task_executor import TaskExecutor
 
 console = Console()
 
@@ -169,7 +171,6 @@ def replay(
         try:
             # Import here to avoid circular imports
             from bugninja.schemas import TaskRunConfig
-            from bugninja_cli.utils.task_executor import TaskExecutor
 
             # Replay latest traversal for task
             traversal_path = TaskExecutor.find_traversal_by_task_name(task_name, project_root)
@@ -202,10 +203,10 @@ def replay(
             return
 
     elif traversal_id:
+
         try:
             # Import here to avoid circular imports
             from bugninja.schemas import TaskRunConfig
-            from bugninja_cli.utils.task_executor import TaskExecutor
 
             # Replay specific traversal by ID
             traversal_path = TaskExecutor.find_traversal_by_id(traversal_id, project_root)
@@ -257,7 +258,6 @@ def replay(
         try:
             # Import here to avoid circular imports
             from bugninja.schemas import TaskExecutionResult, TaskRunConfig
-            from bugninja_cli.utils.task_executor import TaskExecutor
 
             # Create TaskExecutor with default config (will be overridden by traversal config)
             default_config = TaskRunConfig()
@@ -298,6 +298,22 @@ def replay(
                     # Set task info for proper video recording directory
                     if task_info_for_replay:
                         executor.task_info = task_info_for_replay
+                    # If replaying by task name, use BugninjaPipeline for dependency management
+                    if is_task_name and task_info_for_replay:
+                        task_manager = TaskManager(project_root)
+                        pipeline_executor = PipelineExecutor(project_root)
+
+                        # Use BugninjaPipeline to handle dependencies
+                        result = await pipeline_executor.execute_with_dependencies(
+                            task_info_for_replay, task_manager
+                        )
+
+                        if not result.success:
+                            return TaskExecutionResult(
+                                success=False,
+                                execution_time=0.0,
+                                error_message="Dependency failure during replay preparation",
+                            )
                     result = await executor.replay_traversal(
                         traversal_path, enable_healing=actual_healing
                     )
