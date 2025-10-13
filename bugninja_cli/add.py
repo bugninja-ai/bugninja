@@ -119,7 +119,10 @@ def add(task_name: str, project_root: Path, depends: tuple[str, ...]) -> None:
             "  4. Configure I/O schemas for data extraction if needed\n", style="cyan"
         )
         success_text.append(
-            f"  5. Run 'bugninja run {folder_name}' or 'bugninja run {task_id}' to execute\n",
+            "  5. Add file uploads in the [task.files] section if needed\n", style="cyan"
+        )
+        success_text.append(
+            f"  6. Run 'bugninja run {folder_name}' or 'bugninja run {task_id}' to execute\n",
             style="cyan",
         )
 

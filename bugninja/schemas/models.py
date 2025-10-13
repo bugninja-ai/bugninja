@@ -47,6 +47,114 @@ from bugninja.schemas.pipeline import Traversal
 from bugninja.schemas.test_case_io import TestCaseSchema
 
 
+class FileUploadInfo(BaseModel):
+    """Information about a file available for upload during task execution.
+
+    This model defines the metadata for files that can be uploaded during
+    browser automation tasks, with user-friendly API and automatic indexing.
+
+    Attributes:
+        index (int): Numeric identifier for AI agent reference (auto-assigned)
+        name (str): Filename with extension (e.g., "bunny.webp")
+        path (Path): Filesystem path to the file (auto-converted from string)
+        extension (str): File extension extracted from name (auto-populated)
+        description (str): Description of file contents/purpose for AI context
+
+    Example:
+        ```python
+        from bugninja.schemas.models import FileUploadInfo
+
+        # Simple usage (recommended)
+        file_info = FileUploadInfo(
+            name="bunny.webp",
+            path="./bunny.webp",
+            description="an image about a bunny"
+        )
+
+        # Alternative factory method
+        file_info = FileUploadInfo.from_user_input(
+            name="resume.pdf",
+            path="./resume.pdf",
+            description="a resume document"
+        )
+        ```
+    """
+
+    # Internal fields (auto-populated)
+    index: int = Field(default=0, description="Zero-based index for AI reference")
+    extension: str = Field(default="", description="File extension extracted from name")
+
+    # User-facing fields
+    name: str = Field(min_length=1, description="Filename with extension")
+    path: Path = Field(description="Filesystem path to the file")
+    description: str = Field(description="Description of file contents/purpose")
+
+    def __init__(self, **data) -> None:  # type: ignore
+        """Initialize FileUploadInfo with automatic path conversion and extension extraction."""
+        # Handle string path conversion
+        if "path" in data and isinstance(data["path"], str):
+            data["path"] = Path(data["path"])
+
+        # Extract extension from name if not provided
+        if "name" in data and "extension" not in data:
+            name = data["name"]
+            if "." in name:
+                data["extension"] = Path(name).suffix
+            else:
+                raise ValueError(f"Filename '{name}' must include file extension")
+
+        super().__init__(**data)
+
+    @classmethod
+    def from_user_input(
+        cls, name: str, path: Union[str, Path], description: str, index: Optional[int] = None
+    ) -> "FileUploadInfo":
+        """Create FileUploadInfo from user-friendly inputs.
+
+        Args:
+            name (str): Filename with extension (e.g., "bunny.webp")
+            path (Union[str, Path]): File path as string or Path object
+            description (str): Description of the file
+            index (Optional[int]): Optional index (auto-assigned if not provided)
+
+        Returns:
+            FileUploadInfo: Configured file upload info
+        """
+        return cls(name=name, path=path, description=description, index=index or 0)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name_has_extension(cls, v: str) -> str:
+        """Validate filename contains extension."""
+        if "." not in v:
+            raise ValueError(f"Filename '{v}' must include file extension")
+        return v
+
+    @field_validator("path")
+    @classmethod
+    def validate_path_exists(cls, v: Union[str, Path]) -> Path:
+        """Convert string to Path and validate existence.
+
+        Args:
+            v (Union[str, Path]): The file path to validate
+
+        Returns:
+            Path: The validated file path
+
+        Raises:
+            ValueError: If file doesn't exist or is not a file
+        """
+        # Convert string to Path if needed
+        if isinstance(v, str):
+            v = Path(v)
+
+        if not v.exists():
+            raise ValueError(f"File not found at path: {v}")
+        if not v.is_file():
+            raise ValueError(f"Path is not a file: {v}")
+        return v
+
+
 class OperationType(Enum):
     """Enumeration of operation types for Bugninja operations."""
 
@@ -185,6 +293,11 @@ class BugninjaTask(BaseModel):
         default=None, description="Unified input and output schema for this test case"
     )
 
+    # File upload support
+    available_files: Optional[List["FileUploadInfo"]] = Field(
+        default=None, description="Files available for upload during task execution"
+    )
+
     @field_validator("description")
     @classmethod
     def validate_description(cls, v: str) -> str:
@@ -202,6 +315,36 @@ class BugninjaTask(BaseModel):
         if v and not v.strip():
             raise ValueError("BugninjaTask description cannot be empty or whitespace-only")
         return v.strip() if v else ""
+
+    @field_validator("available_files")
+    @classmethod
+    def auto_assign_file_indices(
+        cls, v: Optional[List[FileUploadInfo]]
+    ) -> Optional[List[FileUploadInfo]]:
+        """Auto-assign indices to files and validate uniqueness.
+
+        Args:
+            v (Optional[List[FileUploadInfo]]): List of file upload info objects
+
+        Returns:
+            Optional[List[FileUploadInfo]]: List with auto-assigned indices
+
+        Raises:
+            ValueError: If duplicate filenames are found
+        """
+        if not v:
+            return v
+
+        # Auto-assign indices based on list position
+        for idx, file_info in enumerate(v):
+            file_info.index = idx
+
+        # Validate no duplicate names
+        names = [f.name for f in v]
+        if len(names) != len(set(names)):
+            raise ValueError("Duplicate filenames not allowed in available_files")
+
+        return v
 
     def model_post_init(self, __context: Any) -> None:
         """Post-initialization to load configuration from file if provided."""
@@ -275,6 +418,36 @@ class BugninjaTask(BaseModel):
             self.io_schema = TestCaseSchema(
                 input_schema=input_schema_data, output_schema=output_schema_data
             )
+
+        # Update available files if present
+        files_data = task_config.get("task.files", [])
+        if files_data:
+            available_files: List[FileUploadInfo] = []
+            for idx, file_config in enumerate(files_data):
+                # Resolve file path relative to task directory in CLI mode
+                file_path = Path(file_config["path"])
+                if not file_path.is_absolute() and self.task_config_path:
+                    # In CLI mode, resolve relative to task directory (not files subdirectory)
+                    task_dir = self.task_config_path.parent
+                    file_path = task_dir / file_path
+
+                # Extract extension from name or path if not provided
+                extension = file_config.get("extension", "")
+                if not extension:
+                    name = file_config.get("name", file_path.name)
+                    extension = Path(name).suffix
+
+                available_files.append(
+                    FileUploadInfo(
+                        index=idx,  # Auto-assigned
+                        name=file_config.get("name", file_path.name),
+                        path=file_path,
+                        extension=extension,
+                        description=file_config["description"],
+                    )
+                )
+
+            self.available_files = available_files
 
     class Config:
         """Pydantic configuration for BugninjaTask model."""

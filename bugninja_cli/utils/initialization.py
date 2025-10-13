@@ -627,13 +627,15 @@ This is a Bugninja browser automation project.
 
 1. Copy `.env.example` to `.env` and fill in your API keys
 2. Create tasks with `bugninja add <task-name>`
-3. Run automation with `bugninja run --task <task-name>`
-4. Replay sessions with `bugninja replay`
+3. Configure file uploads in task TOML files if needed
+4. Run automation with `bugninja run --task <task-name>`
+5. Replay sessions with `bugninja replay`
 
 ## Configuration
 
 - **Global settings**: Edit `bugninja.toml` for LLM, logging, and project settings
 - **Task settings**: Edit individual `task_*.toml` files for browser, agent, and run-specific settings
+- **File uploads**: Configure files in the `[task.files]` section of task TOML files
 
 For more information, see the [Bugninja documentation](https://github.com/bugninja/bugninja).
 """

@@ -165,6 +165,11 @@ class Traversal(BaseModel):
         default_factory=dict, description="Data extracted during execution based on output_schema"
     )
 
+    # File upload support
+    available_files: Optional[List[Dict[str, Any]]] = Field(
+        default=None, description="Files available for upload (stored as serialized FileUploadInfo)"
+    )
+
     class Config:
         arbitrary_types_allowed = True
 

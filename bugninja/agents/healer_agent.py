@@ -21,7 +21,7 @@ from bugninja.prompts.prompt_factory import (
     get_io_extraction_prompt,
     get_passed_brainstates_related_prompt,
 )
-from bugninja.schemas.models import BugninjaConfig
+from bugninja.schemas.models import BugninjaConfig, FileUploadInfo
 from bugninja.schemas.pipeline import BugninjaBrainState, BugninjaExtendedAction
 from bugninja.schemas.test_case_io import TestCaseSchema
 from bugninja.utils.logging_config import logger
@@ -88,6 +88,7 @@ class HealerAgent(BugninjaAgentBase):
         screenshot_manager: Optional[ScreenshotManager] = None,
         io_schema: Optional[TestCaseSchema] = None,
         runtime_inputs: Optional[Dict[str, Any]] = None,
+        available_files: Optional[List["FileUploadInfo"]] = None,
         **kwargs,  # type:ignore
     ) -> None:
         """Initialize HealerAgent with healing-specific functionality.
@@ -140,12 +141,26 @@ class HealerAgent(BugninjaAgentBase):
                     f"📥 HealerAgent: Task configured with {len(input_keys)} input data keys: {input_keys}"
                 )
 
+        # Prepare available files system prompt extension
+        available_files_prompt = ""
+        if available_files:
+            from bugninja.prompts.prompt_factory import get_available_files_prompt
+
+            available_files_prompt = get_available_files_prompt(available_files)
+            if available_files_prompt:
+                logger.bugninja_log(
+                    f"📎 HealerAgent: Task configured with {len(available_files)} available files"
+                )
+
         system_message_to_extend_by: str = extend_system_message if extend_system_message else ""
 
-        # Combine input schema prompt with existing extension
-        if input_schema_system_prompt:
+        # Combine all system prompt extensions
+        extensions = [input_schema_system_prompt, available_files_prompt]
+        combined_extensions = "\n\n".join([ext for ext in extensions if ext]).strip()
+
+        if combined_extensions:
             system_message_to_extend_by = (
-                f"{system_message_to_extend_by}\n\n{input_schema_system_prompt}".strip()
+                f"{system_message_to_extend_by}\n\n{combined_extensions}".strip()
             )
 
         super().__init__(
@@ -157,6 +172,7 @@ class HealerAgent(BugninjaAgentBase):
             extra_instructions=extra_instructions,
             task=task,
             screenshot_manager=screenshot_manager,
+            available_files=available_files,
             **kwargs,
         )
 

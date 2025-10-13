@@ -41,6 +41,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
+from bugninja.schemas.models import FileUploadInfo
 from bugninja.schemas.pipeline import BugninjaBrainState
 
 
@@ -391,6 +392,54 @@ def get_input_schema_prompt(input_schema: Dict[str, str], input_values: Dict[str
         "input_schema_prompt.md",
         {"INPUT_SCHEMA_INFO": input_schema_info},
     )
+
+
+def get_available_files_prompt(available_files: List[FileUploadInfo]) -> str:
+    """Generate available files prompt from file list.
+
+    This function creates a formatted prompt that informs the AI agent about
+    files available for upload during task execution, including file indices,
+    names, extensions, and descriptions.
+
+    Args:
+        available_files (List[FileUploadInfo]): List of available files for upload
+
+    Returns:
+        str: Formatted prompt with file information, or empty string if no files
+
+    Example:
+        ```python
+        from bugninja.prompts.prompt_factory import get_available_files_prompt
+        from bugninja.schemas.models import FileUploadInfo
+        from pathlib import Path
+
+        files = [
+            FileUploadInfo(
+                index=0,
+                name="Resume",
+                path=Path("./resume.pdf"),
+                extension="pdf",
+                description="Sample resume for testing"
+            )
+        ]
+
+        prompt = get_available_files_prompt(files)
+        ```
+    """
+    if not available_files:
+        return ""
+
+    # Format file list
+    file_items = []
+    for file_info in available_files:
+        file_items.append(f"**File Index {file_info.index}**: {file_info.name}")
+        file_items.append(f"  - Extension: .{file_info.extension}")
+        file_items.append(f"  - Description: {file_info.description}")
+        file_items.append("")
+
+    file_list_text = "\n".join(file_items).rstrip()
+
+    return __parsed_prompt("file_upload_prompt.md", {"FILE_LIST": file_list_text})
 
 
 BUGNINJA_INITIAL_NAVIGATROR_SYSTEM_PROMPT: str = __get_raw_prompt(

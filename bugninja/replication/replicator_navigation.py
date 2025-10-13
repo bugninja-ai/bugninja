@@ -211,6 +211,16 @@ class ReplicatorNavigator(ABC):
         # Generate run_id for browser isolation
         self.run_id = CUID().generate()
 
+        # Parse available files from traversal
+        self.available_files: List["FileUploadInfo"] = []
+        if self.replay_traversal.available_files:
+            from bugninja.schemas.models import FileUploadInfo
+
+            self.available_files = [
+                FileUploadInfo.model_validate(f) for f in self.replay_traversal.available_files
+            ]
+        self.available_file_paths = [str(f.path.absolute()) for f in self.available_files]
+
         # TODO! this is also a horrible antipattern here, the handling of the browser session should be decoupled from the navigator
 
         # Create browser session with isolation
@@ -397,6 +407,115 @@ class ReplicatorNavigator(ABC):
             "select_option", element_info, {"text": action["select_dropdown_option"]["text"]}
         )
 
+    async def _handle_upload_file(
+        self, action: Dict[str, Any], element_info: Optional[Dict[str, Any]]
+    ) -> None:
+        """Handle file upload.
+
+        This method uploads a file to a file input element using the file index
+        from the action and the corresponding file path from available_file_paths.
+        Handles both direct file inputs and labels wrapping hidden file inputs.
+
+        Args:
+            action (Dict[str, Any]): Action dictionary containing upload_file parameters
+            element_info (Optional[Dict[str, Any]]): Element information for selector fallback
+
+        Raises:
+            ActionError: If no element info provided or upload fails
+        """
+        logger.bugninja_log("📎 File upload requested")
+
+        if not element_info:
+            raise ActionError("No element information provided for file upload!")
+
+        file_index = action["upload_file"]["file_index"]
+
+        if not self.available_file_paths or file_index >= len(self.available_file_paths):
+            raise ActionError(f"File index {file_index} not available for upload")
+
+        file_path = self.available_file_paths[file_index]
+
+        # Check if file exists
+        from pathlib import Path
+
+        if not Path(file_path).exists():
+            raise ActionError(f"File not found: {file_path}")
+
+        logger.bugninja_log(f"📂 Using file: {file_path}")
+
+        # Get element selectors
+        selectors = await self._get_element_selector(element_info)
+
+        # Strategy 1: Try to find and use the actual file input element
+        # First check if element has children with file input
+        if element_info.get("children"):
+            for child in element_info["children"]:
+                if (
+                    child.get("tag_name") == "input"
+                    and child.get("attributes", {}).get("type") == "file"
+                ):
+                    child_xpath = child.get("xpath")
+                    if child_xpath:
+                        logger.bugninja_log(f"🎯 Found hidden file input child: {child_xpath}")
+                        try:
+                            file_input = self.current_page.locator(child_xpath)
+                            if await file_input.count() == 1:
+                                await file_input.set_input_files(file_path)
+                                logger.bugninja_log(
+                                    f"✅ Uploaded file via hidden input: {file_path}"
+                                )
+                                return
+                        except Exception as e:
+                            logger.warning(f"⚠️ Failed to use child file input: {e}")
+
+        # Strategy 2: Try each selector for direct file input elements
+        for selector_type, selector in selectors:
+            try:
+                element = self.current_page.locator(selector)
+                count = await element.count()
+
+                if count == 0:
+                    logger.debug(f"No elements found with {selector_type} selector: {selector}")
+                    continue
+                elif count > 1:
+                    logger.warning(
+                        f"⚠️ Multiple elements found with {selector_type} selector: {selector}"
+                    )
+                    continue
+
+                # Check if this is a file input directly
+                tag_name = await element.evaluate("el => el.tagName.toLowerCase()")
+                if tag_name == "input":
+                    input_type = await element.evaluate("el => el.type")
+                    if input_type == "file":
+                        await element.set_input_files(file_path)
+                        logger.bugninja_log(f"✅ Uploaded file via direct input: {file_path}")
+                        return
+
+            except Exception as e:
+                logger.warning(f"⚠️ Upload failed with {selector_type} selector {selector}: {e}")
+                continue
+
+        # Strategy 3: Find any file input on the page as fallback
+        logger.bugninja_log("🔄 Trying to find any file input on page as fallback...")
+        try:
+            file_inputs = await self.current_page.query_selector_all('input[type="file"]')
+            if file_inputs:
+                # Try to set files on the first visible file input
+                for file_input in file_inputs:
+                    try:
+                        await file_input.set_input_files(file_path)
+                        logger.bugninja_log(
+                            f"✅ Uploaded file via fallback file input: {file_path}"
+                        )
+                        return
+                    except Exception:
+                        continue
+        except Exception as e:
+            logger.warning(f"⚠️ Fallback file input search failed: {e}")
+
+        raise ActionError("Failed to upload file with all available selectors")
+
     async def _handle_drag_drop(self) -> None:
         """Handle drag and drop."""
         logger.bugninja_log("🔄 Drag and drop requested")
@@ -576,6 +695,9 @@ class ReplicatorNavigator(ABC):
             "scroll_to_text": self._handle_scroll_to_text,
             "get_dropdown_options": self._handle_get_dropdown_options,
             "select_dropdown_option": lambda: self._handle_select_dropdown_option(
+                action=interaction.action, element_info=element_info
+            ),
+            "upload_file": lambda: self._handle_upload_file(
                 action=interaction.action, element_info=element_info
             ),
             "drag_drop": self._handle_drag_drop,

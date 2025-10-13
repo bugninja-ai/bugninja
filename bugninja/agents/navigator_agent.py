@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import os
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -10,6 +11,7 @@ from typing import Any, Dict, List, Optional
 import cv2
 import numpy as np
 from browser_use.agent.views import (  # type: ignore
+    AgentBrain,
     AgentOutput,
 )
 from browser_use.browser.session import Page  # type: ignore
@@ -31,7 +33,7 @@ from bugninja.prompts.prompt_factory import (
     get_input_schema_prompt,
     get_io_extraction_prompt,
 )
-from bugninja.schemas.models import BugninjaConfig
+from bugninja.schemas.models import BugninjaConfig, FileUploadInfo
 from bugninja.schemas.pipeline import (
     ActionTimestamps,
     BugninjaBrowserConfig,
@@ -41,6 +43,21 @@ from bugninja.schemas.pipeline import (
 from bugninja.schemas.test_case_io import TestCaseSchema
 from bugninja.utils.logging_config import logger
 from bugninja.utils.screenshot_manager import ScreenshotManager
+
+
+def _sanitize_brain_state_for_display(brain_state: AgentBrain) -> str:
+    """Sanitize brain state content by removing secret HTML tags for terminal display.
+
+    Args:
+        brain_state (AgentBrain): The brain state object to sanitize
+
+    Returns:
+        str: Clean string representation without <secret> tags
+    """
+    brain_state_str = str(brain_state)
+    # Remove <secret> and </secret> tags using regex
+    sanitized = re.sub(r"</?secret>", "", brain_state_str)
+    return sanitized
 
 
 class NavigatorAgent(BugninjaAgentBase):
@@ -111,6 +128,7 @@ class NavigatorAgent(BugninjaAgentBase):
         dependencies: Optional[List[str]] = None,
         original_task_secrets: Optional[Dict[str, Any]] = None,
         runtime_inputs: Optional[Dict[str, Any]] = None,
+        available_files: Optional[List["FileUploadInfo"]] = None,
         **kwargs,  # type:ignore
     ) -> None:
         """Initialize NavigatorAgent with navigation-specific functionality.
@@ -166,17 +184,33 @@ class NavigatorAgent(BugninjaAgentBase):
                     f"📥 Agent: Task configured with {len(input_keys)} input data keys: {input_keys}"
                 )
 
+        # Prepare available files system prompt extension
+        available_files_prompt = ""
+        if available_files:
+            from bugninja.prompts.prompt_factory import get_available_files_prompt
+
+            available_files_prompt = get_available_files_prompt(available_files)
+            if available_files_prompt:
+                logger.bugninja_log(
+                    f"📎 NavigatorAgent: Task configured with {len(available_files)} available files"
+                )
+
+        # Combine all system prompt extensions
+        extensions = [input_schema_system_prompt, available_files_prompt]
+        combined_extension = "\n\n".join([ext for ext in extensions if ext]).strip()
+
         super().__init__(
             *args,
             run_id=run_id,
             bugninja_config=bugninja_config,
             video_recording_config=video_recording_config,
             override_system_message=override_system_message,
-            extend_system_message=input_schema_system_prompt,
+            extend_system_message=combined_extension,
             extra_instructions=extra_instructions,
             task=task,
             output_base_dir=output_base_dir,
             screenshot_manager=screenshot_manager,
+            available_files=available_files,
             **kwargs,
         )
 
@@ -480,7 +514,11 @@ class NavigatorAgent(BugninjaAgentBase):
             )
 
         rich_print("Current brain state:")
-        rich_print(self.agent_brain_states[extended_action.brain_state_id])
+        rich_print(
+            _sanitize_brain_state_for_display(
+                self.agent_brain_states[extended_action.brain_state_id]
+            )
+        )
 
         # ? we take screenshot of every action BEFORE it happens except the "go_to_url" since it has to be taken after
         if extended_action.get_action_type() not in NAVIGATION_IDENTIFIERS:
@@ -622,6 +660,11 @@ class NavigatorAgent(BugninjaAgentBase):
             output_schema=schema_obj.output_schema if schema_obj else None,
             extracted_data=self.extracted_data,
             dependencies=getattr(self, "dependencies", []),
+            available_files=(
+                [f.model_dump(mode="json") for f in self.available_files]
+                if self.available_files
+                else None
+            ),
         )
 
         with open(traversal_file, "w") as f:

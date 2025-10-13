@@ -35,7 +35,7 @@ from bugninja.config.llm_config import LLMConfig
 from bugninja.config.video_recording import VideoRecordingConfig
 from bugninja.events import EventPublisherManager
 from bugninja.prompts.prompt_factory import get_extra_instructions_related_prompt
-from bugninja.schemas.models import BugninjaConfig
+from bugninja.schemas.models import BugninjaConfig, FileUploadInfo
 from bugninja.schemas.pipeline import BugninjaExtendedAction
 from bugninja.utils.logging_config import logger
 from bugninja.utils.screenshot_manager import ScreenshotManager
@@ -62,6 +62,7 @@ SELECTOR_ORIENTED_ACTIONS: List[str] = [
     "get_dropdown_options",
     "select_dropdown_option",
     "drag_drop",
+    "upload_file",
 ]
 
 ALTERNATIVE_XPATH_SELECTORS_KEY: str = "alternative_relative_xpaths"
@@ -133,6 +134,7 @@ class BugninjaAgentBase(Agent, ABC):
         output_base_dir: Optional[Path] = None,
         screenshot_manager: Optional[ScreenshotManager] = None,
         cli_mode: bool = False,
+        available_files: Optional[List["FileUploadInfo"]] = None,
         **kwargs,  # type:ignore
     ) -> None:
         """Initialize BugninjaAgentBase with extended functionality.
@@ -161,6 +163,10 @@ class BugninjaAgentBase(Agent, ABC):
             )
             task += f"\n\n{extra_instructions_prompt}"
 
+        # Store and process available files
+        self.available_files = available_files or []
+        self.available_file_paths = [str(f.path.absolute()) for f in self.available_files]
+
         custom_controller = BugninjaController()
 
         super().__init__(
@@ -169,6 +175,7 @@ class BugninjaAgentBase(Agent, ABC):
             task=task,
             controller=custom_controller,
             extend_system_message=extend_system_message or "",
+            available_file_paths=self.available_file_paths,
         )
         # Initialize extended actions storage
         self.current_step_extended_actions: List["BugninjaExtendedAction"] = []
