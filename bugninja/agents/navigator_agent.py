@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import os
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -10,6 +11,7 @@ from typing import Any, Dict, List, Optional
 import cv2
 import numpy as np
 from browser_use.agent.views import (  # type: ignore
+    AgentBrain,
     AgentOutput,
 )
 from browser_use.browser.session import Page  # type: ignore
@@ -41,6 +43,21 @@ from bugninja.schemas.pipeline import (
 from bugninja.schemas.test_case_io import TestCaseSchema
 from bugninja.utils.logging_config import logger
 from bugninja.utils.screenshot_manager import ScreenshotManager
+
+
+def _sanitize_brain_state_for_display(brain_state: AgentBrain) -> str:
+    """Sanitize brain state content by removing secret HTML tags for terminal display.
+
+    Args:
+        brain_state (AgentBrain): The brain state object to sanitize
+
+    Returns:
+        str: Clean string representation without <secret> tags
+    """
+    brain_state_str = str(brain_state)
+    # Remove <secret> and </secret> tags using regex
+    sanitized = re.sub(r"</?secret>", "", brain_state_str)
+    return sanitized
 
 
 class NavigatorAgent(BugninjaAgentBase):
@@ -497,7 +514,11 @@ class NavigatorAgent(BugninjaAgentBase):
             )
 
         rich_print("Current brain state:")
-        rich_print(self.agent_brain_states[extended_action.brain_state_id])
+        rich_print(
+            _sanitize_brain_state_for_display(
+                self.agent_brain_states[extended_action.brain_state_id]
+            )
+        )
 
         # ? we take screenshot of every action BEFORE it happens except the "go_to_url" since it has to be taken after
         if extended_action.get_action_type() not in NAVIGATION_IDENTIFIERS:
