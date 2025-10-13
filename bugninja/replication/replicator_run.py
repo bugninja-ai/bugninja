@@ -315,6 +315,15 @@ class ReplicatorRun(ReplicatorNavigator):
                     output_schema=self.replay_traversal.output_schema,
                 )
 
+        # Parse available files from traversal
+        available_files = None
+        if self.replay_traversal.available_files:
+            from bugninja.schemas.models import FileUploadInfo
+
+            available_files = [
+                FileUploadInfo.model_validate(f) for f in self.replay_traversal.available_files
+            ]
+
         agent = HealerAgent(
             bugninja_config=self.config,
             task=self.replay_traversal.test_case,
@@ -327,6 +336,7 @@ class ReplicatorRun(ReplicatorNavigator):
             output_base_dir=self.output_base_dir,
             screenshot_manager=self.screenshot_manager,
             io_schema=io_schema,
+            available_files=available_files,
             # Note: runtime_inputs not passed here as healing works from recorded traversal
         )
 

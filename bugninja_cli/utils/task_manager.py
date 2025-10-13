@@ -542,6 +542,13 @@ extra_instructions = [
 allowed_domains = []  # Optional: List of allowed domains for web tasks
 dependencies = {deps_line}
 
+# File upload configuration (Optional)
+# Uncomment and configure if your task requires file uploads
+# [[task.files]]
+# name = "sample.pdf"  # Filename with extension
+# path = "assets/sample.pdf"  # Path relative to tasks/{name}/
+# description = "A sample PDF file for testing upload functionality"
+
 # I/O Schema Configuration (Optional)
 # Uncomment and configure if you need data extraction capabilities
 [task.io_schema]

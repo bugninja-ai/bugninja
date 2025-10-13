@@ -1,0 +1,49 @@
+# Task Configuration for: 10_file_upload
+# This file contains task-specific configuration including description and run settings
+# Run history is stored separately in run_history.json
+
+[task]
+name = "10_file_upload"
+start_url = "https://www.resizepixel.com/convert-image-to-black-white/"
+description = "Go to resizepixel.com and upload an image file. Convert that image file into a black and white format. If done, do not download the file but stop the task."
+extra_instructions = []
+allowed_domains = []  # Optional: List of allowed domains for web tasks
+dependencies = []  # Optional: List of task folder names or CUIDs that this task depends on
+
+# File upload configuration
+[[task.files]]
+name = "bunny.webp"
+path = "assets/bunny.webp"  # Path relative to tasks/10_file_upload/
+description = "an image about a bunny"
+
+# I/O Schema Configuration (Optional)
+# Uncomment and configure if you need data extraction capabilities
+[task.io_schema]
+# input schema is defined as a dictionary of input field names to descriptions
+# input_schema.USER_EMAIL = "test@example.com"
+
+# output schema is defined as a dictionary of output field names to descriptions
+# output_schema.USER_ID = "ID of the registered user"
+
+[secrets]
+# Task-specific secrets - these will be passed to the NavigatorAgent
+# SECRET_KEY = "secret_value"
+# USERNAME = "your_username"
+# PASSWORD = "your_password"
+# API_KEY = "your_api_key"
+
+[run_config]
+# CLI-specific runtime configuration
+viewport_width = 1920
+viewport_height = 1080
+user_agent = ""
+wait_between_actions = 1.0
+enable_vision = true
+enable_healing = true
+headless = false
+enable_video_recording = true
+
+[metadata]
+task_id = "nijpviqbn9kznid1ewn4hmbb"
+created_date = "2025-10-12T14:38:10.989570+00:00Z"
+creation_type = "manually_added"

@@ -629,6 +629,7 @@ class BugninjaClient:
                 dependencies=task.dependencies,
                 runtime_inputs=runtime_inputs,
                 original_task_secrets=task.secrets,
+                available_files=task.available_files,
             )
 
             # Set event manager if available

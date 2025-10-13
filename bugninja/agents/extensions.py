@@ -9,7 +9,8 @@ from browser_use.controller.service import Controller  # type: ignore
 from browser_use.controller.views import InputTextAction  # type: ignore
 from browser_use.controller.views import ScrollAction  # type: ignore
 from browser_use.dom.views import DOMElementNode  # type: ignore
-from pydantic import BaseModel
+from patchright._impl._file_chooser import FileChooser
+from pydantic import BaseModel, Field
 
 from bugninja.utils.logging_config import logger
 
@@ -31,6 +32,31 @@ class UserInputResponse(BaseModel):
 
     user_input: Optional[str]
     user_input_type: UserInputTypeEnum
+
+
+class UploadFileAction(BaseModel):
+    """Action model for file upload operations.
+
+    This model defines the parameters required for uploading files to
+    file input elements during browser automation tasks.
+
+    Attributes:
+        index (int): Index of the DOM element (file input)
+        file_index (int): Index of the file to upload (from available_files)
+
+    Example:
+        ```python
+        from bugninja.agents.extensions import UploadFileAction
+
+        action = UploadFileAction(
+            index=5,  # Element index of file input
+            file_index=0  # Index of file from available_files list
+        )
+        ```
+    """
+
+    index: int = Field(description="Index of the file input element")
+    file_index: int = Field(ge=0, description="Index of file from available_files list")
 
 
 async def get_user_input_async() -> UserInputResponse:
@@ -290,3 +316,129 @@ class BugninjaController(Controller):
             logger.info(msg)
             logger.debug(f"Element xpath: {element_node.xpath}")
             return ActionResult(extracted_content=msg, include_in_memory=True)
+
+        @self.registry.action(
+            "Upload a file to a file input element using a pre-configured file",
+            param_model=UploadFileAction,
+        )
+        async def upload_file(
+            params: UploadFileAction,
+            browser_session: BrowserSession,
+            available_file_paths: list[str] = [],
+        ) -> ActionResult:
+            """Upload a file to a file input element.
+
+            Handles multiple upload patterns:
+            1. Direct file input elements
+            2. Custom buttons with hidden file inputs
+            3. File chooser dialogs triggered by buttons
+
+            Args:
+                params (UploadFileAction): Upload parameters with element and file indices
+                browser_session (BrowserSession): Browser session for element interaction
+                available_file_paths (list[str]): List of available file paths (injected by framework)
+
+            Returns:
+                ActionResult: Result of the upload operation
+
+            Raises:
+                Exception: If no files available or file index out of range
+                BrowserError: If element not found or upload fails
+            """
+            if not available_file_paths or len(available_file_paths) == 0:
+                raise Exception("No files available for upload - task must specify available_files")
+
+            if params.file_index >= len(available_file_paths):
+                raise Exception(
+                    f"File index {params.file_index} out of range - only {len(available_file_paths)} files available"
+                )
+
+            file_path = available_file_paths[params.file_index]
+
+            # Get target element
+            element_node = await browser_session.get_dom_element_by_index(params.index)
+            if element_node is None:
+                raise Exception(f"Element index {params.index} not found on page")
+
+            element_handle = await browser_session.get_locate_element(element_node)
+            if element_handle is None:
+                raise BrowserError(f"Element: {repr(element_node)} not found")
+
+            try:
+                # Strategy 1: Check if target element is a file input
+                tag_name = await element_handle.evaluate("el => el.tagName.toLowerCase()")
+                input_type = None
+
+                if tag_name == "input":
+                    input_type = await element_handle.evaluate("el => el.type")
+
+                if tag_name == "input" and input_type == "file":
+                    # Direct file input - upload directly
+                    await element_handle.set_input_files(file_path)
+                    msg = f"📎 Uploaded file (index {params.file_index}) to direct file input at element {params.index}"
+                else:
+                    # Strategy 2: Look for hidden file inputs on page
+                    page = await browser_session.get_current_page()
+                    file_inputs = await page.query_selector_all('input[type="file"]')
+
+                    if file_inputs:
+                        # Use first available file input
+                        file_input = file_inputs[0]
+                        await file_input.set_input_files(file_path)
+
+                        # Click original element if it's a button/trigger
+                        if tag_name in ["button", "div", "span", "a", "label"]:
+                            try:
+                                await element_handle.click()
+                            except Exception:
+                                pass  # Click might fail, but file is already set
+
+                        msg = f"📎 Uploaded file (index {params.file_index}) via hidden file input (triggered by element {params.index})"
+                    else:
+                        # Strategy 3: File chooser dialog interception
+                        page = await browser_session.get_current_page()
+
+                        async def handle_file_chooser(file_chooser: FileChooser) -> None:
+                            await file_chooser.set_files(file_path)
+
+                        # Set up file chooser handler
+                        page.on("filechooser", handle_file_chooser)  # type: ignore
+
+                        try:
+                            # Click the element to trigger file chooser
+                            await element_handle.click()
+
+                            # Wait briefly for file chooser to be handled
+                            await page.wait_for_timeout(1000)
+
+                            msg = f"📎 Uploaded file (index {params.file_index}) via file chooser dialog (triggered by element {params.index})"
+                        finally:
+                            # Clean up event handler
+                            page.remove_listener("filechooser", handle_file_chooser)
+
+                logger.info(msg)
+                logger.debug(f"File path: {file_path}")
+                logger.debug(f"Element xpath: {element_node.xpath}")
+                logger.debug(
+                    f"Element type: {tag_name}"
+                    + (f" (input type: {input_type})" if input_type else "")
+                )
+
+                return ActionResult(extracted_content=msg, include_in_memory=True)
+
+            except Exception as e:
+                logger.error(f"Failed to upload file: {str(e)}")
+                # Try to get element type for better error message
+                try:
+                    tag_name = await element_handle.evaluate("el => el.tagName.toLowerCase()")
+                    input_type = None
+                    if tag_name == "input":
+                        input_type = await element_handle.evaluate("el => el.type")
+                    error_details = f"Element type: {tag_name}" + (
+                        f" (input type: {input_type})" if input_type else ""
+                    )
+                except Exception:
+                    error_details = "Unable to determine element type"
+                raise BrowserError(
+                    f"Failed to upload file to index {params.index}: {str(e)}. {error_details}"
+                )

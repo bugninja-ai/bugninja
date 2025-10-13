@@ -31,7 +31,7 @@ from bugninja.prompts.prompt_factory import (
     get_input_schema_prompt,
     get_io_extraction_prompt,
 )
-from bugninja.schemas.models import BugninjaConfig
+from bugninja.schemas.models import BugninjaConfig, FileUploadInfo
 from bugninja.schemas.pipeline import (
     ActionTimestamps,
     BugninjaBrowserConfig,
@@ -111,6 +111,7 @@ class NavigatorAgent(BugninjaAgentBase):
         dependencies: Optional[List[str]] = None,
         original_task_secrets: Optional[Dict[str, Any]] = None,
         runtime_inputs: Optional[Dict[str, Any]] = None,
+        available_files: Optional[List["FileUploadInfo"]] = None,
         **kwargs,  # type:ignore
     ) -> None:
         """Initialize NavigatorAgent with navigation-specific functionality.
@@ -166,17 +167,33 @@ class NavigatorAgent(BugninjaAgentBase):
                     f"📥 Agent: Task configured with {len(input_keys)} input data keys: {input_keys}"
                 )
 
+        # Prepare available files system prompt extension
+        available_files_prompt = ""
+        if available_files:
+            from bugninja.prompts.prompt_factory import get_available_files_prompt
+
+            available_files_prompt = get_available_files_prompt(available_files)
+            if available_files_prompt:
+                logger.bugninja_log(
+                    f"📎 NavigatorAgent: Task configured with {len(available_files)} available files"
+                )
+
+        # Combine all system prompt extensions
+        extensions = [input_schema_system_prompt, available_files_prompt]
+        combined_extension = "\n\n".join([ext for ext in extensions if ext]).strip()
+
         super().__init__(
             *args,
             run_id=run_id,
             bugninja_config=bugninja_config,
             video_recording_config=video_recording_config,
             override_system_message=override_system_message,
-            extend_system_message=input_schema_system_prompt,
+            extend_system_message=combined_extension,
             extra_instructions=extra_instructions,
             task=task,
             output_base_dir=output_base_dir,
             screenshot_manager=screenshot_manager,
+            available_files=available_files,
             **kwargs,
         )
 
@@ -622,6 +639,11 @@ class NavigatorAgent(BugninjaAgentBase):
             output_schema=schema_obj.output_schema if schema_obj else None,
             extracted_data=self.extracted_data,
             dependencies=getattr(self, "dependencies", []),
+            available_files=(
+                [f.model_dump(mode="json") for f in self.available_files]
+                if self.available_files
+                else None
+            ),
         )
 
         with open(traversal_file, "w") as f:

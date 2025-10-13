@@ -207,15 +207,30 @@ class PipelineExecutor:
                 else:
                     logger.warning("⚠️ PipelineExecutor: No traversal file from target task")
 
-            # Return success result with traversal path
+            # Update task metadata with the execution result
             execution_time = (datetime.now() - start_time).total_seconds()
-            return TaskExecutionResult(
+            execution_result = TaskExecutionResult(
                 success=True,
                 execution_time=execution_time,
                 result=None,
                 error_message=None,
                 traversal_path=traversal_path,
             )
+
+            # Update task metadata for the target task
+            try:
+                from bugninja.schemas.cli_schemas import TaskRunConfig
+                from bugninja_cli.utils.task_executor import TaskExecutor
+
+                # Create a default TaskRunConfig for metadata update
+                task_run_config = TaskRunConfig()
+                task_executor = TaskExecutor(task_run_config, self.project_root)
+                task_executor._update_task_metadata(target_task, execution_result, "ai_navigated")
+                logger.info(f"📝 Updated task metadata for '{target_task.name}' with AI run")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to update task metadata: {e}")
+
+            return execution_result
 
         except Exception as e:
             self.console.print(
@@ -226,9 +241,24 @@ class PipelineExecutor:
                 )
             )
             execution_time = (datetime.now() - start_time).total_seconds()
-            return TaskExecutionResult(
+            execution_result = TaskExecutionResult(
                 success=False, execution_time=execution_time, result=None, error_message=str(e)
             )
+
+            # Update task metadata even for failed runs
+            try:
+                from bugninja.schemas.cli_schemas import TaskRunConfig
+                from bugninja_cli.utils.task_executor import TaskExecutor
+
+                # Create a default TaskRunConfig for metadata update
+                task_run_config = TaskRunConfig()
+                task_executor = TaskExecutor(task_run_config, self.project_root)
+                task_executor._update_task_metadata(target_task, execution_result, "ai_navigated")
+                logger.info(f"📝 Updated task metadata for '{target_task.name}' with failed AI run")
+            except Exception as metadata_error:
+                logger.warning(f"⚠️ Failed to update task metadata: {metadata_error}")
+
+            return execution_result
 
     def _convert_to_pipeline(
         self, target_task: TaskInfo, task_manager: TaskManager
