@@ -41,7 +41,6 @@ from bugninja_cli.utils.completion import (
     complete_replay_task_names,
     complete_traversal_ids,
 )
-from bugninja_cli.utils.pipeline_executor import PipelineExecutor
 from bugninja_cli.utils.project_validator import (
     display_project_info,
     require_bugninja_project,

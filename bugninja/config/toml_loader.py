@@ -83,6 +83,9 @@ class TOMLConfigLoader:
                 if key == "secrets":
                     for secret_key, secret_value in value.items():
                         flattened[f"secrets.{secret_key}"] = secret_value
+                # Handle http_auth section specially - keep as nested dictionary
+                elif key == "http_auth" and prefix == "task":
+                    flattened[full_key] = value
                 # Handle I/O schema section specially - keep as nested dictionary
                 elif key == "io_schema" and prefix == "task":
                     flattened[full_key] = value

@@ -542,6 +542,12 @@ extra_instructions = [
 allowed_domains = []  # Optional: List of allowed domains for web tasks
 dependencies = {deps_line}
 
+# HTTP Basic Authentication Configuration (Optional)
+# Uncomment and configure if your website requires HTTP authentication
+# [task.http_auth]
+# username = "your_username"     # HTTP authentication username
+# password = "your_password"     # HTTP authentication password
+
 # File upload configuration (Optional)
 # Uncomment and configure if your task requires file uploads
 # [[task.files]]
