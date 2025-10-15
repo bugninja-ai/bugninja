@@ -91,6 +91,7 @@ bugninja run delete_user_test  # Also runs create_user_test first
 ### 🎯 Perfect for Modern E2E Testing
 - **Flaky Test Elimination**: Self-healing capabilities reduce test maintenance
 - **Cross-Browser Testing**: Works with any Playwright-supported browser
+- **HTTP Authentication Support**: Built-in support for testing protected websites with basic auth
 - **CI/CD Integration**: Seamlessly integrates with your existing pipelines
 - **Rich Reporting**: Detailed test reports with screenshots and execution traces
 

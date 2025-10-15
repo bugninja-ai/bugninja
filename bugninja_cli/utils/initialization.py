@@ -635,6 +635,7 @@ This is a Bugninja browser automation project.
 
 - **Global settings**: Edit `bugninja.toml` for LLM, logging, and project settings
 - **Task settings**: Edit individual `task_*.toml` files for browser, agent, and run-specific settings
+- **HTTP authentication**: Configure HTTP auth credentials in the `[task.http_auth]` section if needed
 - **File uploads**: Configure files in the `[task.files]` section of task TOML files
 
 For more information, see the [Bugninja documentation](https://github.com/bugninja/bugninja).

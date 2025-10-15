@@ -234,6 +234,18 @@ class ReplicatorNavigator(ABC):
             # record_video_size=self.replay_traversal.browser_config.viewport,
         )
 
+        # Set HTTP authentication if available in traversal
+        if self.replay_traversal.http_auth:
+            from browser_use.browser.profile import HttpCredentials  # type: ignore
+
+            browser_profile.http_credentials = HttpCredentials(
+                username=self.replay_traversal.http_auth["username"],
+                password=self.replay_traversal.http_auth["password"],
+            )
+            logger.bugninja_log(
+                f"🔐 HTTP authentication configured for user: {self.replay_traversal.http_auth['username']}"
+            )
+
         # Override user_data_dir with run_id for browser isolation
         base_dir = browser_profile.user_data_dir or Path("./data_dir")
         if isinstance(base_dir, str):
@@ -458,9 +470,9 @@ class ReplicatorNavigator(ABC):
                     if child_xpath:
                         logger.bugninja_log(f"🎯 Found hidden file input child: {child_xpath}")
                         try:
-                            file_input = self.current_page.locator(child_xpath)
-                            if await file_input.count() == 1:
-                                await file_input.set_input_files(file_path)
+                            file_input_locator = self.current_page.locator(child_xpath)
+                            if await file_input_locator.count() == 1:
+                                await file_input_locator.set_input_files(file_path)
                                 logger.bugninja_log(
                                     f"✅ Uploaded file via hidden input: {file_path}"
                                 )

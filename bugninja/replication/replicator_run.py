@@ -429,6 +429,10 @@ class ReplicatorRun(ReplicatorNavigator):
         logger.bugninja_log(
             f"🌐 Automatically navigating to start URL from traversal: {self.replay_traversal.start_url}"
         )
+        if self.replay_traversal.http_auth:
+            logger.bugninja_log(
+                f"🔐 HTTP authentication configured for user: {self.replay_traversal.http_auth['username']}"
+            )
         try:
             current_page = await self.browser_session.get_current_page()
             await current_page.goto(self.replay_traversal.start_url)

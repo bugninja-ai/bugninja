@@ -116,13 +116,16 @@ def add(task_name: str, project_root: Path, depends: tuple[str, ...]) -> None:
             "  3. Add your secrets in the [secrets] section of the TOML file\n", style="cyan"
         )
         success_text.append(
-            "  4. Configure I/O schemas for data extraction if needed\n", style="cyan"
+            "  4. Configure HTTP authentication in [task.http_auth] if needed\n", style="cyan"
         )
         success_text.append(
-            "  5. Add file uploads in the [task.files] section if needed\n", style="cyan"
+            "  5. Configure I/O schemas for data extraction if needed\n", style="cyan"
         )
         success_text.append(
-            f"  6. Run 'bugninja run {folder_name}' or 'bugninja run {task_id}' to execute\n",
+            "  6. Add file uploads in the [task.files] section if needed\n", style="cyan"
+        )
+        success_text.append(
+            f"  7. Run 'bugninja run {folder_name}' or 'bugninja run {task_id}' to execute\n",
             style="cyan",
         )
 
