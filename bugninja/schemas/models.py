@@ -246,7 +246,7 @@ class BugninjaTask(BaseModel):
     description: str = Field(
         default="",
         min_length=0,
-        max_length=1000,
+        max_length=10000,
         description="Human-readable description of the task to perform",
     )
 
@@ -260,7 +260,7 @@ class BugninjaTask(BaseModel):
     )
 
     max_steps: int = Field(
-        default=100, ge=1, le=1000, description="Maximum number of steps to execute"
+        default=100, ge=1, le=200, description="Maximum number of steps to execute"
     )
 
     enable_healing: bool = Field(

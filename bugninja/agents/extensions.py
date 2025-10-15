@@ -129,7 +129,10 @@ class BugninjaController(Controller):
             Returns:
                 ActionResult: Result of the scrolling operation
             """
-            page = await browser_session.get_current_page()
+            if hasattr(browser_session, "get_active_page"):
+                page = await browser_session.get_active_page()
+            else:
+                page = await browser_session.get_current_page()
             page_height = await page.evaluate("() => window.innerHeight")
             dy = scroll_action.amount or page_height
 
@@ -298,7 +301,10 @@ class BugninjaController(Controller):
                 except Exception:
                     # last resort fallback, assume it's already focused after we clicked on it,
                     # just simulate keypresses on the entire page
-                    page = await browser_session.get_current_page()
+                    if hasattr(browser_session, "get_active_page"):
+                        page = await browser_session.get_active_page()
+                    else:
+                        page = await browser_session.get_current_page()
                     await page.keyboard.type(text)
 
             except Exception as e:

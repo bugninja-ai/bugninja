@@ -7,6 +7,7 @@ This module provides **utility functions and classes** for:
 - Selector generation and validation
 - Video recording and management
 - Custom video recording with FFmpeg
+- Multi-tab browser session management
 
 ## Key Components
 
@@ -16,6 +17,8 @@ This module provides **utility functions and classes** for:
 4. **BugninjaVideoRecorder** - High-quality video recorder using FFmpeg
 5. **BugninjaLogger** - Custom logging with Bugninja-specific levels
 6. **configure_logging()** - Logging configuration utility
+7. **TabContext** - Tab state tracking and change notification
+8. **TabAwareBrowserSession** - Browser session wrapper with multi-tab support
 
 ## Usage Examples
 
@@ -25,14 +28,22 @@ from bugninja.utils import (
     SelectorFactory,
     VideoRecordingManager,
     BugninjaVideoRecorder,
+    TabAwareBrowserSession,
+    TabContext,
     logger
 )
 from bugninja.config.video_recording import VideoRecordingConfig
 
+# Create tab-aware browser session
+browser_session = TabAwareBrowserSession(original_browser_session)
+
+# Switch tabs
+await browser_session.switch_to_tab(1)
+
 # Create screenshot manager
 screenshot_manager = ScreenshotManager(run_id="test_run")
 
-# Take screenshot with highlighting
+# Take screenshot with highlighting (automatically uses active tab)
 filename = await screenshot_manager.take_screenshot(
     page, action, browser_session
 )
@@ -41,7 +52,7 @@ filename = await screenshot_manager.take_screenshot(
 factory = SelectorFactory(html_content)
 selectors = factory.generate_relative_xpaths_from_full_xpath("/html/body/button")
 
-# Create video recording manager
+# Create video recording manager with tab rebinding
 config = VideoRecordingConfig()
 video_manager = VideoRecordingManager("test_run", config)
 
@@ -55,6 +66,8 @@ from .selector_factory import SelectorFactory
 from .video_recording_manager import VideoRecordingManager
 from .custom_video_recorder import BugninjaVideoRecorder
 from .logging_config import logger, configure_logging, BugninjaLogger
+from .tab_context import TabContext
+from .tab_aware_session import TabAwareBrowserSession
 
 __all__ = [
     "ScreenshotManager",
@@ -64,4 +77,6 @@ __all__ = [
     "logger",
     "configure_logging",
     "BugninjaLogger",
+    "TabContext",
+    "TabAwareBrowserSession",
 ]

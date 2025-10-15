@@ -43,6 +43,9 @@ class BugninjaExtendedAction(BaseModel):
     screenshot_filename: Optional[str] = None
     idx_in_brainstate: int
     timestamps: Optional[ActionTimestamps] = None
+    # Tab-awareness metadata
+    tab_id: Optional[int] = None
+    url_at_action: Optional[str] = None
 
     def get_action_type(self) -> str:
         return [k for k, v in self.action.items() if v is not None][0]

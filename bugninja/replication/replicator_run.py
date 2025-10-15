@@ -274,7 +274,7 @@ class ReplicatorRun(ReplicatorNavigator):
     async def take_screenshot(self, extended_action: BugninjaExtendedAction) -> None:
         await self.browser_session.remove_highlights()
 
-        current_page: Page = await self.browser_session.get_current_page()  # type: ignore
+        current_page: Page = await self.browser_session.get_active_page()
 
         await self.wait_proper_load_state(current_page)
         # Take screenshot and get filename
@@ -430,7 +430,7 @@ class ReplicatorRun(ReplicatorNavigator):
             f"🌐 Automatically navigating to start URL from traversal: {self.replay_traversal.start_url}"
         )
         try:
-            current_page = await self.browser_session.get_current_page()
+            current_page = await self.browser_session.get_active_page()
             await current_page.goto(self.replay_traversal.start_url)
             await self.wait_proper_load_state(current_page)
             logger.bugninja_log(f"✅ Successfully navigated to: {self.replay_traversal.start_url}")
@@ -495,8 +495,16 @@ class ReplicatorRun(ReplicatorNavigator):
                         f"🕐 Captured start video offset: {video_start_offset:.3f}s"
                     )
 
-                #! taking screenshot before action execution
+                # Switch to the correct tab if tab_id is recorded and different from current
+                if hasattr(action, "tab_id") and action.tab_id is not None:
+                    if action.tab_id != self.browser_session.tabs.active_tab_id:
+                        try:
+                            await self.browser_session.switch_to_tab(action.tab_id)
+                            logger.bugninja_log(f"🔄 Switched to tab {action.tab_id} for action")
+                        except Exception as e:
+                            logger.warning(f"⚠️ Failed to switch to tab {action.tab_id}: {e}")
 
+                #! taking screenshot before action execution
                 await self.take_screenshot(extended_action=action)
 
                 logger.bugninja_log("▶️ Executing action...")
@@ -752,8 +760,9 @@ class ReplicatorRun(ReplicatorNavigator):
         # Get the current extended action for highlighting
         current_action = self.replay_state_machine.current_action
 
+        current_page = await self.browser_session.get_active_page()
         return await self.screenshot_manager.take_screenshot(
-            page=self.current_page, action=current_action, browser_session=self.browser_session
+            page=current_page, action=current_action, browser_session=self.browser_session
         )
 
     def get_screenshots_dir(self) -> Path:
@@ -768,7 +777,7 @@ class ReplicatorRun(ReplicatorNavigator):
         """Get the current URL for progress tracking."""
         try:
             if hasattr(self, "browser_session") and self.browser_session:
-                current_page = await self.browser_session.get_current_page()
+                current_page = await self.browser_session.get_active_page()
                 url = current_page.url
                 if isinstance(url, str):
                     return url
@@ -784,12 +793,15 @@ class ReplicatorRun(ReplicatorNavigator):
         """
         if self.video_recording_manager and self.browser_session.browser_context:
             try:
-                current_page: Page = await self.browser_session.get_current_page()
+                current_page: Page = await self.browser_session.get_active_page()
                 cdp_session = await self.browser_session.browser_context.new_cdp_session(current_page)  # type: ignore
 
                 # Start video recording
                 output_file = f"run_{self.run_id}"
                 await self.video_recording_manager.start_recording(output_file, cdp_session)
+
+                # Setup tab listener for video rebinding
+                await self.video_recording_manager.setup_tab_listener(self.browser_session)
 
                 # Setup CDP screencast
                 await cdp_session.send(

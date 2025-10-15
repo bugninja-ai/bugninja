@@ -43,6 +43,7 @@ from bugninja.schemas.pipeline import (
 from bugninja.schemas.test_case_io import TestCaseSchema
 from bugninja.utils.logging_config import logger
 from bugninja.utils.screenshot_manager import ScreenshotManager
+from bugninja.utils.tab_aware_session import TabAwareBrowserSession
 
 
 def _sanitize_brain_state_for_display(brain_state: AgentBrain) -> str:
@@ -214,6 +215,10 @@ class NavigatorAgent(BugninjaAgentBase):
             **kwargs,
         )
 
+        # Wrap browser session with tab awareness after initialization
+        if hasattr(self, "browser_session") and self.browser_session:
+            self.browser_session = TabAwareBrowserSession(self.browser_session)  # type: ignore[has-type]
+
     async def _before_run_hook(self) -> None:
         """Initialize navigation session with event tracking and screenshot management.
 
@@ -271,7 +276,8 @@ class NavigatorAgent(BugninjaAgentBase):
 
         logger.bugninja_log(f"🌐 Automatically navigating to start URL: {self.start_url}")
         try:
-            current_page = await self.browser_session.get_current_page()
+            assert self.browser_session is not None
+            current_page = await self.browser_session.get_active_page()
             await current_page.goto(self.start_url)
             await self.wait_proper_load_state(current_page)
             logger.bugninja_log(f"✅ Successfully navigated to: {self.start_url}")
@@ -398,7 +404,8 @@ class NavigatorAgent(BugninjaAgentBase):
         """
         logger.bugninja_log("🪝 BEFORE-Step hook called")
 
-        current_page: Page = await self.browser_session.get_current_page()
+        assert self.browser_session is not None
+        current_page: Page = await self.browser_session.get_active_page()
 
         await self.wait_proper_load_state(current_page)
 
@@ -414,6 +421,9 @@ class NavigatorAgent(BugninjaAgentBase):
                     # Start video recording
                     output_file = f"run_{self.run_id}"
                     await self.video_recording_manager.start_recording(output_file, cdp_session)
+
+                    # Setup tab listener for video rebinding
+                    await self.video_recording_manager.setup_tab_listener(self.browser_session)
 
                     # Setup CDP screencast
                     await cdp_session.send(
@@ -450,11 +460,19 @@ class NavigatorAgent(BugninjaAgentBase):
         self.agent_brain_states[brain_state_id] = model_output.current_state
 
         #! generating the alternative CSS and XPath selectors should happen BEFORE the actions are completed
+        # Capture tab metadata
+        tab_id = (
+            self.browser_session.tabs.active_tab_id if hasattr(self.browser_session, "tabs") else 0
+        )
+        url_at_action = current_page.url
+
         extended_taken_actions = await self.extend_model_output_with_info(
             brain_state_id=brain_state_id,
             current_page=current_page,
             model_output=model_output,
             browser_state_summary=browser_state_summary,
+            tab_id=tab_id,
+            url_at_action=url_at_action,
         )
 
         # Store extended actions for hook access
@@ -603,6 +621,7 @@ class NavigatorAgent(BugninjaAgentBase):
             - Uses pretty-printed JSON with 4-space indentation for readability
             - Handles Unicode characters properly with ensure_ascii=False
         """
+        assert self.browser_session is not None
         # Use configured directory or fallback to default
         if hasattr(self, "output_base_dir") and self.output_base_dir:
             traversal_dir = self.output_base_dir / "traversals"

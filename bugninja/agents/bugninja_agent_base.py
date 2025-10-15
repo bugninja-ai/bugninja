@@ -40,6 +40,7 @@ from bugninja.schemas.pipeline import BugninjaExtendedAction
 from bugninja.utils.logging_config import logger
 from bugninja.utils.screenshot_manager import ScreenshotManager
 from bugninja.utils.selector_factory import SelectorFactory
+from bugninja.utils.tab_aware_session import BrowserSession, TabAwareBrowserSession
 from bugninja.utils.video_recording_manager import VideoRecordingManager
 
 
@@ -68,7 +69,7 @@ SELECTOR_ORIENTED_ACTIONS: List[str] = [
 ALTERNATIVE_XPATH_SELECTORS_KEY: str = "alternative_relative_xpaths"
 DOM_ELEMENT_DATA_KEY: str = "dom_element_data"
 BRAINSTATE_IDX_DATA_KEY: str = "idx_in_brainstate"
-NAVIGATION_IDENTIFIERS = ["go_back", "go_forward", "go_to_url"]
+NAVIGATION_IDENTIFIERS = ["go_back", "go_forward", "go_to_url", "open_tab", "switch_tab"]
 
 
 class BugninjaAgentBase(Agent, ABC):
@@ -157,6 +158,8 @@ class BugninjaAgentBase(Agent, ABC):
         self.video_recording_config = video_recording_config
         self.bugninja_config = bugninja_config
 
+        self.browser_session: Optional[BrowserSession | TabAwareBrowserSession]
+
         if extra_instructions:
             extra_instructions_prompt: str = get_extra_instructions_related_prompt(
                 extra_instruction_list=extra_instructions
@@ -213,6 +216,7 @@ class BugninjaAgentBase(Agent, ABC):
     async def handle_taking_screenshot_for_action(
         self, extended_action: BugninjaExtendedAction
     ) -> None:
+        assert self.browser_session is not None
         await self.browser_session.remove_highlights()
 
         current_page: Page = await self.browser_session.get_current_page()
@@ -475,6 +479,7 @@ class BugninjaAgentBase(Agent, ABC):
         tokens = 0
 
         try:
+            assert self.browser_session is not None
             browser_state_summary = await self.browser_session.get_state_summary(
                 cache_clickable_elements_hashes=True
             )
@@ -676,6 +681,7 @@ class BugninjaAgentBase(Agent, ABC):
         Returns:
             list[ActionResult]: Results of all executed actions
         """
+        assert self.browser_session is not None
         results: list[ActionResult] = []
 
         cached_selector_map = await self.browser_session.get_selector_map()
@@ -774,6 +780,8 @@ class BugninjaAgentBase(Agent, ABC):
         current_page: Page,
         browser_state_summary: BrowserStateSummary,
         action: ActionModel,
+        tab_id: Optional[int] = None,
+        url_at_action: Optional[str] = None,
     ) -> BugninjaExtendedAction:
         short_action_descriptor: Dict[str, Any] = action.model_dump(exclude_none=True)
         logger.bugninja_log(f"📄 Action: {short_action_descriptor}")
@@ -784,6 +792,8 @@ class BugninjaAgentBase(Agent, ABC):
                 "action": action.model_dump(),
                 "idx_in_brainstate": action_idx,
                 DOM_ELEMENT_DATA_KEY: None,
+                "tab_id": tab_id,
+                "url_at_action": url_at_action,
             }
         )
 
@@ -839,6 +849,8 @@ class BugninjaAgentBase(Agent, ABC):
         current_page: Page,
         model_output: AgentOutput,
         browser_state_summary: BrowserStateSummary,
+        tab_id: Optional[int] = None,
+        url_at_action: Optional[str] = None,
     ) -> List["BugninjaExtendedAction"]:
         """Extend agent actions with additional DOM element information and alternative selectors.
 
@@ -877,6 +889,8 @@ class BugninjaAgentBase(Agent, ABC):
                 current_page=current_page,
                 action=action,
                 browser_state_summary=browser_state_summary,
+                tab_id=tab_id,
+                url_at_action=url_at_action,
             )
             for action_idx, action in enumerate(model_output.action)
         ]

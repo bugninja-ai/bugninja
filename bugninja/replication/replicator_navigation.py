@@ -39,7 +39,6 @@ from typing import (
     List,
     Literal,
     Optional,
-    Sequence,
     Tuple,
     Union,
 )
@@ -48,13 +47,13 @@ from browser_use import BrowserProfile, BrowserSession  # type: ignore
 from browser_use.agent.views import AgentBrain  # type: ignore
 from browser_use.browser.views import BrowserError  # type: ignore
 from cuid2 import Cuid as CUID
-from patchright.async_api import BrowserContext as PatchrightBrowserContext
 from patchright.async_api import Page
 from pydantic import Field
 
 from bugninja.replication.errors import ActionError, ReplicatorError, SelectorError
 from bugninja.schemas.pipeline import BugninjaExtendedAction, Traversal
 from bugninja.utils.logging_config import logger
+from bugninja.utils.tab_aware_session import TabAwareBrowserSession
 
 
 def get_user_input() -> str:
@@ -241,7 +240,8 @@ class ReplicatorNavigator(ABC):
         isolated_dir = base_dir / f"run_{self.run_id}"
         browser_profile.user_data_dir = isolated_dir
 
-        self.browser_session = BrowserSession(browser_profile=browser_profile)
+        browser_session = BrowserSession(browser_profile=browser_profile)
+        self.browser_session = TabAwareBrowserSession(browser_session)
 
         logger.bugninja_log(f"🔒 Using isolated browser directory: {isolated_dir}")
 
@@ -255,7 +255,8 @@ class ReplicatorNavigator(ABC):
 
         for attempt in range(max_retries):
             try:
-                await self.current_page.goto(url, wait_until="load")
+                current_page = await self.browser_session.get_active_page()
+                await current_page.goto(url, wait_until="load")
                 return
             except Exception as e:
                 if "net::ERR_NETWORK_CHANGED" in str(e) and attempt < max_retries - 1:
@@ -302,7 +303,8 @@ class ReplicatorNavigator(ABC):
     async def _handle_go_back(self) -> None:
         """Handle navigation back."""
         logger.bugninja_log("⬅️ Go back requested")
-        await self.current_page.go_back(wait_until="load")
+        current_page = await self.browser_session.get_active_page()
+        await current_page.go_back(wait_until="load")
 
     async def _handle_search_google(self) -> None:
         """Handle Google search."""
@@ -315,7 +317,7 @@ class ReplicatorNavigator(ABC):
         await self.__handle_not_implemented_action("PDF saving")
 
     async def _handle_switch_tab(self, switch_tab_id: Optional[int]) -> None:
-        """Handle tab switching."""
+        """Handle tab switching using tab-aware session."""
         logger.bugninja_log("🔄 Tab switch requested")
 
         #! precautionary sleep, so that the tab has time to load
@@ -324,24 +326,46 @@ class ReplicatorNavigator(ABC):
         if switch_tab_id is None:
             raise ActionError("No page ID provided for tab switching")
 
-        contexts: Sequence[PatchrightBrowserContext] = self.browser_session.browser.contexts  # type: ignore
+        # Use tab-aware session to switch tabs (this will trigger video rebind automatically)
+        await self.browser_session.switch_to_tab(switch_tab_id)
 
-        if not len(contexts):
-            raise ActionError("No browser contexts found for tab switching")
+    async def _handle_open_tab(self, url: Optional[str] = None) -> None:
+        """Handle opening new tab with optional URL navigation.
 
-        current_context: PatchrightBrowserContext = contexts[0]
-
-        if not len(current_context.pages):
-            raise ActionError("No pages found for tab switching")
-
-        self.current_page: Page = current_context.pages[switch_tab_id]
-
-        await self.current_page.bring_to_front()
-
-    async def _handle_open_tab(self) -> None:
-        """Handle opening new tab."""
+        Args:
+            url: Optional URL to navigate to in the new tab
+        """
         logger.bugninja_log("➕ New tab requested")
-        await self.__handle_not_implemented_action("New tab")
+
+        try:
+            # Get browser context
+            if not hasattr(self.browser_session, "browser") or self.browser_session.browser is None:
+                raise ActionError("Browser not initialized - cannot open new tab")
+
+            contexts = self.browser_session.browser.contexts
+            if not contexts:
+                raise ActionError("No browser contexts found")
+
+            current_context = contexts[0]
+
+            # Create new page (tab)
+            new_page = await current_context.new_page()
+            logger.bugninja_log(f"📄 Created new tab (page)")
+
+            # Navigate to URL if provided
+            if url:
+                await new_page.goto(url, wait_until="load")
+                logger.bugninja_log(f"🌐 Navigated new tab to: {url}")
+
+            # Switch to the new tab
+            new_tab_id = len(current_context.pages) - 1
+            await self.browser_session.switch_to_tab(new_tab_id)
+            logger.bugninja_log(f"🔄 Switched to new tab (ID: {new_tab_id})")
+
+        except Exception as e:
+            error_msg = f"Failed to open new tab: {e}"
+            logger.error(error_msg)
+            raise ActionError(error_msg)
 
     async def _handle_close_tab(self) -> None:
         """Handle closing tab."""
@@ -361,14 +385,15 @@ class ReplicatorNavigator(ABC):
 			(b) If that JavaScript throws, fall back to window.scrollBy().
 		"""
 
-        dy = scroll_amount or await self.current_page.evaluate("() => window.innerHeight")
+        current_page = await self.browser_session.get_active_page()
+        dy = scroll_amount or await current_page.evaluate("() => window.innerHeight")
 
         if how == "up":
             dy = -dy
 
-        await self.current_page.wait_for_timeout(500)
+        await current_page.wait_for_timeout(500)
 
-        await self.current_page.evaluate("(y) => window.scrollBy(0, y)", dy)
+        await current_page.evaluate("(y) => window.scrollBy(0, y)", dy)
         logger.bugninja_log(f"🔍 Scrolled down the page by {dy} pixels")
 
     async def _handle_scroll_down(self, scroll_amount: Optional[int]) -> None:
@@ -458,7 +483,8 @@ class ReplicatorNavigator(ABC):
                     if child_xpath:
                         logger.bugninja_log(f"🎯 Found hidden file input child: {child_xpath}")
                         try:
-                            file_input = self.current_page.locator(child_xpath)
+                            current_page = await self.browser_session.get_active_page()
+                            file_input = current_page.locator(child_xpath)
                             if await file_input.count() == 1:
                                 await file_input.set_input_files(file_path)
                                 logger.bugninja_log(
@@ -469,9 +495,10 @@ class ReplicatorNavigator(ABC):
                             logger.warning(f"⚠️ Failed to use child file input: {e}")
 
         # Strategy 2: Try each selector for direct file input elements
+        current_page = await self.browser_session.get_active_page()
         for selector_type, selector in selectors:
             try:
-                element = self.current_page.locator(selector)
+                element = current_page.locator(selector)
                 count = await element.count()
 
                 if count == 0:
@@ -499,12 +526,13 @@ class ReplicatorNavigator(ABC):
         # Strategy 3: Find any file input on the page as fallback
         logger.bugninja_log("🔄 Trying to find any file input on page as fallback...")
         try:
-            file_inputs = await self.current_page.query_selector_all('input[type="file"]')
+            current_page = await self.browser_session.get_active_page()
+            file_inputs = await current_page.query_selector_all('input[type="file"]')
             if file_inputs:
                 # Try to set files on the first visible file input
-                for file_input in file_inputs:
+                for file_input_handle in file_inputs:
                     try:
-                        await file_input.set_input_files(file_path)
+                        await file_input_handle.set_input_files(file_path)
                         logger.bugninja_log(
                             f"✅ Uploaded file via fallback file input: {file_path}"
                         )
@@ -551,10 +579,11 @@ class ReplicatorNavigator(ABC):
         )
 
         last_error = None
+        current_page = await self.browser_session.get_active_page()
         for selector_type, selector in selectors:
             logger.bugninja_log(f"🔄 Trying {selector_type} selector: {selector}")
             success, error = await self._try_selector(
-                self.current_page, selector, action_type, **(action_kwargs or {})
+                current_page, selector, action_type, **(action_kwargs or {})
             )
 
             if success:
@@ -659,10 +688,12 @@ class ReplicatorNavigator(ABC):
 
         switch_tab_action: Optional[Dict[str, Any]] = interaction.action.get("switch_tab")
         scroll_down_action: Optional[Dict[str, Any]] = interaction.action.get("scroll_down")
-        scroll_up_action: Optional[Dict[str, Any]] = interaction.action.get("scroll_down")
+        scroll_up_action: Optional[Dict[str, Any]] = interaction.action.get("scroll_up")
+        open_tab_action: Optional[Dict[str, Any]] = interaction.action.get("open_tab")
 
         scroll_amount: Optional[int] = None
         switch_tab_id: Optional[int] = None
+        open_tab_url: Optional[str] = None
 
         if switch_tab_action:
             switch_tab_id = switch_tab_action["tab_id"]
@@ -672,6 +703,9 @@ class ReplicatorNavigator(ABC):
 
         if scroll_up_action:
             scroll_amount = scroll_up_action["amount"]
+
+        if open_tab_action:
+            open_tab_url = open_tab_action.get("url")
 
         # Map actions to their handlers
         action_handlers = {
@@ -686,7 +720,7 @@ class ReplicatorNavigator(ABC):
             "search_google": self._handle_search_google,
             "save_pdf": self._handle_save_pdf,
             "switch_tab": lambda: self._handle_switch_tab(switch_tab_id=switch_tab_id),
-            "open_tab": self._handle_open_tab,
+            "open_tab": lambda: self._handle_open_tab(url=open_tab_url),
             "close_tab": self._handle_close_tab,
             "get_ax_tree": self._handle_get_ax_tree,
             "scroll_down": lambda: self._handle_scroll_down(scroll_amount=scroll_amount),
@@ -847,9 +881,13 @@ class ReplicatorNavigator(ABC):
         This method closes the browser and playwright instance.
         """
 
-        if self.current_page:
-            await self.current_page.close()
+        try:
+            current_page = await self.browser_session.get_active_page()
+            await current_page.close()
             logger.debug("✅ Page closed")
+        except Exception:
+            # Page might already be closed or not available
+            pass
         if self.browser_session.browser:
             await self.browser_session.browser.close()
             logger.debug("✅ Browser closed")
@@ -866,7 +904,7 @@ class ReplicatorNavigator(ABC):
     async def before_run(self) -> None:
         logger.bugninja_log("🚀 Starting browser session")
         await self.browser_session.start()
-        self.current_page = await self.browser_session.get_current_page()  # type: ignore
+        # Current page is now managed by tab-aware session
 
     async def after_run(self, did_run_fail: bool, failed_reason: Optional[str]) -> None:
 

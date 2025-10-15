@@ -26,6 +26,7 @@ from bugninja.schemas.pipeline import BugninjaBrainState, BugninjaExtendedAction
 from bugninja.schemas.test_case_io import TestCaseSchema
 from bugninja.utils.logging_config import logger
 from bugninja.utils.screenshot_manager import ScreenshotManager
+from bugninja.utils.tab_aware_session import TabAwareBrowserSession
 
 
 class HealerAgent(BugninjaAgentBase):
@@ -183,6 +184,10 @@ class HealerAgent(BugninjaAgentBase):
         if parent_run_id is not None:
             self.run_id = parent_run_id
 
+        # Wrap browser session with tab awareness after initialization
+        if hasattr(self, "browser_session") and self.browser_session:
+            self.browser_session = TabAwareBrowserSession(self.browser_session)  # type: ignore[has-type]
+
     async def _before_run_hook(self) -> None:
         """Initialize healing session with event tracking and screenshot management.
 
@@ -319,14 +324,23 @@ class HealerAgent(BugninjaAgentBase):
         brain_state_id: str = CUID().generate()
         self.agent_brain_states[brain_state_id] = model_output.current_state
 
-        current_page: Page = await self.browser_session.get_current_page()
+        assert self.browser_session is not None
+        current_page: Page = await self.browser_session.get_active_page()
 
         #! generating the alternative CSS and XPath selectors should happen BEFORE the actions are completed
+        # Capture tab metadata
+        tab_id = (
+            self.browser_session.tabs.active_tab_id if hasattr(self.browser_session, "tabs") else 0
+        )
+        url_at_action = current_page.url
+
         extended_taken_actions = await self.extend_model_output_with_info(
             brain_state_id=brain_state_id,
             current_page=current_page,
             model_output=model_output,
             browser_state_summary=browser_state_summary,
+            tab_id=tab_id,
+            url_at_action=url_at_action,
         )
 
         # Store extended actions for hook access

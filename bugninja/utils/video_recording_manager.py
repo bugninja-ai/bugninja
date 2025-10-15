@@ -33,11 +33,12 @@ stats = await video_manager.stop_recording()
 ```
 """
 
+import asyncio
 import os
 import shutil
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from playwright.async_api import CDPSession
 
@@ -203,3 +204,65 @@ class VideoRecordingManager:
             return None
 
         return (timestamp - self.video_start_time) / 1000.0  # Convert to seconds
+
+    async def bind_to_page(self, page: Any, browser_context: Any) -> None:
+        """Bind video recording to a specific page.
+
+        Args:
+            page: The page to bind to
+            browser_context: Browser context for CDP session creation
+        """
+        if self.is_recording:
+            # Create new CDP session for the page
+            self.cdp_session = await browser_context.new_cdp_session(page)
+
+            # Setup CDP screencast for the new page
+            await self.cdp_session.send(
+                "Page.startScreencast",
+                {
+                    "format": "jpeg",
+                    "quality": self.config.quality,
+                    "maxWidth": self.config.width,
+                    "maxHeight": self.config.height,
+                    "everyNthFrame": 1,
+                },
+            )
+
+    async def setup_tab_listener(self, session: Any) -> None:
+        """Setup listener for tab changes to rebind video recording.
+
+        Args:
+            session: Tab-aware browser session to listen to
+        """
+        # Set video manager on session for immediate rebind
+        if hasattr(session, "set_video_manager"):
+            session.set_video_manager(self)
+
+        async def on_tab_change(tab_id: int) -> None:
+            if self.is_recording:
+                try:
+                    # Get browser context - try multiple access patterns
+                    browser_context = None
+                    if hasattr(session, "browser_context"):
+                        browser_context = session.browser_context
+                    elif hasattr(session, "browser_session") and hasattr(
+                        session.browser_session, "browser_context"
+                    ):
+                        browser_context = session.browser_session.browser_context
+                    elif (
+                        hasattr(session, "browser")
+                        and session.browser
+                        and len(session.browser.contexts) > 0
+                    ):
+                        browser_context = session.browser.contexts[0]
+
+                    if browser_context:
+                        active_page = await session.get_active_page()
+                        await self.bind_to_page(active_page, browser_context)
+                        logger.bugninja_log(f"🎥 Video recording rebound to tab {tab_id}")
+                    else:
+                        logger.warning("⚠️ Could not find browser context for video rebind")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to rebind video recording on tab change: {e}")
+
+        session.tabs.on_change(lambda tab_id: asyncio.create_task(on_tab_change(tab_id)))

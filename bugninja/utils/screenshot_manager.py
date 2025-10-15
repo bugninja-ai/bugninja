@@ -141,13 +141,15 @@ class ScreenshotManager:
         page: Page,
         action: "BugninjaExtendedAction",
         browser_session: Optional[BrowserSession] = None,
+        page_id: Optional[int] = None,
     ) -> str:
         """Take screenshot with element highlighting and return filename.
 
         Args:
-            page (Page): Playwright page object (used to get context)
+            page (Page): Playwright page object (used for fallback if session unavailable)
             action (BugninjaExtendedAction): Extended action containing DOM element data
             browser_session (Optional[BrowserSession]): Browser session object for taking screenshots
+            page_id (Optional[int]): Specific tab ID to capture (if None, uses active tab)
 
         Returns:
             str: Full relative path to screenshot file
@@ -155,12 +157,30 @@ class ScreenshotManager:
         Example:
             ```python
             filename = await screenshot_manager.take_screenshot(
-                page, action, browser_session
+                page, action, browser_session, page_id=1
             )
             print(f"Screenshot saved: {filename}")
             ```
         """
-        # 1. Check if we need coordinates
+        # 1. Resolve the correct page to use
+        target_page = page  # Default fallback
+        if browser_session and hasattr(browser_session, "get_active_page"):
+            try:
+                target_page = await browser_session.get_active_page()  # type: ignore[misc]
+            except Exception:
+                # Fallback to provided page if active page resolution fails
+                target_page = page
+        elif browser_session and hasattr(browser_session, "tabs") and page_id is not None:
+            # Handle tab-aware session with specific page_id
+            try:
+                contexts = browser_session.browser.contexts  # type: ignore[misc]
+                if contexts and len(contexts[0].pages) > page_id:
+                    target_page = contexts[0].pages[page_id]
+            except Exception:
+                # Fallback to provided page
+                target_page = page
+
+        # 2. Check if we need coordinates
         coordinates = None
         should_extract = self._should_extract_coordinates(action)
 
@@ -169,12 +189,12 @@ class ScreenshotManager:
         )
 
         if should_extract and action.dom_element_data:
-            coordinates = await self._get_element_coordinates(page, action.dom_element_data)
+            coordinates = await self._get_element_coordinates(target_page, action.dom_element_data)
             logger.debug(f"⚔️ Coordinates extracted: {coordinates}")
 
-        # 2. Take screenshot
+        # 3. Take screenshot
         filename = self._generate_filename(action)
-        await self._take_clean_screenshot(page, browser_session, filename)
+        await self._take_clean_screenshot(target_page, browser_session, filename)
 
         # 3. Draw rectangle if coordinates were found
         if coordinates:
