@@ -173,6 +173,12 @@ class Traversal(BaseModel):
         default=None, description="Files available for upload (stored as serialized FileUploadInfo)"
     )
 
+    # HTTP authentication support
+    http_auth: Optional[Dict[str, str]] = Field(
+        default=None,
+        description="HTTP authentication credentials (stored as username/password dict)",
+    )
+
     class Config:
         arbitrary_types_allowed = True
 

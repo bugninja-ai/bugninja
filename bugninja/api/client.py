@@ -598,6 +598,14 @@ class BugninjaClient:
 
             # TODO! this is extremely ugly and a strong antipattern, but it works for now, has to get rid of it later
             browser_session.browser_profile.allowed_domains = task.allowed_domains
+
+            # Set HTTP authentication if provided
+            if task.http_auth:
+                from browser_use.browser.profile import HttpCredentials  # type: ignore
+
+                browser_session.browser_profile.http_credentials = HttpCredentials(
+                    username=task.http_auth.username, password=task.http_auth.password
+                )
             self._active_sessions.append(browser_session)
 
             # Create LLM with configured temperature
@@ -630,6 +638,7 @@ class BugninjaClient:
                 runtime_inputs=runtime_inputs,
                 original_task_secrets=task.secrets,
                 available_files=task.available_files,
+                http_auth=task.http_auth,
             )
 
             # Set event manager if available

@@ -33,7 +33,7 @@ from bugninja.prompts.prompt_factory import (
     get_input_schema_prompt,
     get_io_extraction_prompt,
 )
-from bugninja.schemas.models import BugninjaConfig, FileUploadInfo
+from bugninja.schemas.models import BugninjaConfig, FileUploadInfo, HTTPAuthCredentials
 from bugninja.schemas.pipeline import (
     ActionTimestamps,
     BugninjaBrowserConfig,
@@ -130,6 +130,7 @@ class NavigatorAgent(BugninjaAgentBase):
         original_task_secrets: Optional[Dict[str, Any]] = None,
         runtime_inputs: Optional[Dict[str, Any]] = None,
         available_files: Optional[List["FileUploadInfo"]] = None,
+        http_auth: Optional["HTTPAuthCredentials"] = None,
         **kwargs,  # type:ignore
     ) -> None:
         """Initialize NavigatorAgent with navigation-specific functionality.
@@ -147,11 +148,14 @@ class NavigatorAgent(BugninjaAgentBase):
             dependencies (Optional[List[str]]): List of task dependencies
             original_task_secrets (Optional[Dict[str, Any]]): Original task secrets (kept separate from runtime inputs)
             runtime_inputs (Optional[Dict[str, Any]]): Input data from dependent tasks to be included in system prompt
+            available_files (Optional[List[FileUploadInfo]]): Files available for upload during task execution
+            http_auth (Optional[HTTPAuthCredentials]): HTTP authentication credentials for start URL
             **kwargs: Keyword arguments passed to the parent BugninjaAgentBase class
         """
 
         # Store unified schema and dependencies
         self.start_url = start_url
+        self.http_auth = http_auth
         self.io_schema = io_schema
         self.dependencies = dependencies or []
         self.original_task_secrets = original_task_secrets or {}
@@ -275,6 +279,10 @@ class NavigatorAgent(BugninjaAgentBase):
             )
 
         logger.bugninja_log(f"🌐 Automatically navigating to start URL: {self.start_url}")
+        if self.http_auth:
+            logger.bugninja_log(
+                f"🔐 HTTP authentication configured for user: {self.http_auth.username}"
+            )
         try:
             assert self.browser_session is not None
             current_page = await self.browser_session.get_active_page()
@@ -682,6 +690,11 @@ class NavigatorAgent(BugninjaAgentBase):
             available_files=(
                 [f.model_dump(mode="json") for f in self.available_files]
                 if self.available_files
+                else None
+            ),
+            http_auth=(
+                {"username": self.http_auth.username, "password": self.http_auth.password}
+                if self.http_auth
                 else None
             ),
         )

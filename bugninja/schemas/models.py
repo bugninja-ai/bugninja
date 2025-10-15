@@ -47,6 +47,50 @@ from bugninja.schemas.pipeline import Traversal
 from bugninja.schemas.test_case_io import TestCaseSchema
 
 
+class HTTPAuthCredentials(BaseModel):
+    """HTTP authentication credentials for basic auth.
+
+    This model defines HTTP authentication credentials for accessing websites
+    that require HTTP Basic Authentication. These credentials are automatically
+    used when navigating to the start URL.
+
+    Attributes:
+        username (str): Username for HTTP authentication
+        password (str): Password for HTTP authentication
+
+    Example:
+        ```python
+        from bugninja.schemas.models import HTTPAuthCredentials
+
+        auth = HTTPAuthCredentials(
+            username="admin",
+            password="secret123"
+        )
+        ```
+    """
+
+    username: str = Field(min_length=1, description="Username for HTTP authentication")
+    password: str = Field(min_length=1, description="Password for HTTP authentication")
+
+    @field_validator("username", "password")
+    @classmethod
+    def validate_not_empty(cls, v: str) -> str:
+        """Validate that username and password are not empty or whitespace-only.
+
+        Args:
+            v (str): The value to validate
+
+        Returns:
+            str: The validated and stripped value
+
+        Raises:
+            ValueError: If value is empty or whitespace-only
+        """
+        if not v or not v.strip():
+            raise ValueError("HTTP auth credentials cannot be empty or whitespace-only")
+        return v.strip()
+
+
 class FileUploadInfo(BaseModel):
     """Information about a file available for upload during task execution.
 
@@ -298,6 +342,11 @@ class BugninjaTask(BaseModel):
         default=None, description="Files available for upload during task execution"
     )
 
+    # HTTP authentication support
+    http_auth: Optional["HTTPAuthCredentials"] = Field(
+        default=None, description="HTTP authentication credentials for start URL"
+    )
+
     @field_validator("description")
     @classmethod
     def validate_description(cls, v: str) -> str:
@@ -448,6 +497,14 @@ class BugninjaTask(BaseModel):
                 )
 
             self.available_files = available_files
+
+        # Update HTTP authentication if present
+        if "task.http_auth" in task_config:
+            auth_data = task_config["task.http_auth"]
+            if auth_data and auth_data.get("username") and auth_data.get("password"):
+                self.http_auth = HTTPAuthCredentials(
+                    username=auth_data["username"], password=auth_data["password"]
+                )
 
     class Config:
         """Pydantic configuration for BugninjaTask model."""
