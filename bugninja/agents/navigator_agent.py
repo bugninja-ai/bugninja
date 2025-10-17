@@ -224,10 +224,10 @@ class NavigatorAgent(BugninjaAgentBase):
         This hook sets up the navigation environment by:
         - initializing action and brain state tracking
         - setting up screenshot manager for navigation recording
+        - setting up browser isolation using run_id
+        - initializing video recording at browser session start (if enabled)
         - initializing event tracking for navigation operations
         - logging the start of the navigation session
-        - setting up browser isolation using run_id
-        - setting up video recording if enabled
         - automatically navigating to the start_url programmatically
         """
         logger.bugninja_log("🏁 BEFORE-Run hook called")
@@ -251,6 +251,44 @@ class NavigatorAgent(BugninjaAgentBase):
             self.video_recording_config = VideoRecordingConfig.with_base_dir(
                 self.output_base_dir, **self.video_recording_config.model_dump()
             )
+
+        # Initialize video recording at browser session start
+        if self.video_recording_manager and self.browser_session.browser_context:
+            try:
+                current_page = await self.browser_session.get_current_page()
+                cdp_session = await self.browser_session.browser_context.new_cdp_session(current_page)  # type: ignore
+
+                # Start video recording
+                output_file = f"run_{self.run_id}"
+                await self.video_recording_manager.start_recording(output_file, cdp_session)
+
+                # Setup CDP screencast
+                await cdp_session.send(
+                    "Page.startScreencast",
+                    {
+                        "format": "jpeg",
+                        "quality": self.video_recording_manager.config.quality,
+                        "maxWidth": self.video_recording_manager.config.width,
+                        "maxHeight": self.video_recording_manager.config.height,
+                        "everyNthFrame": 1,
+                    },
+                )
+
+                # Setup frame handler
+                cdp_session.on(
+                    "Page.screencastFrame",
+                    lambda frame: asyncio.create_task(
+                        self._handle_screencast_frame(frame, cdp_session)
+                    ),
+                )
+
+                logger.bugninja_log(f"🎥 Started video recording: {output_file}")
+            except Exception as e:
+                logger.bugninja_log(
+                    f"⚠️ Video recording failed: {e}. Task will continue without video recording."
+                )
+                # Disable video recording for this session
+                self.video_recording_manager = None
 
         # Initialize event tracking for navigation run (if event_manager is provided)
         if self.event_manager and self.event_manager.has_publishers():
@@ -398,7 +436,6 @@ class NavigatorAgent(BugninjaAgentBase):
         - generates extended actions with DOM element information
         - associates actions with their extended versions
         - stores actions for later serialization and analysis
-        - initializes video recording on the first step
 
         Args:
             browser_state_summary (BrowserStateSummary): Current browser state information
@@ -409,49 +446,6 @@ class NavigatorAgent(BugninjaAgentBase):
         current_page: Page = await self.browser_session.get_current_page()
 
         await self.wait_proper_load_state(current_page)
-
-        # Initialize video recording on the first step only
-        if not hasattr(self, "_video_recording_initialized"):
-            self._video_recording_initialized = False
-
-        if not self._video_recording_initialized:
-            if self.video_recording_manager and self.browser_session.browser_context:
-                try:
-                    cdp_session = await self.browser_session.browser_context.new_cdp_session(current_page)  # type: ignore
-
-                    # Start video recording
-                    output_file = f"run_{self.run_id}"
-                    await self.video_recording_manager.start_recording(output_file, cdp_session)
-
-                    # Setup CDP screencast
-                    await cdp_session.send(
-                        "Page.startScreencast",
-                        {
-                            "format": "jpeg",
-                            "quality": self.video_recording_manager.config.quality,
-                            "maxWidth": self.video_recording_manager.config.width,
-                            "maxHeight": self.video_recording_manager.config.height,
-                            "everyNthFrame": 1,
-                        },
-                    )
-
-                    # Setup frame handler
-                    cdp_session.on(
-                        "Page.screencastFrame",
-                        lambda frame: asyncio.create_task(
-                            self._handle_screencast_frame(frame, cdp_session)
-                        ),
-                    )
-
-                    self._video_recording_initialized = True
-                    logger.bugninja_log(f"🎥 Started video recording: {output_file}")
-                except Exception as e:
-                    logger.bugninja_log(
-                        f"⚠️ Video recording failed: {e}. Task will continue without video recording."
-                    )
-                    # Disable video recording for this session
-                    self.video_recording_manager = None
-                    self._video_recording_initialized = True
 
         # ? we create the brain state here since a single thought can belong to multiple actions
         brain_state_id: str = CUID().generate()

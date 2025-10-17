@@ -59,6 +59,9 @@ class PipelineExecutor:
         from bugninja.utils.logging_config import logger
         from bugninja_cli.utils.task_resolver import CLITaskResolver
 
+        logger.bugninja_log(
+            f"🚀 PipelineExecutor.execute_with_dependencies called for task: {target_task.folder_name}"
+        )
         start_time = datetime.now()
 
         # Create CLI task resolver
@@ -104,7 +107,7 @@ class PipelineExecutor:
             # Get execution order directly from BugninjaPipeline
             task_order = materialized_pipeline.get_execution_order_folder_names()
 
-            logger.info(f"🗂️ BugninjaPipeline execution order: {' → '.join(task_order)}")
+            logger.bugninja_log(f"🗂️ BugninjaPipeline execution order: {' → '.join(task_order)}")
 
             # Display dependency tree if there are multiple tasks
             if len(task_order) > 1:
@@ -119,12 +122,16 @@ class PipelineExecutor:
                 Enhanced to preserve data flow while maintaining directory isolation.
                 Each task gets its own configuration loaded from its TOML file.
                 """
+                logger.bugninja_log(f"🏭 Creating client for task payload: {type(task_payload)}")
                 # TaskRef should never reach here due to materialization, but handle it for type safety
                 if isinstance(task_payload, TaskRef):
                     raise ValueError("TaskRef should have been materialized before execution")
 
                 # Load task-specific run configuration
                 run_config = self._load_task_run_config(task_payload)
+                logger.bugninja_log(
+                    f"🎬 Video recording enabled in run_config: {run_config.enable_video_recording}"
+                )
                 config = BugninjaConfig(
                     headless=run_config.headless,
                     viewport_width=run_config.viewport_width,
@@ -142,7 +149,7 @@ class PipelineExecutor:
                 folder_name = task_order[idx] if idx < len(task_order) else target_task.folder_name
 
                 # Enhanced logging for pipeline parameter passing debugging
-                logger.info(
+                logger.bugninja_log(
                     f"🏭 PipelineExecutor: Creating client for task {idx + 1}/{len(task_order)}: {folder_name}"
                 )
 
@@ -156,10 +163,10 @@ class PipelineExecutor:
                     schema = task_payload.task.io_schema
                     if schema.input_schema:
                         input_keys = list(schema.input_schema.keys())
-                        logger.info(f"📥 Task '{folder_name}' expects inputs: {input_keys}")
+                        logger.bugninja_log(f"📥 Task '{folder_name}' expects inputs: {input_keys}")
                     if schema.output_schema:
                         output_keys = list(schema.output_schema.keys())
-                        logger.info(f"📤 Task '{folder_name}' will output: {output_keys}")
+                        logger.bugninja_log(f"📤 Task '{folder_name}' will output: {output_keys}")
 
                 task_counter["index"] += 1
 
@@ -168,12 +175,23 @@ class PipelineExecutor:
                 config.output_base_dir = task_output_dir
                 config.screenshots_dir = task_output_dir / "screenshots"
 
-                logger.info(f"📁 Task '{folder_name}' output directory: {task_output_dir}")
+                # Set up video recording configuration if enabled
+                video_config = run_config.get_video_recording_config(
+                    str(task_output_dir / "videos")
+                )
+                if video_config:
+                    config.video_recording = video_config
+                    logger.bugninja_log(f"🎥 Video recording enabled for task '{folder_name}'")
+                    logger.bugninja_log(f"📹 Video output directory: {video_config.output_dir}")
+                else:
+                    logger.bugninja_log(f"📹 Video recording disabled for task '{folder_name}'")
+
+                logger.bugninja_log(f"📁 Task '{folder_name}' output directory: {task_output_dir}")
 
                 return BugninjaClient(config=config)
 
             # Execute using BugninjaPipeline's run method with client factory
-            logger.info(
+            logger.bugninja_log(
                 f"🚀 PipelineExecutor: Starting pipeline execution for {len(task_order)} tasks"
             )
             execution_results = await materialized_pipeline.run(
@@ -181,7 +199,7 @@ class PipelineExecutor:
             )
 
             # Post-execution validation and logging
-            logger.info(
+            logger.bugninja_log(
                 f"✅ PipelineExecutor: BugninjaPipeline execution completed with {len(execution_results)} results"
             )
 
@@ -192,9 +210,9 @@ class PipelineExecutor:
                 traversal_file = result.get("traversal_file")
 
                 if success:
-                    logger.info(f"✅ Task {i+1}: '{task_desc}...' completed successfully")
+                    logger.bugninja_log(f"✅ Task {i+1}: '{task_desc}...' completed successfully")
                     if traversal_file:
-                        logger.info(f"📄 Task {i+1}: Traversal saved to {traversal_file}")
+                        logger.bugninja_log(f"📄 Task {i+1}: Traversal saved to {traversal_file}")
                     else:
                         logger.warning(
                             f"⚠️ Task {i+1}: No traversal file found - may affect parameter passing"
@@ -208,7 +226,9 @@ class PipelineExecutor:
                 last_result = execution_results[-1]
                 if last_result.get("traversal_file"):
                     traversal_path = last_result["traversal_file"]
-                    logger.info(f"🎯 PipelineExecutor: Target task traversal: {traversal_path}")
+                    logger.bugninja_log(
+                        f"🎯 PipelineExecutor: Target task traversal: {traversal_path}"
+                    )
                 else:
                     logger.warning("⚠️ PipelineExecutor: No traversal file from target task")
 
@@ -231,7 +251,9 @@ class PipelineExecutor:
                 task_run_config = TaskRunConfig()
                 task_executor = TaskExecutor(task_run_config, self.project_root)
                 task_executor._update_task_metadata(target_task, execution_result, "ai_navigated")
-                logger.info(f"📝 Updated task metadata for '{target_task.name}' with AI run")
+                logger.bugninja_log(
+                    f"📝 Updated task metadata for '{target_task.name}' with AI run"
+                )
             except Exception as e:
                 logger.warning(f"⚠️ Failed to update task metadata: {e}")
 
@@ -259,7 +281,9 @@ class PipelineExecutor:
                 task_run_config = TaskRunConfig()
                 task_executor = TaskExecutor(task_run_config, self.project_root)
                 task_executor._update_task_metadata(target_task, execution_result, "ai_navigated")
-                logger.info(f"📝 Updated task metadata for '{target_task.name}' with failed AI run")
+                logger.bugninja_log(
+                    f"📝 Updated task metadata for '{target_task.name}' with failed AI run"
+                )
             except Exception as metadata_error:
                 logger.warning(f"⚠️ Failed to update task metadata: {metadata_error}")
 
@@ -288,14 +312,14 @@ class PipelineExecutor:
                 try:
                     # Use existing utility to load task run config
                     run_config = TaskExecutor._load_task_run_config(toml_path)
-                    logger.info(
+                    logger.bugninja_log(
                         f"📋 PipelineExecutor: Loaded task-specific config from {toml_path.name}"
                     )
-                    logger.info(
+                    logger.bugninja_log(
                         f"🖥️ PipelineExecutor: Viewport: {run_config.viewport_width}x{run_config.viewport_height}"
                     )
                     if run_config.user_agent:
-                        logger.info(
+                        logger.bugninja_log(
                             f"🌐 PipelineExecutor: User agent: {run_config.user_agent[:50]}..."
                         )
                     return run_config
@@ -306,7 +330,7 @@ class PipelineExecutor:
 
         # Fallback to defaults
         default_config = TaskRunConfig()
-        logger.info("📋 PipelineExecutor: Using default run configuration")
+        logger.bugninja_log("📋 PipelineExecutor: Using default run configuration")
         return default_config
 
     def _display_dependency_tree(self, target_task: TaskInfo, task_order: List[str]) -> None:
