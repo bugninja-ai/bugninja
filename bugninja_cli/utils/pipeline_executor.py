@@ -7,21 +7,23 @@ dependency management and execution using the unified BugninjaPipeline API.
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING
 
 from rich.console import Console
 from rich.panel import Panel
 
-from bugninja.api.bugninja_pipeline import BugninjaPipeline, TaskRef, TaskSpec
-from bugninja.schemas.cli_schemas import TaskExecutionResult, TaskInfo, TaskRunConfig
-from bugninja.utils.logging_config import logger
 from bugninja_cli.utils.task_executor import TaskExecutor
-from bugninja_cli.utils.task_lookup import get_task_by_identifier
 from bugninja_cli.utils.task_manager import TaskManager
 
 if TYPE_CHECKING:
-    from bugninja.api import BugninjaTask
+    from bugninja.api.bugninja_pipeline import TaskRef, TaskSpec
+    from bugninja.schemas.cli_schemas import (
+        TaskExecutionResult,
+        TaskInfo,
+        TaskRunConfig,
+    )
 
 
 class PipelineExecutor:
@@ -53,27 +55,25 @@ class PipelineExecutor:
         Returns:
             TaskExecutionResult: Result of the execution
         """
-        from datetime import datetime
+        from bugninja.schemas.cli_schemas import TaskExecutionResult
+        from bugninja.utils.logging_config import logger
+        from bugninja_cli.utils.task_resolver import CLITaskResolver
 
         start_time = datetime.now()
 
-        # Convert to BugninjaPipeline with TaskRef nodes
-        pipeline = self._convert_to_pipeline(target_task, task_manager)
+        # Create CLI task resolver
+        task_resolver = CLITaskResolver(task_manager)
 
-        # Create resolver function that converts TaskRef to BugninjaTask
-        def resolve_task_ref(task_ref: TaskRef) -> BugninjaTask:
-            """Resolve TaskRef to BugninjaTask using task_manager."""
-            task_info = get_task_by_identifier(task_manager, task_ref.identifier)
-            if not task_info:
-                raise ValueError(f"Could not resolve task by identifier: {task_ref.identifier}")
+        # Create pipeline from TOML dependencies (single source of truth)
+        from bugninja.api.bugninja_pipeline import BugninjaPipeline
 
-            from bugninja.api import BugninjaTask
-
-            return BugninjaTask(task_config_path=task_info.toml_path)
+        pipeline = BugninjaPipeline.from_task_toml(
+            target_task_identifier=target_task.folder_name, task_resolver=task_resolver
+        )
 
         # Materialize TaskRef nodes to TaskSpec nodes
         try:
-            materialized_pipeline = pipeline.materialize(resolve_task_ref)
+            materialized_pipeline = pipeline.materialize(task_resolver.resolve_task_ref)
         except Exception as e:
             self.console.print(
                 Panel(
@@ -98,15 +98,11 @@ class PipelineExecutor:
             # Create client factory that generates task-specific clients
             from bugninja.api import BugninjaClient
             from bugninja.api.bugninja_pipeline import TaskRef
+            from bugninja.schemas.cli_schemas import TaskExecutionResult
             from bugninja.schemas.models import BugninjaConfig
 
-            # Get the execution order from the materialized pipeline (with resolved TaskSpec objects)
-            exec_list, _ = materialized_pipeline._build_exec_plan()
-
-            # Map execution order to folder names using the dependency graph
-            # Get the dependency graph with correct folder names in execution order
-            all_tasks = self._build_dependency_graph(target_task, task_manager)
-            task_order = [task.folder_name for task in all_tasks]
+            # Get execution order directly from BugninjaPipeline
+            task_order = materialized_pipeline.get_execution_order_folder_names()
 
             logger.info(f"🗂️ BugninjaPipeline execution order: {' → '.join(task_order)}")
 
@@ -260,37 +256,6 @@ class PipelineExecutor:
 
             return execution_result
 
-    def _convert_to_pipeline(
-        self, target_task: TaskInfo, task_manager: TaskManager
-    ) -> BugninjaPipeline:
-        """Convert CLI tasks to BugninjaPipeline with TaskRef objects.
-
-        Args:
-            target_task: The target task to execute
-            task_manager: Task manager instance
-
-        Returns:
-            BugninjaPipeline: Configured pipeline with dependencies
-        """
-        pipeline = BugninjaPipeline()
-
-        # Build dependency graph from target task
-        all_tasks = self._build_dependency_graph(target_task, task_manager)
-
-        # Add all tasks to pipeline
-        for task in all_tasks:
-            pipeline.testcase(task.folder_name, TaskRef(identifier=task.folder_name))
-
-        # Set up dependency relationships
-        for task in all_tasks:
-            # Find dependencies for this task
-            dependencies = self._get_task_dependencies(task, task_manager)
-            if dependencies:
-                parent_names = [dep.folder_name for dep in dependencies]
-                pipeline.depends(task.folder_name, parent_names)
-
-        return pipeline
-
     def _load_task_run_config(self, task_payload: TaskSpec) -> TaskRunConfig:
         """Load task-specific run configuration from TOML file.
 
@@ -305,6 +270,7 @@ class PipelineExecutor:
             - For tasks without task_config_path: uses default values
             - Falls back to defaults if TOML loading fails
         """
+        from bugninja.utils.logging_config import logger
 
         # Check if task has a config file path
         if hasattr(task_payload.task, "task_config_path") and task_payload.task.task_config_path:
@@ -333,63 +299,3 @@ class PipelineExecutor:
         default_config = TaskRunConfig()
         logger.info("📋 PipelineExecutor: Using default run configuration")
         return default_config
-
-    def _build_dependency_graph(
-        self, target_task: TaskInfo, task_manager: TaskManager
-    ) -> List[TaskInfo]:
-        """Build complete dependency graph for target task.
-
-        Args:
-            target_task: The target task
-            task_manager: Task manager instance
-
-        Returns:
-            List[TaskInfo]: All tasks in dependency order
-        """
-        # Use TaskExecutor's dependency resolution logic
-        from bugninja.schemas.cli_schemas import TaskRunConfig
-
-        dummy_config = TaskRunConfig()  # Create minimal config for dependency resolution
-        temp_executor = TaskExecutor(task_run_config=dummy_config, project_root=self.project_root)
-
-        try:
-            # Get dependency plan
-            plan = temp_executor._resolve_dependencies_toposort(target_task, task_manager)
-            return plan
-        except Exception as e:
-            self.console.print(
-                Panel(
-                    f"❌ Failed to resolve dependencies: {str(e)}",
-                    title="Dependency Resolution Error",
-                    border_style="red",
-                )
-            )
-            return [target_task]  # Fallback to just the target task
-
-    def _get_task_dependencies(self, task: TaskInfo, task_manager: TaskManager) -> List[TaskInfo]:
-        """Get dependencies for a specific task.
-
-        Args:
-            task: The task to get dependencies for
-            task_manager: Task manager instance
-
-        Returns:
-            List[TaskInfo]: List of dependency tasks
-        """
-        dependencies = []
-
-        # Load task configuration from TOML directly
-        try:
-            import tomli
-
-            with open(task.toml_path, "rb") as f:
-                task_config = tomli.load(f)
-            dep_ids = task_config.get("task", {}).get("dependencies", [])
-        except Exception:
-            dep_ids = []
-
-        for dep_id in dep_ids:
-            dep_task = get_task_by_identifier(task_manager, str(dep_id))
-            if dep_task:
-                dependencies.append(dep_task)
-        return dependencies

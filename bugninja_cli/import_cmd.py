@@ -45,9 +45,8 @@ if TYPE_CHECKING:
     from bugninja.agents.test_case_creator import TestCaseCreatorAgent
     from bugninja.schemas.test_case_creation import TestCaseCreationOutput
     from bugninja.schemas.test_case_import import TestScenario
+    from bugninja.schemas.test_case_io import TestCaseSchema
     from bugninja_cli.utils.task_manager import TaskManager
-
-from bugninja.schemas.test_case_io import TestCaseSchema
 
 
 def generate_file_aliases(file_paths: List[Path]) -> Tuple[Dict[str, Path], Dict[Path, str]]:

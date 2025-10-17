@@ -1,6 +1,18 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Protocol,
+    Set,
+    Tuple,
+    Union,
+    runtime_checkable,
+)
 
 from pydantic import BaseModel, Field
 
@@ -10,6 +22,40 @@ from bugninja.utils.logging_config import logger
 
 if TYPE_CHECKING:
     from bugninja.api.client import BugninjaClient
+
+
+@runtime_checkable
+class TaskResolver(Protocol):
+    """Protocol for resolving task identifiers to tasks and dependencies.
+
+    This protocol ensures compatibility between CLI and library implementations
+    while maintaining type safety and clear interfaces.
+    """
+
+    def resolve_task_ref(self, task_ref: TaskRef) -> BugninjaTask:
+        """Resolve TaskRef to BugninjaTask.
+
+        Args:
+            task_ref: Reference to a task by identifier
+
+        Returns:
+            BugninjaTask: Resolved task instance
+
+        Raises:
+            ValueError: If task cannot be resolved
+        """
+        ...
+
+    def get_task_dependencies(self, identifier: str) -> List[str]:
+        """Get dependency identifiers for a task.
+
+        Args:
+            identifier: Task identifier (folder name or CUID)
+
+        Returns:
+            List[str]: List of dependency identifiers
+        """
+        ...
 
 
 class TaskRef(BaseModel):
@@ -173,6 +219,83 @@ class BugninjaPipeline:
                     )
 
         return materialized
+
+    @classmethod
+    def from_task_toml(
+        cls,
+        target_task_identifier: str,
+        task_resolver: TaskResolver,
+        default_run_config: Optional[TaskRunConfig] = None,
+    ) -> "BugninjaPipeline":
+        """Create pipeline from TOML-based task dependencies.
+
+        This method automatically discovers and builds the complete dependency graph
+        by reading TOML files, making it compatible with CLI usage while providing
+        the same functionality for library users.
+
+        Args:
+            target_task_identifier: Folder name or CUID of the target task
+            task_resolver: Resolver for converting identifiers to tasks and dependencies
+            default_run_config: Default configuration for the pipeline
+
+        Returns:
+            BugninjaPipeline: Configured pipeline with all dependencies
+        """
+        pipeline = cls(default_run_config=default_run_config)
+
+        # Discover all dependencies using DFS
+        visited = set()
+        task_stack = [target_task_identifier]
+
+        while task_stack:
+            current_id = task_stack.pop()
+            if current_id in visited:
+                continue
+
+            visited.add(current_id)
+
+            # Add task to pipeline
+            task_ref = TaskRef(identifier=current_id)
+            pipeline.testcase(current_id, task_ref)
+
+            # Get dependencies and add them to stack
+            dependencies = task_resolver.get_task_dependencies(current_id)
+            for dep_id in dependencies:
+                if dep_id not in visited:
+                    task_stack.append(dep_id)
+
+            # Set up dependency relationships
+            if dependencies:
+                pipeline.depends(current_id, dependencies)
+
+        return pipeline
+
+    def get_execution_order_folder_names(self) -> List[str]:
+        """Get execution order as folder names for CLI compatibility.
+
+        Returns:
+            List[str]: Folder names in execution order
+        """
+        exec_list, _ = self._build_exec_plan()
+        folder_names = []
+
+        for key, task_payload in exec_list:
+            if key.startswith("ref::"):
+                # Extract folder name from TaskRef key
+                folder_name = key[5:]  # Remove "ref::" prefix
+                folder_names.append(folder_name)
+            elif isinstance(task_payload, TaskSpec):
+                # For TaskSpec, extract from task_config_path
+                if (
+                    hasattr(task_payload.task, "task_config_path")
+                    and task_payload.task.task_config_path
+                ):
+                    folder_name = task_payload.task.task_config_path.parent.name
+                    folder_names.append(folder_name)
+                else:
+                    raise ValueError(f"Cannot determine folder name for TaskSpec with key: {key}")
+
+        return folder_names
 
     def _node_key(self, node: _Node) -> str:
         """Generate unique key for a node."""
