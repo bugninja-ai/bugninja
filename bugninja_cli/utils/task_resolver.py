@@ -7,7 +7,7 @@ enabling BugninjaPipeline to work seamlessly with TOML-based task dependencies.
 
 from __future__ import annotations
 
-from typing import List
+from typing import Dict, List, Optional, Tuple
 
 import tomli
 
@@ -74,3 +74,30 @@ class CLITaskResolver:
             return [str(dep_id) for dep_id in dep_ids]
         except Exception:
             return []
+
+    def get_task_io_schema(
+        self, identifier: str
+    ) -> Tuple[Optional[Dict[str, str]], Optional[Dict[str, str]]]:
+        """Get input and output schema for a task from TOML file.
+
+        Args:
+            identifier: Task identifier (folder name or CUID)
+
+        Returns:
+            Tuple[Optional[Dict[str, str]], Optional[Dict[str, str]]]: (input_schema, output_schema)
+        """
+        task_info = get_task_by_identifier(self.task_manager, identifier)
+        if not task_info:
+            return None, None
+
+        try:
+            with open(task_info.toml_path, "rb") as f:
+                task_config = tomli.load(f)
+
+            io_schema = task_config.get("task", {}).get("io_schema", {})
+            input_schema = io_schema.get("input_schema")
+            output_schema = io_schema.get("output_schema")
+
+            return input_schema, output_schema
+        except Exception:
+            return None, None

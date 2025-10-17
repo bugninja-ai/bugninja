@@ -57,6 +57,19 @@ class TaskResolver(Protocol):
         """
         ...
 
+    def get_task_io_schema(
+        self, identifier: str
+    ) -> Tuple[Optional[Dict[str, str]], Optional[Dict[str, str]]]:
+        """Get input and output schema for a task.
+
+        Args:
+            identifier: Task identifier (folder name or CUID)
+
+        Returns:
+            Tuple[Optional[Dict[str, str]], Optional[Dict[str, str]]]: (input_schema, output_schema)
+        """
+        ...
+
 
 class TaskRef(BaseModel):
     """Reference to a task by folder name or CUID."""
@@ -86,24 +99,40 @@ class BugninjaPipeline:
         self._dag_edges: Dict[str, List[str]] = {}  # child_id -> [parent_ids]
         # Default run configuration for spec-only pipelines
         self._default_run_config: Optional[TaskRunConfig] = default_run_config
+        # Task resolver for CLI context (optional)
+        self._task_resolver: Optional[TaskResolver] = None
 
     # ---------------- Internal helpers (separation of concerns) ----------------
-    def _collect_child_inputs(self, child: Union[TaskRef, TaskSpec]) -> Tuple[Set[str], str]:
+    def _collect_child_inputs(
+        self, child: Union[TaskRef, TaskSpec], task_resolver: Optional[TaskResolver] = None
+    ) -> Tuple[Set[str], str]:
         """Collect input schema keys from a TaskSpec or TaskRef."""
         if isinstance(child, TaskRef):
-            # For TaskRef, we can't get schema without CLI dependencies
-            # This should only be called from CLI context
-            return set(), child.identifier
+            if task_resolver:
+                # Use TaskResolver to get schema information for TaskRef
+                input_schema, _ = task_resolver.get_task_io_schema(child.identifier)
+                schema_keys = set(input_schema.keys()) if input_schema else set()
+                return schema_keys, child.identifier
+            else:
+                # Fallback: return empty set if no resolver available
+                return set(), child.identifier
         schema = child.task.io_schema.input_schema or {} if child.task.io_schema else {}
         name = getattr(child.task, "name", None) or child.task.description[:40]
         return set(schema.keys()), name
 
-    def _collect_parent_outputs(self, parent: Union[TaskRef, TaskSpec]) -> Tuple[Set[str], str]:
+    def _collect_parent_outputs(
+        self, parent: Union[TaskRef, TaskSpec], task_resolver: Optional[TaskResolver] = None
+    ) -> Tuple[Set[str], str]:
         """Collect output schema keys from a TaskSpec or TaskRef."""
         if isinstance(parent, TaskRef):
-            # For TaskRef, we can't get schema without CLI dependencies
-            # This should only be called from CLI context
-            return set(), parent.identifier
+            if task_resolver:
+                # Use TaskResolver to get schema information for TaskRef
+                _, output_schema = task_resolver.get_task_io_schema(parent.identifier)
+                schema_keys = set(output_schema.keys()) if output_schema else set()
+                return schema_keys, parent.identifier
+            else:
+                # Fallback: return empty set if no resolver available
+                return set(), parent.identifier
         oschema = parent.task.io_schema.output_schema or {} if parent.task.io_schema else {}
         return set(oschema.keys()), getattr(parent.task, "name", None) or ""
 
@@ -120,19 +149,41 @@ class BugninjaPipeline:
             parents_map.setdefault(child_key, []).append(parent_key)
 
         if self._dag_nodes:
-            for id_, task in self._dag_nodes.items():
-                key = self._node_key(_Node(task=task, depends_on=[]))
-                if isinstance(task, TaskSpec):
-                    # Update the task's dependencies based on BugninjaPipeline's dependency graph
-                    task_deps = self._dag_edges.get(id_, [])
-                    # Create a new TaskSpec with updated dependencies
-                    updated_task = TaskSpec(
-                        task=task.task.model_copy(update={"dependencies": task_deps})
-                    )
-                    exec_list.append((key, updated_task))
-                else:
-                    # TaskRef - pass through as-is
-                    exec_list.append((key, task))
+            # Use topological order to ensure correct execution sequence
+            for topo_key in order:
+                # Handle both TaskRef and TaskSpec keys
+                if topo_key.startswith("ref::"):
+                    # TaskRef: extract task ID from key
+                    task_id = topo_key[5:]  # Remove "ref::" prefix
+                    if task_id in self._dag_nodes:
+                        task = self._dag_nodes[task_id]
+                        key = topo_key  # Use the topological key directly
+                        if isinstance(task, TaskSpec):
+                            # Update the task's dependencies based on BugninjaPipeline's dependency graph
+                            task_deps = self._dag_edges.get(task_id, [])
+                            # Create a new TaskSpec with updated dependencies
+                            updated_task = TaskSpec(
+                                task=task.task.model_copy(update={"dependencies": task_deps})
+                            )
+                            exec_list.append((key, updated_task))
+                        else:
+                            # TaskRef - pass through as-is
+                            exec_list.append((key, task))
+                elif topo_key.startswith("spec::"):
+                    # TaskSpec: find matching task by comparing node keys
+                    for task_id, task in self._dag_nodes.items():
+                        if isinstance(task, TaskSpec):
+                            # Generate node key for this TaskSpec and compare
+                            node_key = self._node_key(_Node(task=task, depends_on=[]))
+                            if node_key == topo_key:
+                                # Update the task's dependencies based on BugninjaPipeline's dependency graph
+                                task_deps = self._dag_edges.get(task_id, [])
+                                # Create a new TaskSpec with updated dependencies
+                                updated_task = TaskSpec(
+                                    task=task.task.model_copy(update={"dependencies": task_deps})
+                                )
+                                exec_list.append((topo_key, updated_task))
+                                break
         else:
             key_to_node = {self._node_key(n): n for n in self._nodes}
             for key in order:
@@ -243,9 +294,13 @@ class BugninjaPipeline:
         """
         pipeline = cls(default_run_config=default_run_config)
 
-        # Discover all dependencies using DFS
+        # Store the task resolver for later use during execution
+        pipeline._task_resolver = task_resolver
+
+        # Phase 1: Discover all tasks using DFS
         visited = set()
         task_stack = [target_task_identifier]
+        task_dependencies = {}  # Store dependencies for later setup
 
         while task_stack:
             current_id = task_stack.pop()
@@ -260,13 +315,16 @@ class BugninjaPipeline:
 
             # Get dependencies and add them to stack
             dependencies = task_resolver.get_task_dependencies(current_id)
+            task_dependencies[current_id] = dependencies
+
             for dep_id in dependencies:
                 if dep_id not in visited:
                     task_stack.append(dep_id)
 
-            # Set up dependency relationships
+        # Phase 2: Set up dependency relationships after all tasks are added
+        for task_id, dependencies in task_dependencies.items():
             if dependencies:
-                pipeline.depends(current_id, dependencies)
+                pipeline.depends(task_id, dependencies)
 
         return pipeline
 
@@ -686,14 +744,27 @@ class BugninjaPipeline:
         # Validate all required inputs are available
         missing_required = [k for k in required_keys if k not in merged_inputs]
         if missing_required:
-            from rich.console import Console
+            # Check if we're in CLI mode (task created from TOML file)
+            is_cli_mode = (
+                hasattr(payload.task, "task_config_path")
+                and payload.task.task_config_path is not None
+            )
 
-            error_msg = f"Missing required inputs for child: {sorted(missing_required)}"
-            Console().print(f"⛔ {error_msg}")
-            logger.error(f"⛔ BugninjaPipeline: Missing inputs - {error_msg}")
-            logger.info(f"📋 BugninjaPipeline: Available inputs: {list(merged_inputs.keys())}")
-            logger.info(f"📋 BugninjaPipeline: Required inputs: {list(required_keys)}")
-            raise RuntimeError(f"BugninjaPipeline execution stopped: {error_msg}")
+            if is_cli_mode:
+                # In CLI mode, log missing inputs as warnings but don't fail
+                logger.warning(
+                    f"⚠️ BugninjaPipeline: CLI task missing inputs {sorted(missing_required)} - continuing execution"
+                )
+            else:
+                # In library mode, fail on missing inputs
+                from rich.console import Console
+
+                error_msg = f"Missing required inputs for child: {sorted(missing_required)}"
+                Console().print(f"⛔ {error_msg}")
+                logger.error(f"⛔ BugninjaPipeline: Missing inputs - {error_msg}")
+                logger.info(f"📋 BugninjaPipeline: Available inputs: {list(merged_inputs.keys())}")
+                logger.info(f"📋 BugninjaPipeline: Required inputs: {list(required_keys)}")
+                raise RuntimeError(f"BugninjaPipeline execution stopped: {error_msg}")
 
         # Log successful validation
         if required_keys:

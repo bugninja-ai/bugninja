@@ -1,5 +1,5 @@
 [task]
-name = "91_todolist_creation"  # REQUIRED: Unique name for the task
+name = "9_todolist_creation"  # REQUIRED: Unique name for the task
 start_url = "https://freetodolist.com"  # REQUIRED: URL where the browser session should start
 description = "Login to FreeTodoList platform and create a TODO list with 5 items"
 extra_instructions = [

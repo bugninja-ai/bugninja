@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
 from rich.console import Console
 from rich.panel import Panel
@@ -106,6 +106,10 @@ class PipelineExecutor:
 
             logger.info(f"🗂️ BugninjaPipeline execution order: {' → '.join(task_order)}")
 
+            # Display dependency tree if there are multiple tasks
+            if len(task_order) > 1:
+                self._display_dependency_tree(target_task, task_order)
+
             # Track which task we're on
             task_counter = {"index": 0}
 
@@ -140,6 +144,11 @@ class PipelineExecutor:
                 # Enhanced logging for pipeline parameter passing debugging
                 logger.info(
                     f"🏭 PipelineExecutor: Creating client for task {idx + 1}/{len(task_order)}: {folder_name}"
+                )
+
+                # Display current task execution status
+                self._display_current_task_status(
+                    folder_name, idx + 1, len(task_order), target_task
                 )
 
                 # Log I/O schema information for debugging parameter passing
@@ -299,3 +308,91 @@ class PipelineExecutor:
         default_config = TaskRunConfig()
         logger.info("📋 PipelineExecutor: Using default run configuration")
         return default_config
+
+    def _display_dependency_tree(self, target_task: TaskInfo, task_order: List[str]) -> None:
+        """Display dependency tree showing execution order.
+
+        Args:
+            target_task: The target task that was requested
+            task_order: List of task folder names in execution order
+        """
+        from rich.console import Console
+        from rich.panel import Panel
+        from rich.text import Text
+
+        console = Console()
+
+        # Create dependency tree display
+        tree_lines = []
+        tree_lines.append("📋 Dependency Execution Plan:")
+        tree_lines.append("")
+
+        for i, task_name in enumerate(task_order):
+            is_target = task_name == target_task.folder_name
+            is_last = i == len(task_order) - 1
+
+            # Create tree structure
+            if i == 0:
+                prefix = "┌─"
+            elif is_last:
+                prefix = "└─"
+            else:
+                prefix = "├─"
+
+            # Add task info
+            if is_target:
+                task_line = f"{prefix} 🎯 {task_name} (target task)"
+                tree_lines.append(f"[bold green]{task_line}[/bold green]")
+            else:
+                task_line = f"{prefix} 📦 {task_name} (dependency)"
+                tree_lines.append(f"[yellow]{task_line}[/yellow]")
+
+            # Add connector for non-last items
+            if not is_last:
+                tree_lines.append("│")
+
+        # Create panel with tree
+        tree_text = Text.from_markup("\n".join(tree_lines))
+        panel = Panel(
+            tree_text,
+            title="[bold blue]Task Execution Order[/bold blue]",
+            border_style="blue",
+            padding=(0, 1),
+        )
+
+        console.print()
+        console.print(panel)
+        console.print()
+
+    def _display_current_task_status(
+        self, current_task: str, current_index: int, total_tasks: int, target_task: TaskInfo
+    ) -> None:
+        """Display current task execution status.
+
+        Args:
+            current_task: Name of the currently executing task
+            current_index: Current task index (1-based)
+            total_tasks: Total number of tasks to execute
+            target_task: The target task that was requested
+        """
+        from rich.console import Console
+        from rich.panel import Panel
+
+        console = Console()
+
+        # Determine task type
+        is_target = current_task == target_task.folder_name
+        task_type = "🎯 Target Task" if is_target else "📦 Dependency"
+
+        # Create status message
+        status_msg = f"{task_type}: [bold]{current_task}[/bold] ({current_index}/{total_tasks})"
+
+        # Create panel
+        panel = Panel(
+            status_msg,
+            title="[bold cyan]Now Executing[/bold cyan]",
+            border_style="cyan",
+            padding=(0, 1),
+        )
+
+        console.print(panel)
