@@ -243,6 +243,9 @@ class NavigatorAgent(BugninjaAgentBase):
             logger.bugninja_log(f"🔒 Using isolated browser directory: {isolated_dir}")
 
         self._traversal: Optional[Traversal] = None  # Store traversal after successful run
+        self._video_recording_initialized: bool = (
+            False  # Track if video recording has been initialized
+        )
 
         # Update video recording config with base directory if available
         if self.video_recording_config and self.output_base_dir:
@@ -253,7 +256,7 @@ class NavigatorAgent(BugninjaAgentBase):
             )
 
         # Initialize video recording at browser session start
-        if self.video_recording_manager and self.browser_session.browser_context:
+        if self.video_recording_manager:
             try:
                 current_page = await self.browser_session.get_current_page()
                 cdp_session = await self.browser_session.browser_context.new_cdp_session(current_page)  # type: ignore
@@ -282,11 +285,13 @@ class NavigatorAgent(BugninjaAgentBase):
                     ),
                 )
 
+                self._video_recording_initialized = True
                 logger.bugninja_log(f"🎥 Started video recording: {output_file}")
             except Exception as e:
                 logger.bugninja_log(
                     f"⚠️ Video recording failed: {e}. Task will continue without video recording."
                 )
+                logger.debug(f"Video recording error details: {e}", exc_info=True)
                 # Disable video recording for this session
                 self.video_recording_manager = None
 
@@ -631,12 +636,6 @@ class NavigatorAgent(BugninjaAgentBase):
                 logger.bugninja_log(f"Step {idx + 1}:")
                 logger.bugninja_log("Log:")
                 logger.bugninja_log(str(model_taken_action))
-
-            # Log screenshot filename if present
-            if model_taken_action.screenshot_filename:
-                logger.bugninja_log(
-                    f"📸 Action {idx} has screenshot: {model_taken_action.screenshot_filename}"
-                )
 
             actions[f"action_{idx}"] = model_taken_action.model_dump()
 

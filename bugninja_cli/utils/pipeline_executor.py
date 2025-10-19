@@ -132,6 +132,11 @@ class PipelineExecutor:
                 logger.bugninja_log(
                     f"🎬 Video recording enabled in run_config: {run_config.enable_video_recording}"
                 )
+
+                # Get folder name from execution order
+                idx = task_counter["index"]
+                folder_name = task_order[idx] if idx < len(task_order) else target_task.folder_name
+
                 config = BugninjaConfig(
                     headless=run_config.headless,
                     viewport_width=run_config.viewport_width,
@@ -141,12 +146,48 @@ class PipelineExecutor:
                     cli_mode=True,  # Enable CLI mode for proper directory structure
                 )
 
-                # Note: wait_between_actions, enable_vision, and enable_video_recording
-                # are handled at the agent/browser level, not at the BugninjaConfig level
+                # Set task-specific output directory
+                task_output_dir = self.project_root / "tasks" / folder_name
+                config.output_base_dir = task_output_dir
+                config.screenshots_dir = task_output_dir / "screenshots"
 
-                # Get folder name from execution order
-                idx = task_counter["index"]
-                folder_name = task_order[idx] if idx < len(task_order) else target_task.folder_name
+                # Handle video recording if enabled
+                if run_config.enable_video_recording:
+                    try:
+                        # Check FFmpeg availability first
+                        from bugninja.utils.video_recording_manager import (
+                            VideoRecordingManager,
+                        )
+
+                        if not VideoRecordingManager.check_ffmpeg_availability():
+                            logger.warning(
+                                "⚠️ FFmpeg is not available. Video recording will be disabled. Please install FFmpeg to enable video recording."
+                            )
+                            # Disable video recording for this session
+                            config.video_recording = None
+                        else:
+                            # Ensure videos directory exists
+                            videos_dir = task_output_dir / "videos"
+                            videos_dir.mkdir(parents=True, exist_ok=True)
+
+                            # Create video recording configuration
+                            video_config = run_config.get_video_recording_config(str(videos_dir))
+                            if video_config:
+                                # Set the video recording configuration directly
+                                config.video_recording = video_config
+                                logger.bugninja_log(
+                                    f"🎥 Video recording enabled for task: {folder_name}"
+                                )
+                            else:
+                                logger.warning(
+                                    f"⚠️ Video recording config is None for task: {folder_name}"
+                                )
+                    except Exception as e:
+                        logger.warning(
+                            f"⚠️ Video recording setup failed: {e}. Task will continue without video recording."
+                        )
+                        # Disable video recording for this session
+                        config.video_recording = None
 
                 # Enhanced logging for pipeline parameter passing debugging
                 logger.bugninja_log(
@@ -174,17 +215,6 @@ class PipelineExecutor:
                 task_output_dir = self.project_root / "tasks" / folder_name
                 config.output_base_dir = task_output_dir
                 config.screenshots_dir = task_output_dir / "screenshots"
-
-                # Set up video recording configuration if enabled
-                video_config = run_config.get_video_recording_config(
-                    str(task_output_dir / "videos")
-                )
-                if video_config:
-                    config.video_recording = video_config
-                    logger.bugninja_log(f"🎥 Video recording enabled for task '{folder_name}'")
-                    logger.bugninja_log(f"📹 Video output directory: {video_config.output_dir}")
-                else:
-                    logger.bugninja_log(f"📹 Video recording disabled for task '{folder_name}'")
 
                 logger.bugninja_log(f"📁 Task '{folder_name}' output directory: {task_output_dir}")
 

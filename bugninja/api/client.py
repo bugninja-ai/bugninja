@@ -175,6 +175,7 @@ class BugninjaClient:
             ConfigurationError: If configuration is invalid or initialization fails
         """
         try:
+
             # Use provided config or create default
             # BugninjaConfig validation happens automatically during instantiation
             self.config = config or BugninjaConfig()
