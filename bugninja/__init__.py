@@ -61,7 +61,7 @@ warnings.filterwarnings(
     "ignore", message="builtin type .* has no __module__ attribute", category=DeprecationWarning
 )
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 __all__ = [
     # Core components
     "NavigatorAgent",

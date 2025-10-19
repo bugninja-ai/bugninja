@@ -36,7 +36,6 @@ import rich_click as click
 from rich.console import Console
 
 from bugninja_cli.utils.completion import complete_boolean_values, complete_task_names
-from bugninja_cli.utils.pipeline_executor import PipelineExecutor
 from bugninja_cli.utils.project_validator import (
     display_project_info,
     require_bugninja_project,
@@ -151,6 +150,8 @@ def run(
             available_tasks = get_available_tasks_list(task_manager)
             display_task_not_found(task, available_tasks)
             return
+
+        from bugninja_cli.utils.pipeline_executor import PipelineExecutor
 
         # Use PipelineExecutor for dependency management
         pipeline_executor = PipelineExecutor(project_root)

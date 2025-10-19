@@ -1,0 +1,1 @@
+uv run bugninja run 9_todolist_deletion

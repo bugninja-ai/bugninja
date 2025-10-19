@@ -209,7 +209,6 @@ class ReplicatorRun(ReplicatorNavigator):
             if self.config.video_recording
             else None
         )
-        self._video_recording_initialized: bool = False
 
         # Initialize event publisher manager (explicitly passed)
         self.event_manager = event_manager
@@ -420,6 +419,78 @@ class ReplicatorRun(ReplicatorNavigator):
             except Exception as e:
                 logger.warning(f"Failed to initialize event tracking: {e}")
 
+        # Initialize video recording at browser session start
+        if self.video_recording_manager:
+            logger.debug("🔍 Video recording manager exists, checking browser context readiness...")
+
+            # Ensure browser context is available - wait if necessary
+            max_retries = 10
+            retry_delay = 0.5  # seconds
+            browser_context_ready = False
+
+            for attempt in range(max_retries):
+                if self.browser_session.browser_context is not None:
+                    logger.debug(f"✓ Browser context ready on attempt {attempt + 1}")
+                    browser_context_ready = True
+                    break
+
+                logger.debug(
+                    f"⏳ Browser context not ready, waiting... (attempt {attempt + 1}/{max_retries})"
+                )
+                await asyncio.sleep(retry_delay)
+
+            if not browser_context_ready:
+                logger.warning(
+                    "⚠️ Browser context not available after waiting. Video recording will be disabled."
+                )
+                self.video_recording_manager = None
+            else:
+                try:
+                    logger.debug("🎬 Starting video recording initialization...")
+                    current_page: Page = await self.browser_session.get_current_page()
+                    logger.debug(f"✓ Got current page: {current_page}")
+
+                    cdp_session = await self.browser_session.browser_context.new_cdp_session(current_page)  # type: ignore
+                    logger.debug(f"✓ Created CDP session: {cdp_session}")
+
+                    # Start video recording
+                    output_file = f"run_{self.run_id}"
+                    logger.debug(f"🎥 Starting video recorder with output: {output_file}")
+                    await self.video_recording_manager.start_recording(output_file, cdp_session)
+                    logger.debug("✓ Video recorder started successfully")
+
+                    # Setup CDP screencast
+                    logger.debug("📡 Setting up CDP screencast...")
+                    await cdp_session.send(
+                        "Page.startScreencast",
+                        {
+                            "format": "jpeg",
+                            "quality": self.video_recording_manager.config.quality,
+                            "maxWidth": self.video_recording_manager.config.width,
+                            "maxHeight": self.video_recording_manager.config.height,
+                            "everyNthFrame": 1,
+                        },
+                    )
+                    logger.debug("✓ CDP screencast configured")
+
+                    # Setup frame handler
+                    cdp_session.on(
+                        "Page.screencastFrame",
+                        lambda frame: asyncio.create_task(
+                            self._handle_screencast_frame(frame, cdp_session)
+                        ),
+                    )
+                    logger.debug("✓ Frame handler attached")
+
+                    logger.bugninja_log(f"🎥 Started video recording: {output_file}")
+                except Exception as e:
+                    logger.error(
+                        f"❌ Video recording failed: {e}. Replay will continue without video recording."
+                    )
+                    logger.debug(f"Video recording error details: {e}", exc_info=True)
+                    # Disable video recording for this session
+                    self.video_recording_manager = None
+
         # Automatically navigate to start_url from traversal
         if self.replay_traversal.start_url is None:
             raise ValueError(
@@ -479,10 +550,6 @@ class ReplicatorRun(ReplicatorNavigator):
                 logger.bugninja_log(f"⚙️ Performing action: {action_type}")
 
             try:
-                # Initialize video recording on the first action only
-                if not self._video_recording_initialized:
-                    await self._initialize_video_recording()
-
                 # Capture start video offset if video recording is enabled
                 if self.video_recording_manager and self.video_recording_manager.is_recording:
                     start_timestamp = time.time() * 1000  # UTC timestamp in milliseconds
@@ -779,51 +846,6 @@ class ReplicatorRun(ReplicatorNavigator):
         except Exception:
             pass
         return "unknown"
-
-    async def _initialize_video_recording(self) -> None:
-        """Initialize video recording for the replay session.
-
-        This method sets up video recording using CDP screencast, similar to NavigatorAgent.
-        It starts recording at the first action execution and handles frame processing.
-        """
-        if self.video_recording_manager and self.browser_session.browser_context:
-            try:
-                current_page: Page = await self.browser_session.get_current_page()
-                cdp_session = await self.browser_session.browser_context.new_cdp_session(current_page)  # type: ignore
-
-                # Start video recording
-                output_file = f"run_{self.run_id}"
-                await self.video_recording_manager.start_recording(output_file, cdp_session)
-
-                # Setup CDP screencast
-                await cdp_session.send(
-                    "Page.startScreencast",
-                    {
-                        "format": "jpeg",
-                        "quality": self.video_recording_manager.config.quality,
-                        "maxWidth": self.video_recording_manager.config.width,
-                        "maxHeight": self.video_recording_manager.config.height,
-                        "everyNthFrame": 1,
-                    },
-                )
-
-                # Setup frame handler
-                cdp_session.on(
-                    "Page.screencastFrame",
-                    lambda frame: asyncio.create_task(
-                        self._handle_screencast_frame(frame, cdp_session)
-                    ),
-                )
-
-                self._video_recording_initialized = True
-                logger.bugninja_log(f"🎥 Started video recording: {output_file}")
-            except Exception as e:
-                logger.error(
-                    f"❌ Video recording failed: {e}. Replay will continue without video recording."
-                )
-                # Disable video recording for this session
-                self.video_recording_manager = None
-                self._video_recording_initialized = True
 
     async def _handle_screencast_frame(
         self, frame: dict[str, Any], cdp_session: CDPSession

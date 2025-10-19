@@ -7,21 +7,23 @@ dependency management and execution using the unified BugninjaPipeline API.
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, List
 
 from rich.console import Console
 from rich.panel import Panel
 
-from bugninja.api.bugninja_pipeline import BugninjaPipeline, TaskRef, TaskSpec
-from bugninja.schemas.cli_schemas import TaskExecutionResult, TaskInfo, TaskRunConfig
-from bugninja.utils.logging_config import logger
 from bugninja_cli.utils.task_executor import TaskExecutor
-from bugninja_cli.utils.task_lookup import get_task_by_identifier
 from bugninja_cli.utils.task_manager import TaskManager
 
 if TYPE_CHECKING:
-    from bugninja.api import BugninjaTask
+    from bugninja.api.bugninja_pipeline import TaskRef, TaskSpec
+    from bugninja.schemas.cli_schemas import (
+        TaskExecutionResult,
+        TaskInfo,
+        TaskRunConfig,
+    )
 
 
 class PipelineExecutor:
@@ -53,27 +55,28 @@ class PipelineExecutor:
         Returns:
             TaskExecutionResult: Result of the execution
         """
-        from datetime import datetime
+        from bugninja.schemas.cli_schemas import TaskExecutionResult
+        from bugninja.utils.logging_config import logger
+        from bugninja_cli.utils.task_resolver import CLITaskResolver
 
+        logger.bugninja_log(
+            f"🚀 PipelineExecutor.execute_with_dependencies called for task: {target_task.folder_name}"
+        )
         start_time = datetime.now()
 
-        # Convert to BugninjaPipeline with TaskRef nodes
-        pipeline = self._convert_to_pipeline(target_task, task_manager)
+        # Create CLI task resolver
+        task_resolver = CLITaskResolver(task_manager)
 
-        # Create resolver function that converts TaskRef to BugninjaTask
-        def resolve_task_ref(task_ref: TaskRef) -> BugninjaTask:
-            """Resolve TaskRef to BugninjaTask using task_manager."""
-            task_info = get_task_by_identifier(task_manager, task_ref.identifier)
-            if not task_info:
-                raise ValueError(f"Could not resolve task by identifier: {task_ref.identifier}")
+        # Create pipeline from TOML dependencies (single source of truth)
+        from bugninja.api.bugninja_pipeline import BugninjaPipeline
 
-            from bugninja.api import BugninjaTask
-
-            return BugninjaTask(task_config_path=task_info.toml_path)
+        pipeline = BugninjaPipeline.from_task_toml(
+            target_task_identifier=target_task.folder_name, task_resolver=task_resolver
+        )
 
         # Materialize TaskRef nodes to TaskSpec nodes
         try:
-            materialized_pipeline = pipeline.materialize(resolve_task_ref)
+            materialized_pipeline = pipeline.materialize(task_resolver.resolve_task_ref)
         except Exception as e:
             self.console.print(
                 Panel(
@@ -98,17 +101,17 @@ class PipelineExecutor:
             # Create client factory that generates task-specific clients
             from bugninja.api import BugninjaClient
             from bugninja.api.bugninja_pipeline import TaskRef
+            from bugninja.schemas.cli_schemas import TaskExecutionResult
             from bugninja.schemas.models import BugninjaConfig
 
-            # Get the execution order from the materialized pipeline (with resolved TaskSpec objects)
-            exec_list, _ = materialized_pipeline._build_exec_plan()
+            # Get execution order directly from BugninjaPipeline
+            task_order = materialized_pipeline.get_execution_order_folder_names()
 
-            # Map execution order to folder names using the dependency graph
-            # Get the dependency graph with correct folder names in execution order
-            all_tasks = self._build_dependency_graph(target_task, task_manager)
-            task_order = [task.folder_name for task in all_tasks]
+            logger.bugninja_log(f"🗂️ BugninjaPipeline execution order: {' → '.join(task_order)}")
 
-            logger.info(f"🗂️ BugninjaPipeline execution order: {' → '.join(task_order)}")
+            # Display dependency tree if there are multiple tasks
+            if len(task_order) > 1:
+                self._display_dependency_tree(target_task, task_order)
 
             # Track which task we're on
             task_counter = {"index": 0}
@@ -119,12 +122,21 @@ class PipelineExecutor:
                 Enhanced to preserve data flow while maintaining directory isolation.
                 Each task gets its own configuration loaded from its TOML file.
                 """
+                logger.bugninja_log(f"🏭 Creating client for task payload: {type(task_payload)}")
                 # TaskRef should never reach here due to materialization, but handle it for type safety
                 if isinstance(task_payload, TaskRef):
                     raise ValueError("TaskRef should have been materialized before execution")
 
                 # Load task-specific run configuration
                 run_config = self._load_task_run_config(task_payload)
+                logger.bugninja_log(
+                    f"🎬 Video recording enabled in run_config: {run_config.enable_video_recording}"
+                )
+
+                # Get folder name from execution order
+                idx = task_counter["index"]
+                folder_name = task_order[idx] if idx < len(task_order) else target_task.folder_name
+
                 config = BugninjaConfig(
                     headless=run_config.headless,
                     viewport_width=run_config.viewport_width,
@@ -134,16 +146,57 @@ class PipelineExecutor:
                     cli_mode=True,  # Enable CLI mode for proper directory structure
                 )
 
-                # Note: wait_between_actions, enable_vision, and enable_video_recording
-                # are handled at the agent/browser level, not at the BugninjaConfig level
+                # Set task-specific output directory
+                task_output_dir = self.project_root / "tasks" / folder_name
+                config.output_base_dir = task_output_dir
+                config.screenshots_dir = task_output_dir / "screenshots"
 
-                # Get folder name from execution order
-                idx = task_counter["index"]
-                folder_name = task_order[idx] if idx < len(task_order) else target_task.folder_name
+                # Handle video recording if enabled
+                if run_config.enable_video_recording:
+                    try:
+                        # Check FFmpeg availability first
+                        from bugninja.utils.video_recording_manager import (
+                            VideoRecordingManager,
+                        )
+
+                        if not VideoRecordingManager.check_ffmpeg_availability():
+                            logger.warning(
+                                "⚠️ FFmpeg is not available. Video recording will be disabled. Please install FFmpeg to enable video recording."
+                            )
+                            # Disable video recording for this session
+                            config.video_recording = None
+                        else:
+                            # Ensure videos directory exists
+                            videos_dir = task_output_dir / "videos"
+                            videos_dir.mkdir(parents=True, exist_ok=True)
+
+                            # Create video recording configuration
+                            video_config = run_config.get_video_recording_config(str(videos_dir))
+                            if video_config:
+                                # Set the video recording configuration directly
+                                config.video_recording = video_config
+                                logger.bugninja_log(
+                                    f"🎥 Video recording enabled for task: {folder_name}"
+                                )
+                            else:
+                                logger.warning(
+                                    f"⚠️ Video recording config is None for task: {folder_name}"
+                                )
+                    except Exception as e:
+                        logger.warning(
+                            f"⚠️ Video recording setup failed: {e}. Task will continue without video recording."
+                        )
+                        # Disable video recording for this session
+                        config.video_recording = None
 
                 # Enhanced logging for pipeline parameter passing debugging
-                logger.info(
+                logger.bugninja_log(
                     f"🏭 PipelineExecutor: Creating client for task {idx + 1}/{len(task_order)}: {folder_name}"
+                )
+
+                # Display current task execution status
+                self._display_current_task_status(
+                    folder_name, idx + 1, len(task_order), target_task
                 )
 
                 # Log I/O schema information for debugging parameter passing
@@ -151,10 +204,10 @@ class PipelineExecutor:
                     schema = task_payload.task.io_schema
                     if schema.input_schema:
                         input_keys = list(schema.input_schema.keys())
-                        logger.info(f"📥 Task '{folder_name}' expects inputs: {input_keys}")
+                        logger.bugninja_log(f"📥 Task '{folder_name}' expects inputs: {input_keys}")
                     if schema.output_schema:
                         output_keys = list(schema.output_schema.keys())
-                        logger.info(f"📤 Task '{folder_name}' will output: {output_keys}")
+                        logger.bugninja_log(f"📤 Task '{folder_name}' will output: {output_keys}")
 
                 task_counter["index"] += 1
 
@@ -163,12 +216,12 @@ class PipelineExecutor:
                 config.output_base_dir = task_output_dir
                 config.screenshots_dir = task_output_dir / "screenshots"
 
-                logger.info(f"📁 Task '{folder_name}' output directory: {task_output_dir}")
+                logger.bugninja_log(f"📁 Task '{folder_name}' output directory: {task_output_dir}")
 
                 return BugninjaClient(config=config)
 
             # Execute using BugninjaPipeline's run method with client factory
-            logger.info(
+            logger.bugninja_log(
                 f"🚀 PipelineExecutor: Starting pipeline execution for {len(task_order)} tasks"
             )
             execution_results = await materialized_pipeline.run(
@@ -176,7 +229,7 @@ class PipelineExecutor:
             )
 
             # Post-execution validation and logging
-            logger.info(
+            logger.bugninja_log(
                 f"✅ PipelineExecutor: BugninjaPipeline execution completed with {len(execution_results)} results"
             )
 
@@ -187,9 +240,9 @@ class PipelineExecutor:
                 traversal_file = result.get("traversal_file")
 
                 if success:
-                    logger.info(f"✅ Task {i+1}: '{task_desc}...' completed successfully")
+                    logger.bugninja_log(f"✅ Task {i+1}: '{task_desc}...' completed successfully")
                     if traversal_file:
-                        logger.info(f"📄 Task {i+1}: Traversal saved to {traversal_file}")
+                        logger.bugninja_log(f"📄 Task {i+1}: Traversal saved to {traversal_file}")
                     else:
                         logger.warning(
                             f"⚠️ Task {i+1}: No traversal file found - may affect parameter passing"
@@ -203,7 +256,9 @@ class PipelineExecutor:
                 last_result = execution_results[-1]
                 if last_result.get("traversal_file"):
                     traversal_path = last_result["traversal_file"]
-                    logger.info(f"🎯 PipelineExecutor: Target task traversal: {traversal_path}")
+                    logger.bugninja_log(
+                        f"🎯 PipelineExecutor: Target task traversal: {traversal_path}"
+                    )
                 else:
                     logger.warning("⚠️ PipelineExecutor: No traversal file from target task")
 
@@ -226,7 +281,9 @@ class PipelineExecutor:
                 task_run_config = TaskRunConfig()
                 task_executor = TaskExecutor(task_run_config, self.project_root)
                 task_executor._update_task_metadata(target_task, execution_result, "ai_navigated")
-                logger.info(f"📝 Updated task metadata for '{target_task.name}' with AI run")
+                logger.bugninja_log(
+                    f"📝 Updated task metadata for '{target_task.name}' with AI run"
+                )
             except Exception as e:
                 logger.warning(f"⚠️ Failed to update task metadata: {e}")
 
@@ -254,42 +311,13 @@ class PipelineExecutor:
                 task_run_config = TaskRunConfig()
                 task_executor = TaskExecutor(task_run_config, self.project_root)
                 task_executor._update_task_metadata(target_task, execution_result, "ai_navigated")
-                logger.info(f"📝 Updated task metadata for '{target_task.name}' with failed AI run")
+                logger.bugninja_log(
+                    f"📝 Updated task metadata for '{target_task.name}' with failed AI run"
+                )
             except Exception as metadata_error:
                 logger.warning(f"⚠️ Failed to update task metadata: {metadata_error}")
 
             return execution_result
-
-    def _convert_to_pipeline(
-        self, target_task: TaskInfo, task_manager: TaskManager
-    ) -> BugninjaPipeline:
-        """Convert CLI tasks to BugninjaPipeline with TaskRef objects.
-
-        Args:
-            target_task: The target task to execute
-            task_manager: Task manager instance
-
-        Returns:
-            BugninjaPipeline: Configured pipeline with dependencies
-        """
-        pipeline = BugninjaPipeline()
-
-        # Build dependency graph from target task
-        all_tasks = self._build_dependency_graph(target_task, task_manager)
-
-        # Add all tasks to pipeline
-        for task in all_tasks:
-            pipeline.testcase(task.folder_name, TaskRef(identifier=task.folder_name))
-
-        # Set up dependency relationships
-        for task in all_tasks:
-            # Find dependencies for this task
-            dependencies = self._get_task_dependencies(task, task_manager)
-            if dependencies:
-                parent_names = [dep.folder_name for dep in dependencies]
-                pipeline.depends(task.folder_name, parent_names)
-
-        return pipeline
 
     def _load_task_run_config(self, task_payload: TaskSpec) -> TaskRunConfig:
         """Load task-specific run configuration from TOML file.
@@ -305,6 +333,7 @@ class PipelineExecutor:
             - For tasks without task_config_path: uses default values
             - Falls back to defaults if TOML loading fails
         """
+        from bugninja.utils.logging_config import logger
 
         # Check if task has a config file path
         if hasattr(task_payload.task, "task_config_path") and task_payload.task.task_config_path:
@@ -313,14 +342,14 @@ class PipelineExecutor:
                 try:
                     # Use existing utility to load task run config
                     run_config = TaskExecutor._load_task_run_config(toml_path)
-                    logger.info(
+                    logger.bugninja_log(
                         f"📋 PipelineExecutor: Loaded task-specific config from {toml_path.name}"
                     )
-                    logger.info(
+                    logger.bugninja_log(
                         f"🖥️ PipelineExecutor: Viewport: {run_config.viewport_width}x{run_config.viewport_height}"
                     )
                     if run_config.user_agent:
-                        logger.info(
+                        logger.bugninja_log(
                             f"🌐 PipelineExecutor: User agent: {run_config.user_agent[:50]}..."
                         )
                     return run_config
@@ -331,65 +360,93 @@ class PipelineExecutor:
 
         # Fallback to defaults
         default_config = TaskRunConfig()
-        logger.info("📋 PipelineExecutor: Using default run configuration")
+        logger.bugninja_log("📋 PipelineExecutor: Using default run configuration")
         return default_config
 
-    def _build_dependency_graph(
-        self, target_task: TaskInfo, task_manager: TaskManager
-    ) -> List[TaskInfo]:
-        """Build complete dependency graph for target task.
+    def _display_dependency_tree(self, target_task: TaskInfo, task_order: List[str]) -> None:
+        """Display dependency tree showing execution order.
 
         Args:
-            target_task: The target task
-            task_manager: Task manager instance
-
-        Returns:
-            List[TaskInfo]: All tasks in dependency order
+            target_task: The target task that was requested
+            task_order: List of task folder names in execution order
         """
-        # Use TaskExecutor's dependency resolution logic
-        from bugninja.schemas.cli_schemas import TaskRunConfig
+        from rich.console import Console
+        from rich.panel import Panel
+        from rich.text import Text
 
-        dummy_config = TaskRunConfig()  # Create minimal config for dependency resolution
-        temp_executor = TaskExecutor(task_run_config=dummy_config, project_root=self.project_root)
+        console = Console()
 
-        try:
-            # Get dependency plan
-            plan = temp_executor._resolve_dependencies_toposort(target_task, task_manager)
-            return plan
-        except Exception as e:
-            self.console.print(
-                Panel(
-                    f"❌ Failed to resolve dependencies: {str(e)}",
-                    title="Dependency Resolution Error",
-                    border_style="red",
-                )
-            )
-            return [target_task]  # Fallback to just the target task
+        # Create dependency tree display
+        tree_lines = []
+        tree_lines.append("📋 Dependency Execution Plan:")
+        tree_lines.append("")
 
-    def _get_task_dependencies(self, task: TaskInfo, task_manager: TaskManager) -> List[TaskInfo]:
-        """Get dependencies for a specific task.
+        for i, task_name in enumerate(task_order):
+            is_target = task_name == target_task.folder_name
+            is_last = i == len(task_order) - 1
+
+            # Create tree structure
+            if i == 0:
+                prefix = "┌─"
+            elif is_last:
+                prefix = "└─"
+            else:
+                prefix = "├─"
+
+            # Add task info
+            if is_target:
+                task_line = f"{prefix} 🎯 {task_name} (target task)"
+                tree_lines.append(f"[bold green]{task_line}[/bold green]")
+            else:
+                task_line = f"{prefix} 📦 {task_name} (dependency)"
+                tree_lines.append(f"[yellow]{task_line}[/yellow]")
+
+            # Add connector for non-last items
+            if not is_last:
+                tree_lines.append("│")
+
+        # Create panel with tree
+        tree_text = Text.from_markup("\n".join(tree_lines))
+        panel = Panel(
+            tree_text,
+            title="[bold blue]Task Execution Order[/bold blue]",
+            border_style="blue",
+            padding=(0, 1),
+        )
+
+        console.print()
+        console.print(panel)
+        console.print()
+
+    def _display_current_task_status(
+        self, current_task: str, current_index: int, total_tasks: int, target_task: TaskInfo
+    ) -> None:
+        """Display current task execution status.
 
         Args:
-            task: The task to get dependencies for
-            task_manager: Task manager instance
-
-        Returns:
-            List[TaskInfo]: List of dependency tasks
+            current_task: Name of the currently executing task
+            current_index: Current task index (1-based)
+            total_tasks: Total number of tasks to execute
+            target_task: The target task that was requested
         """
-        dependencies = []
+        from rich.console import Console
+        from rich.panel import Panel
 
-        # Load task configuration from TOML directly
-        try:
-            import tomli
+        console = Console()
 
-            with open(task.toml_path, "rb") as f:
-                task_config = tomli.load(f)
-            dep_ids = task_config.get("task", {}).get("dependencies", [])
-        except Exception:
-            dep_ids = []
+        # Determine task type
+        is_target = current_task == target_task.folder_name
+        task_type = "🎯 Target Task" if is_target else "📦 Dependency"
 
-        for dep_id in dep_ids:
-            dep_task = get_task_by_identifier(task_manager, str(dep_id))
-            if dep_task:
-                dependencies.append(dep_task)
-        return dependencies
+        # Create status message
+        status_msg = f"{task_type}: [bold]{current_task}[/bold] ({current_index}/{total_tasks})"
+
+        # Create panel
+        panel = Panel(
+            status_msg,
+            title="[bold cyan]Now Executing[/bold cyan]",
+            border_style="cyan",
+            padding=(0, 1),
+        )
+
+        console.print(panel)

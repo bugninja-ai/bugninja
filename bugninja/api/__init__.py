@@ -49,7 +49,7 @@ from bugninja.api.exceptions import (
     LLMError,
 )
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 __all__ = [
     "BugninjaClient",
     "BugninjaTask",
