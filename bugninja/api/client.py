@@ -677,16 +677,37 @@ class BugninjaClient:
                 and agent.state.last_result
             ):
                 # Check if any result has an error
-                agent_success = not any(
+                # Check for errors in results
+                has_errors = any(
                     result.error
                     for result in agent.state.last_result
                     if hasattr(result, "error") and result.error
                 )
 
+                # Check for explicit failures via success field
+                has_failures = any(
+                    hasattr(result, "success") and result.success is False
+                    for result in agent.state.last_result
+                )
+
+                agent_success = not has_errors and not has_failures
+
                 # Get the error message from the last result if there was a failure
                 if not agent_success and agent.state.last_result:
                     last_result = agent.state.last_result[-1]
+
+                    # Check for explicit error field first
                     if hasattr(last_result, "error") and last_result.error:
+                        agent_error = last_result.error
+                    # If no error field, but this is a done action with failure, get the content
+                    elif (
+                        hasattr(last_result, "is_done")
+                        and last_result.is_done
+                        and hasattr(last_result, "extracted_content")
+                    ):
+                        agent_error = last_result.extracted_content
+                    # Fallback to any error message from the result
+                    elif hasattr(last_result, "error"):
                         agent_error = last_result.error
 
             return BugninjaTaskResult(

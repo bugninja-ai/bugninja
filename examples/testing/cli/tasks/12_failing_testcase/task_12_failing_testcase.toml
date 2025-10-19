@@ -1,0 +1,33 @@
+[task]
+name = "12_failing_testcase"
+start_url = "https://testpages.eviltester.com/styled/auth/basic-auth-results.html"  # REQUIRED: URL where the browser session should start
+description = """
+Navigate to the authentication page and check whether the HTTP basic authentication process succeeded. 
+The task is successful when you can see the text 'You are authenticated' on the page. In any other case the test should fail.
+"""
+extra_instructions = []
+allowed_domains = [
+    "testpages.eviltester.com",
+]
+dependencies = []  # Optional: List of task folder names or CUIDs that this task depends on
+
+# HTTP Basic Authentication Configuration
+[task.http_auth]
+username = "failing_username"  # HTTP authentication username
+password = "failing_password"  # HTTP authentication password
+
+[run_config]
+# CLI-specific runtime configuration
+viewport_width = 1920
+viewport_height = 1080
+user_agent = ""
+wait_between_actions = 1.0
+enable_vision = true
+enable_healing = true
+headless = false
+enable_video_recording = true
+
+[metadata]
+task_id = "http_auth_example_001"
+created_date = "2025-10-15T10:30:00.000000+00:00Z"
+creation_type = "manually_added"
