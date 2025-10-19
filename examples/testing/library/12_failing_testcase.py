@@ -11,10 +11,10 @@ The task is successful when you can see the text 'You are authenticated' on the 
 """.strip()
 
 
-async def http_authentication_example() -> None:
+async def failing_testcase() -> None:
 
     # Create HTTP authentication credentials
-    http_auth = HTTPAuthCredentials(username="authorized", password="password001")
+    http_auth = HTTPAuthCredentials(username="failing_username", password="failing_password")
 
     task = BugninjaTask(
         start_url="https://testpages.eviltester.com/styled/auth/basic-auth-results.html",
@@ -40,4 +40,4 @@ async def http_authentication_example() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(http_authentication_example())
+    asyncio.run(failing_testcase())

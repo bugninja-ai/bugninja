@@ -1,7 +1,10 @@
 [task]
 name = "11_http_authentication"
 start_url = "https://testpages.eviltester.com/styled/auth/basic-auth-results.html"  # REQUIRED: URL where the browser session should start
-description = "Navigate to the authentication page and check whether the HTTP basic authentication process succeeded. The task is successful when you can see the text 'You are authenticated' on the page."
+description = """
+Navigate to the authentication page and check whether the HTTP basic authentication process succeeded. 
+The task is successful when you can see the text 'You are authenticated' on the page. In any other case the test should fail.
+"""
 extra_instructions = []
 allowed_domains = [
     "testpages.eviltester.com",

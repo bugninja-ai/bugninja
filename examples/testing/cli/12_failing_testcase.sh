@@ -1,0 +1,1 @@
+uv run bugninja run 12_failing_testcase
