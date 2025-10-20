@@ -229,9 +229,12 @@ class ReplicatorNavigator(ABC):
             storage_state=None,
             # Apply browser configuration if available
             **self.replay_traversal.browser_config.model_dump(exclude_none=True),
-            args=["--no-sandbox", "--disable-setuid-sandbox"],
-            # record_video_dir="./recordings",  # Directory to save .webm video files
-            # record_video_size=self.replay_traversal.browser_config.viewport,
+            #! ["--ignore-certificate-errors"] is necessary to avoid SSL issues in some environments
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--ignore-certificate-errors",
+            ],
         )
 
         # Set HTTP authentication if available in traversal

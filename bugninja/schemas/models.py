@@ -1007,9 +1007,8 @@ class BugninjaConfig(BaseModel):
                 user_agent=self.user_agent,
                 strict_selectors=self.strict_selectors,
                 user_data_dir=isolated_dir,
-                args=["--no-sandbox", "--disable-setuid-sandbox"],
-                # record_video_dir="./recordings",
-                # record_video_size=viewport,
+                #! ["--ignore-certificate-errors"] is necessary to avoid SSL issues in some environments
+                args=["--no-sandbox", "--disable-setuid-sandbox", "--ignore-certificate-errors"],
             )
         )
 
