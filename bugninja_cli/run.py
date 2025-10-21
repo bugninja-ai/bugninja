@@ -34,6 +34,8 @@ from pathlib import Path
 
 import rich_click as click
 from rich.console import Console
+from rich.panel import Panel
+from rich.text import Text
 
 from bugninja_cli.utils.completion import complete_boolean_values, complete_task_names
 from bugninja_cli.utils.project_validator import (
@@ -147,6 +149,30 @@ def run(
         task_info = get_task_by_identifier(task_manager, task)
 
         if not task_info:
+            # Check if task exists but has TOML errors
+            import tomli
+            from pathlib import Path
+
+            task_dir = task_manager.tasks_dir / task
+            if task_dir.exists() and task_dir.is_dir():
+                toml_file = task_dir / f"task_{task}.toml"
+                if toml_file.exists():
+                    try:
+                        with open(toml_file, "rb") as f:
+                            tomli.load(f)
+                    except tomli.TOMLDecodeError as e:
+                        console.print(
+                            Panel(
+                                Text(
+                                    f"❌ Task '{task}' has invalid TOML syntax: {e}\n\nPlease fix the TOML file before running this task.",
+                                    style="red",
+                                ),
+                                title="Task Not Found",
+                                border_style="red",
+                            )
+                        )
+                        return
+
             available_tasks = get_available_tasks_list(task_manager)
             display_task_not_found(task, available_tasks)
             return

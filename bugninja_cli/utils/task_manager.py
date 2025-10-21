@@ -319,7 +319,10 @@ class TaskManager:
                         task_path=task_dir,
                         toml_path=toml_file,
                     )
-            except (tomli.TOMLDecodeError, KeyError, FileNotFoundError):
+            except tomli.TOMLDecodeError as e:
+                console.print(f"❌ Invalid TOML syntax in {toml_file.name}: {e}")
+                continue
+            except (KeyError, FileNotFoundError):
                 continue
 
         return None
@@ -359,7 +362,10 @@ class TaskManager:
                 task_path=task_dir,
                 toml_path=toml_file,
             )
-        except (tomli.TOMLDecodeError, KeyError, FileNotFoundError):
+        except tomli.TOMLDecodeError as e:
+            console.print(f"❌ Invalid TOML syntax in {toml_file.name}: {e}", style="red")
+            return None
+        except (KeyError, FileNotFoundError):
             return None
 
     def list_tasks(self) -> List[TaskInfo]:
@@ -395,7 +401,11 @@ class TaskManager:
                     toml_path=toml_file,
                 )
                 tasks.append(task_info)
-            except (tomli.TOMLDecodeError, KeyError, FileNotFoundError):
+            except tomli.TOMLDecodeError as e:
+
+                console.print(f"❌ Invalid TOML syntax in {toml_file.name}: {e}", style="red")
+                continue
+            except (KeyError, FileNotFoundError):
                 continue
 
         return tasks
