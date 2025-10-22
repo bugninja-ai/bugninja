@@ -436,6 +436,45 @@ class TaskManager:
 
         return True
 
+    def get_next_task_number(self) -> int:
+        """Get the next available task number for sequential numbering.
+
+        This method scans all existing task folders and finds the highest
+        numbered task to determine the next available number. It looks for
+        folder names matching the pattern `^\d{3}_` (3 digits followed by underscore).
+
+        Returns:
+            int: Next available task number (starting from 1 if no numbered tasks exist)
+
+        Example:
+            ```python
+            # If existing tasks are: 001_login, 002_checkout, manual_task
+            next_number = task_manager.get_next_task_number()  # Returns 3
+            ```
+        """
+        max_number = 0
+
+        # Scan all task directories for numbered folders
+        for task_dir in self.tasks_dir.iterdir():
+            if not task_dir.is_dir():
+                continue
+
+            folder_name = task_dir.name
+
+            # Check if folder name matches pattern: 3 digits followed by underscore
+            if re.match(r"^\d{3}_", folder_name):
+                try:
+                    # Extract the numeric prefix
+                    number_str = folder_name[:3]
+                    number = int(number_str)
+                    max_number = max(max_number, number)
+                except ValueError:
+                    # Skip if first 3 characters aren't valid digits
+                    continue
+
+        # Return next available number (max_number + 1)
+        return max_number + 1
+
     def create_imported_task(
         self,
         creation_output: "TestCaseCreationOutput",
