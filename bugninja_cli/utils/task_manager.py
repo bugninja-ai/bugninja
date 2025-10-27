@@ -441,7 +441,7 @@ class TaskManager:
 
         This method scans all existing task folders and finds the highest
         numbered task to determine the next available number. It looks for
-        folder names matching the pattern `^\d{3}_` (3 digits followed by underscore).
+        folder names matching the pattern `^d{3}_` (3 digits followed by underscore).
 
         Returns:
             int: Next available task number (starting from 1 if no numbered tasks exist)

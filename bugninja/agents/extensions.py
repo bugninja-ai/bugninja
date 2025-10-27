@@ -117,7 +117,8 @@ class BugninjaController(Controller):
         async def handle_scroll(
             scroll_action: ScrollAction,
             browser_session: BrowserSession,
-            type: Literal["up", "down"],
+            direction: Literal["up", "down"],
+            amount: Literal["full_page", "quarter"],
         ) -> ActionResult:
             """Handle scrolling operations with consistent behavior.
 
@@ -130,11 +131,20 @@ class BugninjaController(Controller):
                 ActionResult: Result of the scrolling operation
             """
             page = await browser_session.get_current_page()
-            page_height = await page.evaluate("() => window.innerHeight")
-            dy = scroll_action.amount or page_height
+            page_height: float = await page.evaluate("() => window.innerHeight")
 
-            if type == "up":
-                dy = -dy
+            dy: float = 0.0
+
+            if not scroll_action.amount:
+                if amount == "full_page":
+                    dy = page_height
+                elif amount == "quarter":
+                    dy = page_height / 4
+            else:
+                dy = scroll_action.amount
+
+            if direction == "up":
+                dy *= -1
 
             await page.wait_for_load_state("load")
 
@@ -153,13 +163,13 @@ class BugninjaController(Controller):
             return ActionResult(extracted_content=msg, include_in_memory=True)
 
         @self.registry.action(
-            "Scroll down the page by pixel amount - if none is given, scroll one page",
+            "Scroll down the whole page; go to the bottom if no amount is given",
             param_model=ScrollAction,
         )
-        async def scroll_down(
+        async def full_page_scroll_down(
             params: ScrollAction, browser_session: BrowserSession
         ) -> ActionResult:
-            """Scroll down the page by specified amount.
+            """Scroll down the page by specified amount, or full page if none given.
 
             Args:
                 params (ScrollAction): Scroll parameters including amount
@@ -168,14 +178,21 @@ class BugninjaController(Controller):
             Returns:
                 ActionResult: Result of the scrolling operation
             """
-            return await handle_scroll(params, browser_session, "down")
+            return await handle_scroll(
+                scroll_action=params,
+                browser_session=browser_session,
+                direction="down",
+                amount="full_page",
+            )
 
         @self.registry.action(
-            "Scroll up the page by pixel amount - if none is given, scroll one page",
+            "Scroll down 25% of the page; go to the bottom if no amount is given",
             param_model=ScrollAction,
         )
-        async def scroll_up(params: ScrollAction, browser_session: BrowserSession) -> ActionResult:
-            """Scroll up the page by specified amount.
+        async def quarter_page_scroll_down(
+            params: ScrollAction, browser_session: BrowserSession
+        ) -> ActionResult:
+            """Scroll down the page by specified amount, or quarter page if none given.
 
             Args:
                 params (ScrollAction): Scroll parameters including amount
@@ -184,7 +201,58 @@ class BugninjaController(Controller):
             Returns:
                 ActionResult: Result of the scrolling operation
             """
-            return await handle_scroll(params, browser_session, "up")
+            return await handle_scroll(
+                scroll_action=params,
+                browser_session=browser_session,
+                direction="down",
+                amount="quarter",
+            )
+
+        @self.registry.action(
+            "Scroll up 25% of the page; go to the bottom if no amount is given",
+            param_model=ScrollAction,
+        )
+        async def quarter_page_scroll_up(
+            params: ScrollAction, browser_session: BrowserSession
+        ) -> ActionResult:
+            """Scroll up the page by specified amount, or quarter page if none given.
+
+            Args:
+                params (ScrollAction): Scroll parameters including amount
+                browser_session (BrowserSession): Browser session to perform scrolling on
+
+            Returns:
+                ActionResult: Result of the scrolling operation
+            """
+            return await handle_scroll(
+                scroll_action=params,
+                browser_session=browser_session,
+                direction="up",
+                amount="quarter",
+            )
+
+        @self.registry.action(
+            "Scroll up the whole page; go to the top if no amount is given",
+            param_model=ScrollAction,
+        )
+        async def full_page_scroll_up(
+            params: ScrollAction, browser_session: BrowserSession
+        ) -> ActionResult:
+            """Scroll up the page by specified amount, or full page if none given.
+
+            Args:
+                params (ScrollAction): Scroll parameters including amount
+                browser_session (BrowserSession): Browser session to perform scrolling on
+
+            Returns:
+                ActionResult: Result of the scrolling operation
+            """
+            return await handle_scroll(
+                scroll_action=params,
+                browser_session=browser_session,
+                direction="up",
+                amount="full_page",
+            )
 
         @self.registry.action("Wait for x seconds default 3")
         async def wait(seconds: int = 3) -> ActionResult:
@@ -386,13 +454,8 @@ class BugninjaController(Controller):
                         file_input = file_inputs[0]
                         await file_input.set_input_files(file_path)
 
-                        # Click original element if it's a button/trigger
-                        if tag_name in ["button", "div", "span", "a", "label"]:
-                            try:
-                                await element_handle.click()
-                            except Exception:
-                                pass  # Click might fail, but file is already set
-
+                        # DON'T click the button - the file is already set
+                        # The website should detect the file change automatically
                         msg = f"📎 Uploaded file (index {params.file_index}) via hidden file input (triggered by element {params.index})"
                     else:
                         # Strategy 3: File chooser dialog interception

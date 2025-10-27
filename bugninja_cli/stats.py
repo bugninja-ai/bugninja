@@ -164,7 +164,6 @@ def _check_and_display_toml_errors(project_root: Path) -> None:
         project_root: Root directory of the Bugninja project
     """
     import tomli
-    from pathlib import Path
 
     tasks_dir = project_root / "tasks"
     if not tasks_dir.exists():
