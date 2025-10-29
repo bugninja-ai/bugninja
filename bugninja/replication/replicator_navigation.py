@@ -399,11 +399,6 @@ class ReplicatorNavigator(ABC):
         logger.bugninja_log("⌨️ Send keys requested")
         await self.__handle_not_implemented_action("Send keys")
 
-    async def _handle_scroll_to_text(self) -> None:
-        """Handle scrolling to text."""
-        logger.bugninja_log("🔍 Scroll to text requested")
-        await self.__handle_not_implemented_action("Scroll to text")
-
     async def _handle_get_dropdown_options(self) -> None:
         """Handle getting dropdown options."""
         logger.bugninja_log("📝 Dropdown options requested")
@@ -707,7 +702,6 @@ class ReplicatorNavigator(ABC):
             "scroll_down": lambda: self._handle_scroll_down(scroll_amount=scroll_amount),
             "scroll_up": lambda: self._handle_scroll_up(scroll_amount=scroll_amount),
             "send_keys": self._handle_send_keys,
-            "scroll_to_text": self._handle_scroll_to_text,
             "get_dropdown_options": self._handle_get_dropdown_options,
             "select_dropdown_option": lambda: self._handle_select_dropdown_option(
                 action=interaction.action, element_info=element_info

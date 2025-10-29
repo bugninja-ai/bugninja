@@ -168,7 +168,14 @@ class BugninjaAgentBase(Agent, ABC):
         self.available_file_paths = [str(f.path.absolute()) for f in self.available_files]
 
         custom_controller = BugninjaController(
-            exclude_actions=["scroll_up", "scroll_down", "save_pdf", "search_google", "drag_drop"],
+            exclude_actions=[
+                "scroll_to_text",
+                "scroll_up",
+                "scroll_down",
+                "save_pdf",
+                "search_google",
+                "drag_drop",
+            ],
         )
 
         super().__init__(
