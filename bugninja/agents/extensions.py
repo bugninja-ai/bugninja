@@ -59,6 +59,16 @@ class UploadFileAction(BaseModel):
     file_index: int = Field(ge=0, description="Index of file from available_files list")
 
 
+class HoverAction(BaseModel):
+    """Action model for hover operations.
+
+    Attributes:
+        index (int): Index of the DOM element to hover over
+    """
+
+    index: int = Field(description="Index of the element to hover over")
+
+
 async def get_user_input_async() -> UserInputResponse:
     """Get user input asynchronously for authentication flows.
 
@@ -381,6 +391,53 @@ class BugninjaController(Controller):
                 msg = f"⌨️  Input {params.text} into index {params.index}"
             else:
                 msg = f"⌨️  Input sensitive data into index {params.index}"
+            logger.info(msg)
+            logger.debug(f"Element xpath: {element_node.xpath}")
+            return ActionResult(extracted_content=msg, include_in_memory=True)
+
+        @self.registry.action(
+            "Hover over an element by index, then wait 2 seconds",
+            param_model=HoverAction,
+        )
+        async def hover(
+            params: HoverAction,
+            browser_session: BrowserSession,
+        ) -> ActionResult:
+            if params.index not in await browser_session.get_selector_map():
+                raise Exception(
+                    f"Element index {params.index} does not exist - retry or use alternative actions"
+                )
+
+            element_node: Optional[DOMElementNode] = await browser_session.get_dom_element_by_index(
+                params.index
+            )
+
+            if element_node is None:
+                raise Exception(f"Element index {params.index} could not be found on the page!")
+
+            try:
+                element_handle = await browser_session.get_locate_element(element_node)
+                if element_handle is None:
+                    raise BrowserError(f"Element: {repr(element_node)} not found")
+
+                try:
+                    await element_handle.wait_for_element_state("stable", timeout=1000)
+                    is_visible = await browser_session._is_visible(element_handle)
+                    if is_visible:
+                        await element_handle.scroll_into_view_if_needed(timeout=1000)
+                except Exception:
+                    pass
+
+                await element_handle.hover()
+                await asyncio.sleep(2)
+
+            except Exception as e:
+                logger.debug(
+                    f"❌  Failed to hover over element: {repr(element_node)}. Error: {str(e)}"
+                )
+                raise BrowserError(f"Failed to hover over index {element_node.highlight_index}")
+
+            msg = f"🖱️  Hovered over element at index {params.index} and waited 2s"
             logger.info(msg)
             logger.debug(f"Element xpath: {element_node.xpath}")
             return ActionResult(extracted_content=msg, include_in_memory=True)
