@@ -2,11 +2,13 @@ import asyncio
 from enum import Enum
 from typing import Literal, Optional
 
-from browser_use import BrowserSession  # type: ignore
 from browser_use.agent.views import ActionResult  # type: ignore
+from browser_use.browser import BrowserSession  # type: ignore
 from browser_use.browser.views import BrowserError  # type: ignore
 from browser_use.controller.service import Controller  # type: ignore
+from browser_use.controller.views import ClickElementAction  # type: ignore
 from browser_use.controller.views import InputTextAction  # type: ignore
+from browser_use.controller.views import NoParamsAction  # type: ignore
 from browser_use.controller.views import ScrollAction  # type: ignore
 from browser_use.dom.views import DOMElementNode  # type: ignore
 from patchright._impl._file_chooser import FileChooser
@@ -123,6 +125,16 @@ class BugninjaController(Controller):
         """
         super().__init__(exclude_actions=exclude_actions, output_model=output_model)
         self.verbose = verbose
+        self._hover_cleanup_pending: bool = False
+
+        async def _cleanup_hover(browser_session: BrowserSession) -> None:
+            if not self._hover_cleanup_pending:
+                return
+            try:
+                page = await browser_session.get_current_page()
+                await page.mouse.move(0, 0)
+            finally:
+                self._hover_cleanup_pending = False
 
         async def handle_scroll(
             scroll_action: ScrollAction,
@@ -393,13 +405,116 @@ class BugninjaController(Controller):
                 msg = f"⌨️  Input sensitive data into index {params.index}"
             logger.info(msg)
             logger.debug(f"Element xpath: {element_node.xpath}")
+            await _cleanup_hover(browser_session)
+            return ActionResult(extracted_content=msg, include_in_memory=True)
+
+        @self.registry.action("Click element by index", param_model=ClickElementAction)
+        async def click_element_by_index(
+            params: ClickElementAction, browser_session: BrowserSession
+        ) -> ActionResult:
+            if params.index not in await browser_session.get_selector_map():
+                raise Exception(
+                    f"Element with index {params.index} does not exist - retry or use alternative actions"
+                )
+
+            element_node: Optional[DOMElementNode] = await browser_session.get_dom_element_by_index(
+                params.index
+            )
+
+            if element_node is None:
+                return ActionResult(
+                    extracted_content=f"Element index {params.index} could not be found on the page!",
+                    include_in_memory=True,
+                )
+
+            initial_pages = len(browser_session.tabs)
+            msg: Optional[str] = None
+
+            # if element has file uploader then dont click
+            if await browser_session.find_file_upload_element_by_index(params.index) is not None:
+                msg = (
+                    f"Index {params.index} - has an element which opens file upload dialog. "
+                    "To upload files please use a specific function to upload files "
+                )
+                logger.info(msg)
+                await _cleanup_hover(browser_session)
+                return ActionResult(extracted_content=msg, include_in_memory=True)
+
+            try:
+                download_path = await browser_session._click_element_node(element_node)
+                if download_path:
+                    msg = f"💾  Downloaded file to {download_path}"
+                else:
+                    msg = (
+                        f"🖱️  Clicked button with index {params.index}: "
+                        f"{element_node.get_all_text_till_next_clickable_element(max_depth=2)}"
+                    )
+
+                logger.info(msg)
+                logger.debug(f"Element xpath: {element_node.xpath}")
+                if len(browser_session.tabs) > initial_pages:
+                    new_tab_msg = "New tab opened - switching to it"
+                    msg += f" - {new_tab_msg}"
+                    logger.info(new_tab_msg)
+                    await browser_session.switch_to_tab(-1)
+                await _cleanup_hover(browser_session)
+                return ActionResult(extracted_content=msg, include_in_memory=True)
+            except Exception as e:
+                logger.warning(
+                    f"Element not clickable with index {params.index} - most likely the page changed"
+                )
+                await _cleanup_hover(browser_session)
+                return ActionResult(error=str(e))
+
+        @self.registry.action("Go back", param_model=NoParamsAction)
+        async def go_back(params: NoParamsAction, browser_session: BrowserSession) -> ActionResult:
+            await browser_session.go_back()
+            msg = "🔙  Navigated back"
+            logger.info(msg)
+            await _cleanup_hover(browser_session)
             return ActionResult(extracted_content=msg, include_in_memory=True)
 
         @self.registry.action(
-            "Hover over an element by index, then wait 2 seconds",
+            "Close overlay or menu by clicking the bottom-right corner. You are only allowed to use this action if it is SPECIFICALLY REQUESTED!",
+            param_model=NoParamsAction,
+        )
+        async def close_overlay(
+            params: NoParamsAction, browser_session: BrowserSession
+        ) -> ActionResult:
+            page = await browser_session.get_current_page()
+            # Determine a safe bottom-right point (slightly inset)
+            try:
+                viewport = page.viewport_size
+                if viewport and viewport.get("width") and viewport.get("height"):
+                    x = max(0, int(viewport["width"]) - 5)
+                    y = max(0, int(viewport["height"]) - 5)
+                else:
+                    # Fallback to window size
+                    dims = await page.evaluate(
+                        "() => ({ w: window.innerWidth, h: window.innerHeight })"
+                    )
+                    x = max(0, int(dims.get("w", 1)) - 5)
+                    y = max(0, int(dims.get("h", 1)) - 5)
+            except Exception:
+                # Absolute fallback
+                x, y = 5, 5
+
+            await page.mouse.move(x, y)
+            await page.mouse.click(x, y)
+            await asyncio.sleep(0.1)
+
+            # Clearing hover cleanup state is safe after overlay dismissal attempts
+            self._hover_cleanup_pending = False
+
+            msg = f"🖱️  Closed overlay/menu by clicking at ({x},{y})"
+            logger.info(msg)
+            return ActionResult(extracted_content=msg, include_in_memory=True)
+
+        @self.registry.action(
+            "Hover over an element by index, then wait 2 seconds. You are only allowed to use this action if it is SPECIFICALLY REQUESTED!",
             param_model=HoverAction,
         )
-        async def hover(
+        async def hover_direct(
             params: HoverAction,
             browser_session: BrowserSession,
         ) -> ActionResult:
@@ -430,6 +545,7 @@ class BugninjaController(Controller):
 
                 await element_handle.hover()
                 await asyncio.sleep(2)
+                self._hover_cleanup_pending = True
 
             except Exception as e:
                 logger.debug(
@@ -562,3 +678,78 @@ class BugninjaController(Controller):
                 raise BrowserError(
                     f"Failed to upload file to index {params.index}: {str(e)}. {error_details}"
                 )
+
+        @self.registry.action(
+            description="Get all options from a native dropdown",
+        )
+        async def get_dropdown_options(index: int, browser_session: BrowserSession) -> ActionResult:
+            """Get all options from a native dropdown"""
+            page = await browser_session.get_current_page()
+            selector_map = await browser_session.get_selector_map()
+            dom_element = selector_map[index]
+
+            try:
+                # Frame-aware approach since we know it works
+                all_options = []
+                frame_index = 0
+
+                for frame in page.frames:
+                    try:
+                        options = await frame.evaluate(
+                            """
+                            (xpath) => {
+                                const select = document.evaluate(xpath, document, null,
+                                    XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+                                if (!select) return null;
+
+                                return {
+                                    options: Array.from(select.options).map(opt => ({
+                                        text: opt.text, //do not trim, because we are doing exact match in select_dropdown_option
+                                        value: opt.value,
+                                        index: opt.index
+                                    })),
+                                    id: select.id,
+                                    name: select.name
+                                };
+                            }
+                        """,
+                            dom_element.xpath,
+                        )
+
+                        if options:
+                            logger.debug(f"Found dropdown in frame {frame_index}")
+                            logger.debug(f'Dropdown ID: {options["id"]}, Name: {options["name"]}')
+
+                            formatted_options = []
+                            for opt in options["options"]:
+                                # encoding ensures AI uses the exact string in select_dropdown_option
+                                import json as _json
+
+                                encoded_text = _json.dumps(opt["text"])
+                                formatted_options.append(f'{opt["index"]}: text={encoded_text}')
+
+                            all_options.extend(formatted_options)
+
+                    except Exception as frame_e:
+                        logger.debug(f"Frame {frame_index} evaluation failed: {str(frame_e)}")
+
+                    frame_index += 1
+
+                if all_options:
+                    msg = "\n".join(all_options)
+                    msg += "\nUse the exact text string in select_dropdown_option"
+                    logger.info(msg)
+                    await _cleanup_hover(browser_session)
+                    return ActionResult(extracted_content=msg, include_in_memory=True)
+                else:
+                    msg = "No options found in any frame for dropdown"
+                    logger.info(msg)
+                    await _cleanup_hover(browser_session)
+                    return ActionResult(extracted_content=msg, include_in_memory=True)
+
+            except Exception as e:
+                logger.error(f"Failed to get dropdown options: {str(e)}")
+                msg = f"Error getting options: {str(e)}"
+                logger.info(msg)
+                await _cleanup_hover(browser_session)
+                return ActionResult(extracted_content=msg, include_in_memory=True)
