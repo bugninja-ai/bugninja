@@ -99,6 +99,11 @@ class PipelineExecutor:
             materialized_pipeline.print_plan()
 
             # Create client factory that generates task-specific clients
+            from browser_use.browser.profile import (  # type: ignore
+                Geolocation,
+                ProxySettings,
+            )
+
             from bugninja.api import BugninjaClient
             from bugninja.api.bugninja_pipeline import TaskRef
             from bugninja.schemas.cli_schemas import TaskExecutionResult
@@ -145,6 +150,27 @@ class PipelineExecutor:
                     enable_healing=run_config.enable_healing,
                     cli_mode=True,  # Enable CLI mode for proper directory structure
                 )
+
+                # Network and location overrides from run_config
+                if getattr(run_config, "proxy_server", None):
+                    try:
+                        config.proxy = ProxySettings(server=run_config.proxy_server)  # type: ignore
+                    except Exception:
+                        # Ignore invalid proxy format silently to avoid breaking runs
+                        config.proxy = None
+
+                if (
+                    getattr(run_config, "geolocation_latitude", None) is not None
+                    and getattr(run_config, "geolocation_longitude", None) is not None
+                ):
+                    try:
+                        config.geolocation = Geolocation(
+                            latitude=run_config.geolocation_latitude,  # type: ignore
+                            longitude=run_config.geolocation_longitude,  # type: ignore
+                            accuracy=(run_config.geolocation_accuracy or 100.0),  # type: ignore
+                        )
+                    except Exception:
+                        config.geolocation = None
 
                 # Set task-specific output directory
                 task_output_dir = self.project_root / "tasks" / folder_name

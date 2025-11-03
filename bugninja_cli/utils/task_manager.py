@@ -631,6 +631,15 @@ enable_healing = true
 headless = false
 enable_video_recording = true
 
+# Optional per-task network and location overrides
+[run_config.proxy]
+server = ""  # e.g. "http://host:port" or "socks5://host:port"
+
+[run_config.geolocation]
+latitude = 0.0
+longitude = 0.0
+accuracy = 100.0
+
 [metadata]
 task_id = "{task_id}"
 created_date = "{datetime.now(UTC).isoformat()}Z"
@@ -746,6 +755,15 @@ enable_vision = true
 enable_healing = true
 headless = false
 enable_video_recording = true
+
+# Optional per-task network and location overrides
+[run_config.proxy]
+server = ""  # e.g. "http://host:port" or "socks5://host:port"
+
+[run_config.geolocation]
+latitude = 0.0
+longitude = 0.0
+accuracy = 100.0
 
 [metadata]
 task_id = "{task_id}"
