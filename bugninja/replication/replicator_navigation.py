@@ -309,10 +309,11 @@ class ReplicatorNavigator(ABC):
         logger.bugninja_log("📋 Content extraction requested")
         await self.__handle_not_implemented_action("Content extraction")
 
-    async def _handle_wait(self) -> None:
-        """Handle waiting."""
-        logger.bugninja_log("⏳ Waiting requested")
-        await self.__handle_not_implemented_action("Waiting functionality")
+    async def _handle_wait(self, seconds: Optional[int]) -> None:
+        """Handle waiting for a specified duration."""
+        wait_seconds = seconds if seconds is not None else 3
+        logger.bugninja_log(f"🕒  Waiting for {wait_seconds} seconds")
+        await asyncio.sleep(wait_seconds)
 
     async def _handle_go_back(self) -> None:
         """Handle navigation back."""
@@ -381,9 +382,9 @@ class ReplicatorNavigator(ABC):
         if how == "up":
             dy = -dy
 
-        await self.current_page.wait_for_timeout(500)
-
-        await self.current_page.evaluate("(y) => window.scrollBy(0, y)", dy)
+        await self.current_page.wait_for_load_state("load")
+        # Prefer realistic wheel scroll to better trigger observers
+        await self.current_page.mouse.wheel(delta_x=0, delta_y=dy)
         logger.bugninja_log(f"🔍 Scrolled down the page by {dy} pixels")
 
     async def _handle_scroll_down(self, scroll_amount: Optional[int]) -> None:
@@ -394,20 +395,76 @@ class ReplicatorNavigator(ABC):
         """Handle scrolling up."""
         await self._scroll(scroll_amount, "up")
 
+    async def _handle_scroll_down_quarter(self) -> None:
+        """Scroll down by a quarter of the viewport height."""
+        height: int = int(await self.current_page.evaluate("() => window.innerHeight"))
+        await self._scroll(height // 4, "down")
+
+    async def _handle_scroll_up_quarter(self) -> None:
+        """Scroll up by a quarter of the viewport height."""
+        height: int = int(await self.current_page.evaluate("() => window.innerHeight"))
+        await self._scroll(height // 4, "up")
+
     async def _handle_send_keys(self) -> None:
         """Handle sending keys."""
         logger.bugninja_log("⌨️ Send keys requested")
         await self.__handle_not_implemented_action("Send keys")
 
-    async def _handle_scroll_to_text(self) -> None:
-        """Handle scrolling to text."""
-        logger.bugninja_log("🔍 Scroll to text requested")
-        await self.__handle_not_implemented_action("Scroll to text")
-
-    async def _handle_get_dropdown_options(self) -> None:
-        """Handle getting dropdown options."""
+    async def _handle_get_dropdown_options(self, element_info: Optional[Dict[str, Any]]) -> None:
+        """Handle getting dropdown options using frame-aware XPath evaluation."""
         logger.bugninja_log("📝 Dropdown options requested")
-        await self.__handle_not_implemented_action("Dropdown options")
+        if not element_info or not element_info.get("xpath"):
+            raise ActionError("No element information with xpath provided for dropdown options")
+
+        xpath = element_info["xpath"]
+        page = self.current_page
+
+        try:
+            all_options: List[str] = []
+            frame_index = 0
+            for frame in page.frames:
+                try:
+                    options = await frame.evaluate(
+                        """
+                        (xpath) => {
+                            const select = document.evaluate(xpath, document, null,
+                                XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+                            if (!select) return null;
+                            return {
+                                options: Array.from(select.options).map(opt => ({
+                                    text: opt.text,
+                                    value: opt.value,
+                                    index: opt.index
+                                })),
+                                id: select.id,
+                                name: select.name
+                            };
+                        }
+                        """,
+                        xpath,
+                    )
+                    if options:
+                        formatted: List[str] = []
+                        for opt in options["options"]:
+                            import json as _json  # local import to avoid top-level pollution
+
+                            encoded_text = _json.dumps(opt["text"])  # preserve exact text
+                            formatted.append(f"{opt['index']}: text={encoded_text}")
+                        all_options.extend(formatted)
+                except Exception:
+                    pass
+                finally:
+                    frame_index += 1
+
+            if all_options:
+                msg = (
+                    "\n".join(all_options) + "\nUse the exact text string in select_dropdown_option"
+                )
+                logger.info(msg)
+            else:
+                logger.info("No options found in any frame for dropdown")
+        except Exception as e:
+            logger.error(f"Failed to get dropdown options: {str(e)}")
 
     async def _handle_select_dropdown_option(
         self, action: Dict[str, Any], element_info: Optional[Dict[str, Any]]
@@ -530,6 +587,64 @@ class ReplicatorNavigator(ABC):
             logger.warning(f"⚠️ Fallback file input search failed: {e}")
 
         raise ActionError("Failed to upload file with all available selectors")
+
+    async def _handle_third_party_authentication_wait(self) -> None:
+        """Wait for user to signal third-party authentication completion."""
+        logger.bugninja_log(
+            "⏳ Waiting for third-party authentication completion (press Enter when done)"
+        )
+        _ = get_user_input()
+        # No further state changes; presence of input is enough to continue
+
+    async def _handle_close_overlay(self) -> None:
+        """Close overlay by clicking bottom-right corner."""
+        page = self.current_page
+        try:
+            viewport = page.viewport_size
+            if viewport and viewport.get("width") and viewport.get("height"):
+                x = max(0, int(viewport["width"]) - 5)
+                y = max(0, int(viewport["height"]) - 5)
+            else:
+                dims = await page.evaluate(
+                    "() => ({ w: window.innerWidth, h: window.innerHeight })"
+                )
+                x = max(0, int(dims.get("w", 1)) - 5)
+                y = max(0, int(dims.get("h", 1)) - 5)
+        except Exception:
+            x, y = 5, 5
+
+        await page.mouse.move(x, y)
+        await page.mouse.click(x, y)
+        await asyncio.sleep(0.1)
+        logger.info(f"🖱️  Closed overlay/menu by clicking at ({x},{y})")
+
+    async def _handle_hover(self, element_info: Optional[Dict[str, Any]]) -> None:
+        """Hover over element and wait briefly."""
+        if not element_info:
+            raise ActionError("No element information provided for hover")
+        selectors = await self._get_element_selector(element_info)
+        last_error: Optional[str] = None
+        for _, selector in selectors:
+            try:
+                locator = self.current_page.locator(selector)
+                if await locator.count() != 1:
+                    continue
+                handle = await self.current_page.query_selector(selector)
+                if handle is None:
+                    continue
+                try:
+                    await handle.wait_for_element_state("stable", timeout=1000)
+                    await handle.scroll_into_view_if_needed(timeout=1000)
+                except Exception:
+                    pass
+                await handle.hover()
+                await asyncio.sleep(2)
+                logger.info("🖱️  Hovered over element and waited 2s")
+                return
+            except Exception as e:
+                last_error = str(e)
+                continue
+        raise ActionError(f"Failed to hover over element. Last error: {last_error}")
 
     async def _handle_drag_drop(self) -> None:
         """Handle drag and drop."""
@@ -696,7 +811,9 @@ class ReplicatorNavigator(ABC):
                 action=interaction.action, element_info=element_info
             ),
             "extract_content": self._handle_extract_content,
-            "wait": self._handle_wait,
+            "wait": lambda: self._handle_wait(
+                seconds=(interaction.action.get("wait") or {}).get("seconds", 3)
+            ),
             "go_back": self._handle_go_back,
             "search_google": self._handle_search_google,
             "save_pdf": self._handle_save_pdf,
@@ -707,8 +824,9 @@ class ReplicatorNavigator(ABC):
             "scroll_down": lambda: self._handle_scroll_down(scroll_amount=scroll_amount),
             "scroll_up": lambda: self._handle_scroll_up(scroll_amount=scroll_amount),
             "send_keys": self._handle_send_keys,
-            "scroll_to_text": self._handle_scroll_to_text,
-            "get_dropdown_options": self._handle_get_dropdown_options,
+            "get_dropdown_options": lambda: self._handle_get_dropdown_options(
+                element_info=element_info
+            ),
             "select_dropdown_option": lambda: self._handle_select_dropdown_option(
                 action=interaction.action, element_info=element_info
             ),
@@ -717,6 +835,15 @@ class ReplicatorNavigator(ABC):
             ),
             "drag_drop": self._handle_drag_drop,
             "done": self._handle_done,
+            # Additional traversal-parity actions
+            "third_party_authentication_wait": self._handle_third_party_authentication_wait,
+            "close_overlay": self._handle_close_overlay,
+            "hover_direct": lambda: self._handle_hover(element_info=element_info),
+            # Scrolling variants
+            "full_page_scroll_down": lambda: self._handle_scroll_down(scroll_amount=None),
+            "full_page_scroll_up": lambda: self._handle_scroll_up(scroll_amount=None),
+            "quarter_page_scroll_down": self._handle_scroll_down_quarter,
+            "quarter_page_scroll_up": self._handle_scroll_up_quarter,
         }
 
         # Get the appropriate handler for the action

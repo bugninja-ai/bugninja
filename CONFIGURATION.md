@@ -358,3 +358,33 @@ settings = ConfigurationFactory.get_settings()
 ```
 
 This configuration system provides a robust, secure, and flexible way to manage Bugninja settings while maintaining clear separation between sensitive and non-sensitive data.
+
+## Per-Task Run Configuration (TOML)
+
+Each task may define a `[run_config]` section inside its own `task_<name>.toml` file to control the browser for that run. Supported keys include viewport, headless, user_agent, video recording, and now proxy/geolocation.
+
+Example:
+
+```toml
+[run_config]
+viewport_width = 1920
+viewport_height = 1080
+user_agent = ""
+headless = false
+enable_healing = true
+enable_video_recording = true
+
+[run_config.proxy]
+# Server-only proxy URL. Examples: "http://host:port", "socks5://host:port"
+server = ""
+
+[run_config.geolocation]
+latitude = 37.7749
+longitude = -122.4194
+accuracy = 100.0
+```
+
+Behavior:
+- If `run_config.proxy.server` is set, the proxy is applied to the session.
+- If both `latitude` and `longitude` are set, geolocation emulation is applied (default accuracy 100.0 if omitted).
+- These settings are recorded into the traversal and used during replay as well.

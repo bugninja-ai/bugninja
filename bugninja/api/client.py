@@ -1591,6 +1591,41 @@ class BugninjaClient:
         if hasattr(self.config, "enable_vision"):
             self.config.enable_vision = config.enable_vision
 
+        # Proxy (server-only)
+        try:
+            from browser_use.browser.profile import (  # type: ignore
+                Geolocation,
+                ProxySettings,
+            )
+        except Exception:
+            ProxySettings = None  # type: ignore
+            Geolocation = None  # type: ignore
+
+        if ProxySettings is not None and getattr(config, "proxy_server", None):
+            try:
+                self.config.proxy = ProxySettings(server=config.proxy_server)  # type: ignore
+            except Exception:
+                self.config.proxy = None
+        else:
+            self.config.proxy = None
+
+        # Geolocation
+        if (
+            Geolocation is not None
+            and getattr(config, "geolocation_latitude", None) is not None
+            and getattr(config, "geolocation_longitude", None) is not None
+        ):
+            try:
+                self.config.geolocation = Geolocation(
+                    latitude=config.geolocation_latitude,  # type: ignore
+                    longitude=config.geolocation_longitude,  # type: ignore
+                    accuracy=(config.geolocation_accuracy or 100.0),  # type: ignore
+                )
+            except Exception:
+                self.config.geolocation = None
+        else:
+            self.config.geolocation = None
+
         # Update dependent components
         self._update_dependent_components()
 

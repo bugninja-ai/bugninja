@@ -2,11 +2,13 @@ import asyncio
 from enum import Enum
 from typing import Literal, Optional
 
-from browser_use import BrowserSession  # type: ignore
 from browser_use.agent.views import ActionResult  # type: ignore
+from browser_use.browser import BrowserSession  # type: ignore
 from browser_use.browser.views import BrowserError  # type: ignore
 from browser_use.controller.service import Controller  # type: ignore
+from browser_use.controller.views import ClickElementAction  # type: ignore
 from browser_use.controller.views import InputTextAction  # type: ignore
+from browser_use.controller.views import NoParamsAction  # type: ignore
 from browser_use.controller.views import ScrollAction  # type: ignore
 from browser_use.dom.views import DOMElementNode  # type: ignore
 from patchright._impl._file_chooser import FileChooser
@@ -57,6 +59,16 @@ class UploadFileAction(BaseModel):
 
     index: int = Field(description="Index of the file input element")
     file_index: int = Field(ge=0, description="Index of file from available_files list")
+
+
+class HoverAction(BaseModel):
+    """Action model for hover operations.
+
+    Attributes:
+        index (int): Index of the DOM element to hover over
+    """
+
+    index: int = Field(description="Index of the element to hover over")
 
 
 async def get_user_input_async() -> UserInputResponse:
@@ -113,11 +125,22 @@ class BugninjaController(Controller):
         """
         super().__init__(exclude_actions=exclude_actions, output_model=output_model)
         self.verbose = verbose
+        self._hover_cleanup_pending: bool = False
+
+        async def _cleanup_hover(browser_session: BrowserSession) -> None:
+            if not self._hover_cleanup_pending:
+                return
+            try:
+                page = await browser_session.get_current_page()
+                await page.mouse.move(0, 0)
+            finally:
+                self._hover_cleanup_pending = False
 
         async def handle_scroll(
             scroll_action: ScrollAction,
             browser_session: BrowserSession,
-            type: Literal["up", "down"],
+            direction: Literal["up", "down"],
+            amount: Literal["full_page", "quarter"],
         ) -> ActionResult:
             """Handle scrolling operations with consistent behavior.
 
@@ -130,11 +153,20 @@ class BugninjaController(Controller):
                 ActionResult: Result of the scrolling operation
             """
             page = await browser_session.get_current_page()
-            page_height = await page.evaluate("() => window.innerHeight")
-            dy = scroll_action.amount or page_height
+            page_height: float = await page.evaluate("() => window.innerHeight")
 
-            if type == "up":
-                dy = -dy
+            dy: float = 0.0
+
+            if not scroll_action.amount:
+                if amount == "full_page":
+                    dy = page_height
+                elif amount == "quarter":
+                    dy = page_height / 4
+            else:
+                dy = scroll_action.amount
+
+            if direction == "up":
+                dy *= -1
 
             await page.wait_for_load_state("load")
 
@@ -153,13 +185,13 @@ class BugninjaController(Controller):
             return ActionResult(extracted_content=msg, include_in_memory=True)
 
         @self.registry.action(
-            "Scroll down the page by pixel amount - if none is given, scroll one page",
+            "Scroll down the whole page; go to the bottom if no amount is given",
             param_model=ScrollAction,
         )
-        async def scroll_down(
+        async def full_page_scroll_down(
             params: ScrollAction, browser_session: BrowserSession
         ) -> ActionResult:
-            """Scroll down the page by specified amount.
+            """Scroll down the page by specified amount, or full page if none given.
 
             Args:
                 params (ScrollAction): Scroll parameters including amount
@@ -168,14 +200,21 @@ class BugninjaController(Controller):
             Returns:
                 ActionResult: Result of the scrolling operation
             """
-            return await handle_scroll(params, browser_session, "down")
+            return await handle_scroll(
+                scroll_action=params,
+                browser_session=browser_session,
+                direction="down",
+                amount="full_page",
+            )
 
         @self.registry.action(
-            "Scroll up the page by pixel amount - if none is given, scroll one page",
+            "Scroll down 25% of the page; go to the bottom if no amount is given",
             param_model=ScrollAction,
         )
-        async def scroll_up(params: ScrollAction, browser_session: BrowserSession) -> ActionResult:
-            """Scroll up the page by specified amount.
+        async def quarter_page_scroll_down(
+            params: ScrollAction, browser_session: BrowserSession
+        ) -> ActionResult:
+            """Scroll down the page by specified amount, or quarter page if none given.
 
             Args:
                 params (ScrollAction): Scroll parameters including amount
@@ -184,7 +223,58 @@ class BugninjaController(Controller):
             Returns:
                 ActionResult: Result of the scrolling operation
             """
-            return await handle_scroll(params, browser_session, "up")
+            return await handle_scroll(
+                scroll_action=params,
+                browser_session=browser_session,
+                direction="down",
+                amount="quarter",
+            )
+
+        @self.registry.action(
+            "Scroll up 25% of the page; go to the bottom if no amount is given",
+            param_model=ScrollAction,
+        )
+        async def quarter_page_scroll_up(
+            params: ScrollAction, browser_session: BrowserSession
+        ) -> ActionResult:
+            """Scroll up the page by specified amount, or quarter page if none given.
+
+            Args:
+                params (ScrollAction): Scroll parameters including amount
+                browser_session (BrowserSession): Browser session to perform scrolling on
+
+            Returns:
+                ActionResult: Result of the scrolling operation
+            """
+            return await handle_scroll(
+                scroll_action=params,
+                browser_session=browser_session,
+                direction="up",
+                amount="quarter",
+            )
+
+        @self.registry.action(
+            "Scroll up the whole page; go to the top if no amount is given",
+            param_model=ScrollAction,
+        )
+        async def full_page_scroll_up(
+            params: ScrollAction, browser_session: BrowserSession
+        ) -> ActionResult:
+            """Scroll up the page by specified amount, or full page if none given.
+
+            Args:
+                params (ScrollAction): Scroll parameters including amount
+                browser_session (BrowserSession): Browser session to perform scrolling on
+
+            Returns:
+                ActionResult: Result of the scrolling operation
+            """
+            return await handle_scroll(
+                scroll_action=params,
+                browser_session=browser_session,
+                direction="up",
+                amount="full_page",
+            )
 
         @self.registry.action("Wait for x seconds default 3")
         async def wait(seconds: int = 3) -> ActionResult:
@@ -315,6 +405,157 @@ class BugninjaController(Controller):
                 msg = f"⌨️  Input sensitive data into index {params.index}"
             logger.info(msg)
             logger.debug(f"Element xpath: {element_node.xpath}")
+            await _cleanup_hover(browser_session)
+            return ActionResult(extracted_content=msg, include_in_memory=True)
+
+        @self.registry.action("Click element by index", param_model=ClickElementAction)
+        async def click_element_by_index(
+            params: ClickElementAction, browser_session: BrowserSession
+        ) -> ActionResult:
+            if params.index not in await browser_session.get_selector_map():
+                raise Exception(
+                    f"Element with index {params.index} does not exist - retry or use alternative actions"
+                )
+
+            element_node: Optional[DOMElementNode] = await browser_session.get_dom_element_by_index(
+                params.index
+            )
+
+            if element_node is None:
+                return ActionResult(
+                    extracted_content=f"Element index {params.index} could not be found on the page!",
+                    include_in_memory=True,
+                )
+
+            initial_pages = len(browser_session.tabs)
+            msg: Optional[str] = None
+
+            # if element has file uploader then dont click
+            if await browser_session.find_file_upload_element_by_index(params.index) is not None:
+                msg = (
+                    f"Index {params.index} - has an element which opens file upload dialog. "
+                    "To upload files please use a specific function to upload files "
+                )
+                logger.info(msg)
+                await _cleanup_hover(browser_session)
+                return ActionResult(extracted_content=msg, include_in_memory=True)
+
+            try:
+                download_path = await browser_session._click_element_node(element_node)
+                if download_path:
+                    msg = f"💾  Downloaded file to {download_path}"
+                else:
+                    msg = (
+                        f"🖱️  Clicked button with index {params.index}: "
+                        f"{element_node.get_all_text_till_next_clickable_element(max_depth=2)}"
+                    )
+
+                logger.info(msg)
+                logger.debug(f"Element xpath: {element_node.xpath}")
+                if len(browser_session.tabs) > initial_pages:
+                    new_tab_msg = "New tab opened - switching to it"
+                    msg += f" - {new_tab_msg}"
+                    logger.info(new_tab_msg)
+                    await browser_session.switch_to_tab(-1)
+                await _cleanup_hover(browser_session)
+                return ActionResult(extracted_content=msg, include_in_memory=True)
+            except Exception as e:
+                logger.warning(
+                    f"Element not clickable with index {params.index} - most likely the page changed"
+                )
+                await _cleanup_hover(browser_session)
+                return ActionResult(error=str(e))
+
+        @self.registry.action("Go back", param_model=NoParamsAction)
+        async def go_back(params: NoParamsAction, browser_session: BrowserSession) -> ActionResult:
+            await browser_session.go_back()
+            msg = "🔙  Navigated back"
+            logger.info(msg)
+            await _cleanup_hover(browser_session)
+            return ActionResult(extracted_content=msg, include_in_memory=True)
+
+        @self.registry.action(
+            "Close overlay or menu by clicking the bottom-right corner. You are only allowed to use this action if it is SPECIFICALLY REQUESTED!",
+            param_model=NoParamsAction,
+        )
+        async def close_overlay(
+            params: NoParamsAction, browser_session: BrowserSession
+        ) -> ActionResult:
+            page = await browser_session.get_current_page()
+            # Determine a safe bottom-right point (slightly inset)
+            try:
+                viewport = page.viewport_size
+                if viewport and viewport.get("width") and viewport.get("height"):
+                    x = max(0, int(viewport["width"]) - 5)
+                    y = max(0, int(viewport["height"]) - 5)
+                else:
+                    # Fallback to window size
+                    dims = await page.evaluate(
+                        "() => ({ w: window.innerWidth, h: window.innerHeight })"
+                    )
+                    x = max(0, int(dims.get("w", 1)) - 5)
+                    y = max(0, int(dims.get("h", 1)) - 5)
+            except Exception:
+                # Absolute fallback
+                x, y = 5, 5
+
+            await page.mouse.move(x, y)
+            await page.mouse.click(x, y)
+            await asyncio.sleep(0.1)
+
+            # Clearing hover cleanup state is safe after overlay dismissal attempts
+            self._hover_cleanup_pending = False
+
+            msg = f"🖱️  Closed overlay/menu by clicking at ({x},{y})"
+            logger.info(msg)
+            return ActionResult(extracted_content=msg, include_in_memory=True)
+
+        @self.registry.action(
+            "Hover over an element by index, then wait 2 seconds. You are only allowed to use this action if it is SPECIFICALLY REQUESTED!",
+            param_model=HoverAction,
+        )
+        async def hover_direct(
+            params: HoverAction,
+            browser_session: BrowserSession,
+        ) -> ActionResult:
+            if params.index not in await browser_session.get_selector_map():
+                raise Exception(
+                    f"Element index {params.index} does not exist - retry or use alternative actions"
+                )
+
+            element_node: Optional[DOMElementNode] = await browser_session.get_dom_element_by_index(
+                params.index
+            )
+
+            if element_node is None:
+                raise Exception(f"Element index {params.index} could not be found on the page!")
+
+            try:
+                element_handle = await browser_session.get_locate_element(element_node)
+                if element_handle is None:
+                    raise BrowserError(f"Element: {repr(element_node)} not found")
+
+                try:
+                    await element_handle.wait_for_element_state("stable", timeout=1000)
+                    is_visible = await browser_session._is_visible(element_handle)
+                    if is_visible:
+                        await element_handle.scroll_into_view_if_needed(timeout=1000)
+                except Exception:
+                    pass
+
+                await element_handle.hover()
+                await asyncio.sleep(2)
+                self._hover_cleanup_pending = True
+
+            except Exception as e:
+                logger.debug(
+                    f"❌  Failed to hover over element: {repr(element_node)}. Error: {str(e)}"
+                )
+                raise BrowserError(f"Failed to hover over index {element_node.highlight_index}")
+
+            msg = f"🖱️  Hovered over element at index {params.index} and waited 2s"
+            logger.info(msg)
+            logger.debug(f"Element xpath: {element_node.xpath}")
             return ActionResult(extracted_content=msg, include_in_memory=True)
 
         @self.registry.action(
@@ -386,13 +627,8 @@ class BugninjaController(Controller):
                         file_input = file_inputs[0]
                         await file_input.set_input_files(file_path)
 
-                        # Click original element if it's a button/trigger
-                        if tag_name in ["button", "div", "span", "a", "label"]:
-                            try:
-                                await element_handle.click()
-                            except Exception:
-                                pass  # Click might fail, but file is already set
-
+                        # DON'T click the button - the file is already set
+                        # The website should detect the file change automatically
                         msg = f"📎 Uploaded file (index {params.file_index}) via hidden file input (triggered by element {params.index})"
                     else:
                         # Strategy 3: File chooser dialog interception
@@ -442,3 +678,78 @@ class BugninjaController(Controller):
                 raise BrowserError(
                     f"Failed to upload file to index {params.index}: {str(e)}. {error_details}"
                 )
+
+        @self.registry.action(
+            description="Get all options from a native dropdown",
+        )
+        async def get_dropdown_options(index: int, browser_session: BrowserSession) -> ActionResult:
+            """Get all options from a native dropdown"""
+            page = await browser_session.get_current_page()
+            selector_map = await browser_session.get_selector_map()
+            dom_element = selector_map[index]
+
+            try:
+                # Frame-aware approach since we know it works
+                all_options = []
+                frame_index = 0
+
+                for frame in page.frames:
+                    try:
+                        options = await frame.evaluate(
+                            """
+                            (xpath) => {
+                                const select = document.evaluate(xpath, document, null,
+                                    XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+                                if (!select) return null;
+
+                                return {
+                                    options: Array.from(select.options).map(opt => ({
+                                        text: opt.text, //do not trim, because we are doing exact match in select_dropdown_option
+                                        value: opt.value,
+                                        index: opt.index
+                                    })),
+                                    id: select.id,
+                                    name: select.name
+                                };
+                            }
+                        """,
+                            dom_element.xpath,
+                        )
+
+                        if options:
+                            logger.debug(f"Found dropdown in frame {frame_index}")
+                            logger.debug(f'Dropdown ID: {options["id"]}, Name: {options["name"]}')
+
+                            formatted_options = []
+                            for opt in options["options"]:
+                                # encoding ensures AI uses the exact string in select_dropdown_option
+                                import json as _json
+
+                                encoded_text = _json.dumps(opt["text"])
+                                formatted_options.append(f'{opt["index"]}: text={encoded_text}')
+
+                            all_options.extend(formatted_options)
+
+                    except Exception as frame_e:
+                        logger.debug(f"Frame {frame_index} evaluation failed: {str(frame_e)}")
+
+                    frame_index += 1
+
+                if all_options:
+                    msg = "\n".join(all_options)
+                    msg += "\nUse the exact text string in select_dropdown_option"
+                    logger.info(msg)
+                    await _cleanup_hover(browser_session)
+                    return ActionResult(extracted_content=msg, include_in_memory=True)
+                else:
+                    msg = "No options found in any frame for dropdown"
+                    logger.info(msg)
+                    await _cleanup_hover(browser_session)
+                    return ActionResult(extracted_content=msg, include_in_memory=True)
+
+            except Exception as e:
+                logger.error(f"Failed to get dropdown options: {str(e)}")
+                msg = f"Error getting options: {str(e)}"
+                logger.info(msg)
+                await _cleanup_hover(browser_session)
+                return ActionResult(extracted_content=msg, include_in_memory=True)

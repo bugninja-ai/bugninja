@@ -37,7 +37,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from browser_use import BrowserProfile, BrowserSession  # type: ignore
-from browser_use.browser.profile import BROWSERUSE_PROFILES_DIR  # type: ignore
+from browser_use.browser.profile import (  # type: ignore
+    BROWSERUSE_PROFILES_DIR,
+    Geolocation,
+    ProxySettings,
+)
 from cuid2 import Cuid as CUID
 from playwright._impl._api_structures import ViewportSize
 from pydantic import BaseModel, Field, field_validator
@@ -869,6 +873,12 @@ class BugninjaConfig(BaseModel):
         description="Internal flag indicating if this config is used by CLI (prevents automatic directory creation)",
     )
 
+    # Network and location overrides
+    proxy: Optional[ProxySettings] = Field(
+        default=None, description="Proxy settings for the browser"
+    )
+    geolocation: Optional[Geolocation] = Field(default=None, description="Geolocation to emulate")
+
     @field_validator("screenshots_dir", "traversals_dir", "user_data_dir")
     @classmethod
     def validate_paths(cls, v: Path) -> Path:
@@ -1007,6 +1017,8 @@ class BugninjaConfig(BaseModel):
                 user_agent=self.user_agent,
                 strict_selectors=self.strict_selectors,
                 user_data_dir=isolated_dir,
+                proxy=self.proxy,
+                geolocation=self.geolocation,
                 #! ["--ignore-certificate-errors"] is necessary to avoid SSL issues in some environments
                 args=["--no-sandbox", "--disable-setuid-sandbox", "--ignore-certificate-errors"],
             )

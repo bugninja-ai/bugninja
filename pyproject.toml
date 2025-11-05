@@ -1,6 +1,6 @@
 [project]
 name = "bugninja"
-version = "0.1.2"
+version = "0.1.6"
 description = "AI-Powered Browser Automation"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -40,7 +40,7 @@ dependencies = [
     "python-dotenv==1.1.0",
     "python-ffmpeg>=2.0.12",
     "redis==5.2.1",
-    "rich==14.0.0",
+    "rich==14.1.0",
     "rich-click>=1.8.9",
     "ruff==0.11.13",
     "tomli>=2.2.1",

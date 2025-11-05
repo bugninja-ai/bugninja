@@ -441,7 +441,7 @@ class TaskManager:
 
         This method scans all existing task folders and finds the highest
         numbered task to determine the next available number. It looks for
-        folder names matching the pattern `^\d{3}_` (3 digits followed by underscore).
+        folder names matching the pattern `^d{3}_` (3 digits followed by underscore).
 
         Returns:
             int: Next available task number (starting from 1 if no numbered tasks exist)
@@ -631,6 +631,15 @@ enable_healing = true
 headless = false
 enable_video_recording = true
 
+# Optional per-task network and location overrides
+[run_config.proxy]
+server = ""  # e.g. "http://host:port" or "socks5://host:port"
+
+[run_config.geolocation]
+latitude = 0.0
+longitude = 0.0
+accuracy = 100.0
+
 [metadata]
 task_id = "{task_id}"
 created_date = "{datetime.now(UTC).isoformat()}Z"
@@ -746,6 +755,15 @@ enable_vision = true
 enable_healing = true
 headless = false
 enable_video_recording = true
+
+# Optional per-task network and location overrides
+[run_config.proxy]
+server = ""  # e.g. "http://host:port" or "socks5://host:port"
+
+[run_config.geolocation]
+latitude = 0.0
+longitude = 0.0
+accuracy = 100.0
 
 [metadata]
 task_id = "{task_id}"

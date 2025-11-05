@@ -151,7 +151,6 @@ def run(
         if not task_info:
             # Check if task exists but has TOML errors
             import tomli
-            from pathlib import Path
 
             task_dir = task_manager.tasks_dir / task
             if task_dir.exists() and task_dir.is_dir():
