@@ -112,6 +112,11 @@ class TaskExecutor:
 
             os.environ["BUGNINJA_LOGGING_ENABLED"] = str(enable_logging).lower()
 
+            from browser_use.browser.profile import (  # type: ignore
+                Geolocation,
+                ProxySettings,
+            )
+
             from bugninja.api import BugninjaClient
             from bugninja.events import EventPublisherManager
             from bugninja.schemas.models import BugninjaConfig
@@ -129,6 +134,26 @@ class TaskExecutor:
                 user_agent=self.task_run_config.user_agent,
                 cli_mode=use_cli_mode,
             )
+
+            # Apply network and location overrides from TaskRunConfig
+            if getattr(self.task_run_config, "proxy_server", None):
+                try:
+                    config.proxy = ProxySettings(server=self.task_run_config.proxy_server)  # type: ignore
+                except Exception:
+                    config.proxy = None
+
+            if (
+                getattr(self.task_run_config, "geolocation_latitude", None) is not None
+                and getattr(self.task_run_config, "geolocation_longitude", None) is not None
+            ):
+                try:
+                    config.geolocation = Geolocation(
+                        latitude=self.task_run_config.geolocation_latitude,  # type: ignore
+                        longitude=self.task_run_config.geolocation_longitude,  # type: ignore
+                        accuracy=(self.task_run_config.geolocation_accuracy or 100.0),  # type: ignore
+                    )
+                except Exception:
+                    config.geolocation = None
 
             # Set task-specific output directory if task_info is provided
             if task_info:

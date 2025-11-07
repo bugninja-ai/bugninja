@@ -35,6 +35,24 @@ def get_task_by_identifier(task_manager: TaskManager, identifier: str) -> Option
     if task:
         return task
 
+    # Check if task directory exists but has TOML errors
+    import tomli
+
+    folder_name = identifier
+    task_dir = task_manager.tasks_dir / folder_name
+    if task_dir.exists() and task_dir.is_dir():
+        toml_file = task_dir / f"task_{folder_name}.toml"
+        if toml_file.exists():
+            try:
+                with open(toml_file, "rb") as f:
+                    tomli.load(f)
+            except tomli.TOMLDecodeError as e:
+                import sys
+
+                print(f"❌ Task '{identifier}' has invalid TOML syntax: {e}", file=sys.stderr)
+                print("Please fix the TOML file before running this task.", file=sys.stderr)
+                return None
+
     return None
 
 

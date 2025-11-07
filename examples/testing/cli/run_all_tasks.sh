@@ -54,16 +54,34 @@ uv run bugninja run 8_comprehensive_test
 echo "Task 8 completed."
 echo ""
 
-# Task 91: Create TODO List (dependency for task 92)
-echo "Running Task 91: Create TODO List..."
-uv run bugninja run 91_amazon_book_search
-echo "Task 91 completed."
+# Task 9: TODO List Creation
+echo "Running Task 9: TODO List Creation..."
+uv run bugninja run 9_todolist_creation
+echo "Task 9 completed."
 echo ""
 
-# Task 92: Delete TODO Item (depends on task 91)
-echo "Running Task 92: Delete TODO Item..."
-uv run bugninja run 92_ebay_book_search
-echo "Task 92 completed."
+# Task 9b: TODO List Deletion
+echo "Running Task 9b: TODO List Deletion..."
+uv run bugninja run 9_todolist_deletion
+echo "Task 9b completed."
+echo ""
+
+# Task 10: File Upload
+echo "Running Task 10: File Upload..."
+uv run bugninja run 10_file_upload
+echo "Task 10 completed."
+echo ""
+
+# Task 11: HTTP Authentication
+echo "Running Task 11: HTTP Authentication..."
+uv run bugninja run 11_http_authentication
+echo "Task 11 completed."
+echo ""
+
+# Task 12: Failing Test Case
+echo "Running Task 12: Failing Test Case..."
+uv run bugninja run 12_failing_testcase
+echo "Task 12 completed."
 echo ""
 
 echo "=================================================="

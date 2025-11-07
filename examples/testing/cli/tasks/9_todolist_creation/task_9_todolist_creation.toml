@@ -1,5 +1,5 @@
 [task]
-name = "91_todolist_creation"  # REQUIRED: Unique name for the task
+name = "9_todolist_creation"  # REQUIRED: Unique name for the task
 start_url = "https://freetodolist.com"  # REQUIRED: URL where the browser session should start
 description = "Login to FreeTodoList platform and create a TODO list with 5 items"
 extra_instructions = [
@@ -28,6 +28,15 @@ enable_vision = true
 enable_healing = true
 headless = false
 enable_video_recording = true
+
+# Optional per-task network and location overrides
+[run_config.proxy]
+server = "" # e.g. "http://host:port" or "socks5://host:port"
+
+[run_config.geolocation]
+latitude = 0.0
+longitude = 0.0
+accuracy = 100.0
 
 [metadata]
 task_id = "h8lwst762t2ypxb6o5zy40ac"

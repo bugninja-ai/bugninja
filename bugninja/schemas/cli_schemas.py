@@ -50,6 +50,19 @@ class TaskRunConfig(BaseModel):
         default=False, description="Enable video recording for this task"
     )
 
+    # Network and location (per-task overrides)
+    proxy_server: Optional[str] = Field(
+        default=None, description="Proxy server URL (e.g. http://host:port or socks5://host:port)"
+    )
+
+    geolocation_latitude: Optional[float] = Field(default=None, description="Geolocation latitude")
+    geolocation_longitude: Optional[float] = Field(
+        default=None, description="Geolocation longitude"
+    )
+    geolocation_accuracy: Optional[float] = Field(
+        default=None, description="Geolocation accuracy in meters"
+    )
+
     @classmethod
     def from_toml_config(cls, config: Dict[str, Any]) -> "TaskRunConfig":
         """Create TaskRunConfig from TOML configuration data.
@@ -69,6 +82,10 @@ class TaskRunConfig(BaseModel):
             enable_healing=config.get("run_config.enable_healing", True),
             headless=config.get("run_config.headless", False),
             enable_video_recording=config.get("run_config.enable_video_recording", False),
+            proxy_server=config.get("run_config.proxy.server"),
+            geolocation_latitude=config.get("run_config.geolocation.latitude"),
+            geolocation_longitude=config.get("run_config.geolocation.longitude"),
+            geolocation_accuracy=config.get("run_config.geolocation.accuracy"),
         )
 
     def get_video_recording_config(self, output_dir: str) -> Optional["VideoRecordingConfig"]:

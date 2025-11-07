@@ -1,5 +1,5 @@
 [task]
-name = "92_todolist_deletion"  # REQUIRED: Unique name for the task
+name = "9_todolist_deletion"  # REQUIRED: Unique name for the task
 start_url = "https://freetodolist.com"  # REQUIRED: URL where the browser session should start
 description = "Login to FreeTodoList platform and delete the specified item from the TODO list"
 extra_instructions = [
@@ -11,7 +11,7 @@ extra_instructions = [
     "After deleting the item, delete the parent list as well",
 ]
 allowed_domains = ["freetodolist.com", "www.freetodolist.com"]
-dependencies = ["91_todolist_creation"]
+dependencies = ["9_todolist_creation"]
 
 [secrets]
 EMAIL_CREDENTIAL = "cekijit723@ampdial.com"

@@ -86,6 +86,9 @@ def stats(
         - Shows AI runs, replay runs, and last run status for each task
         - Handles missing or corrupted run history files gracefully
     """
+    # Check for TOML parsing errors and display them first
+    _check_and_display_toml_errors(project_root)
+
     if info:
         display_project_info(project_root)
 
@@ -152,3 +155,44 @@ def _display_task_statistics_table(task_stats: List[TaskStats]) -> None:
 
     # Display the table
     console.print(table)
+
+
+def _check_and_display_toml_errors(project_root: Path) -> None:
+    """Check for TOML parsing errors and display them.
+
+    Args:
+        project_root: Root directory of the Bugninja project
+    """
+    import tomli
+
+    tasks_dir = project_root / "tasks"
+    if not tasks_dir.exists():
+        return
+
+    errors_found = False
+    for task_dir in tasks_dir.iterdir():
+        if not task_dir.is_dir():
+            continue
+
+        toml_file = task_dir / f"task_{task_dir.name}.toml"
+        if not toml_file.exists():
+            continue
+
+        try:
+            with open(toml_file, "rb") as f:
+                tomli.load(f)
+        except tomli.TOMLDecodeError as e:
+            if not errors_found:
+                console.print("\n❌ TOML Parsing Errors Found:", style="red")
+                errors_found = True
+            from rich import print as rich_print
+
+            console.print(f"  • {toml_file.name}: {e}", style="red")
+        except Exception:
+            # Other errors are handled elsewhere
+            pass
+
+    if errors_found:
+        from rich import print as rich_print
+
+        rich_print("")

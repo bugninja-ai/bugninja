@@ -1,5 +1,5 @@
 [task]
-name = "11_http_authentication"
+name = "12_failing_testcase"
 start_url = "https://testpages.eviltester.com/styled/auth/basic-auth-results.html"  # REQUIRED: URL where the browser session should start
 description = """
 Navigate to the authentication page and check whether the HTTP basic authentication process succeeded. 
@@ -13,8 +13,8 @@ dependencies = []  # Optional: List of task folder names or CUIDs that this task
 
 # HTTP Basic Authentication Configuration
 [task.http_auth]
-username = "authorized"  # HTTP authentication username
-password = "password001"  # HTTP authentication password
+username = "failing_username"  # HTTP authentication username
+password = "failing_password"  # HTTP authentication password
 
 [run_config]
 # CLI-specific runtime configuration

@@ -45,9 +45,8 @@ if TYPE_CHECKING:
     from bugninja.agents.test_case_creator import TestCaseCreatorAgent
     from bugninja.schemas.test_case_creation import TestCaseCreationOutput
     from bugninja.schemas.test_case_import import TestScenario
+    from bugninja.schemas.test_case_io import TestCaseSchema
     from bugninja_cli.utils.task_manager import TaskManager
-
-from bugninja.schemas.test_case_io import TestCaseSchema
 
 
 def generate_file_aliases(file_paths: List[Path]) -> Tuple[Dict[str, Path], Dict[Path, str]]:
@@ -883,17 +882,27 @@ async def _save_test_cases_parallel(
 ) -> List[tuple["TestCaseCreationOutput", str]]:
     """Save test cases in parallel with proper error handling."""
 
+    # Get the starting number for sequential numbering
+    starting_number = task_manager.get_next_task_number()
+
     async def save_single_test_case(
         test_case: TestCaseCreationOutput, index: int
     ) -> Optional[Tuple[TestCaseCreationOutput, str]]:
         """Save a single test case with error handling."""
         try:
+            # Calculate the numbered index for this test case
+            numbered_index = starting_number + index
+
+            # Create a copy of the test case with numbered name
+            numbered_test_case = test_case.model_copy()
+            numbered_test_case.task_name = f"{numbered_index:03d}_{test_case.task_name}"
+
             # Create unique source files list for each test case
             source_files = [f"generated_test_case_{index + 1}"]
 
             # Create the imported task
-            task_id = task_manager.create_imported_task(test_case, source_files, schema)
-            return (test_case, task_id)
+            task_id = task_manager.create_imported_task(numbered_test_case, source_files, schema)
+            return (numbered_test_case, task_id)
         except Exception as e:
             console.print(f"⚠️  Failed to save test case {index + 1}: {e}", style="yellow")
             return None
@@ -931,6 +940,10 @@ async def _generate_import_test_cases_parallel(
 
     from bugninja_cli.utils.task_manager import TaskManager
 
+    # Get the starting number for sequential numbering
+    task_manager = TaskManager(project_root)
+    starting_number = task_manager.get_next_task_number()
+
     async def generate_single_import_test_case(
         scenario: TestScenario, index: int
     ) -> Optional[Tuple[TestCaseCreationOutput, str, List[str]]]:
@@ -950,6 +963,13 @@ async def _generate_import_test_cases_parallel(
                 extra=extra,
             )
 
+            # Calculate the numbered index for this test case
+            numbered_index = starting_number + index
+
+            # Create a copy of the test case with numbered name
+            numbered_test_case = test_case.model_copy()
+            numbered_test_case.task_name = f"{numbered_index:03d}_{test_case.task_name}"
+
             # Create task manager and save the test case
             task_manager = TaskManager(project_root)
 
@@ -962,8 +982,8 @@ async def _generate_import_test_cases_parallel(
                     source_files.append(dep_file)
 
             # Create the imported task
-            task_id = task_manager.create_imported_task(test_case, source_files, schema)
-            return (test_case, task_id, source_files)
+            task_id = task_manager.create_imported_task(numbered_test_case, source_files, schema)
+            return (numbered_test_case, task_id, source_files)
         except Exception as e:
             console.print(f"⚠️  Failed to generate test case {index + 1}: {e}", style="yellow")
             return None
