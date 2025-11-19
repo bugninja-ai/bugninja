@@ -43,6 +43,7 @@ dependencies = [
     "rich==14.1.0",
     "rich-click>=1.8.9",
     "ruff==0.11.13",
+    "toml>=0.10.2",
     "tomli>=2.2.1",
     "tomli-w>=1.2.0",
     "typer>=0.16.0",

@@ -64,8 +64,9 @@ class RunService:
     def get_run_details(self, run_id: str) -> Optional[Dict[str, Any]]:
         """Get test run details by run ID.
 
-        Reads the traversal file and transforms it to the format expected
-        by the frontend for polling.
+        Reads the traversal file FRESH on every request and transforms it
+        to the format expected by the frontend for polling. This supports
+        incremental file updates during task execution.
 
         Args:
             run_id (str): Run identifier
@@ -73,22 +74,24 @@ class RunService:
         Returns:
             Optional[Dict]: Run details in frontend format, or None if not found
         """
-        # Find traversal file
+        # Find traversal file - search on EVERY request for fresh data
         traversal_file = self.find_traversal_file(run_id)
 
         # If file doesn't exist yet, return RUNNING state with minimal data
         if not traversal_file or not traversal_file.exists():
             return self._create_running_response(run_id)
 
-        # Read and transform traversal file
+        # Read and transform traversal file - ALWAYS read fresh from disk
         try:
             with open(traversal_file, "r") as f:
                 traversal_data = json.load(f)
 
             return self._transform_traversal_to_run(traversal_data, run_id, traversal_file)
 
-        except (json.JSONDecodeError, Exception):
-            # If file is being written or corrupted, return RUNNING
+        except (json.JSONDecodeError, Exception) as e:
+            # File is being written (partial JSON) - return RUNNING state
+            # This can happen if we read while the library is writing
+            print(f"Error reading traversal file (likely being written): {e}")
             return self._create_running_response(run_id)
 
     def _create_running_response(self, run_id: str) -> Dict[str, Any]:
@@ -237,7 +240,14 @@ class RunService:
         Returns:
             Dict: Transformed history element
         """
-        action = action_data.get("action", {})
+        action_raw = action_data.get("action", {})
+        
+        # Clean up action: only include non-null action types
+        # The traversal has all action types as keys, but only one has a value
+        action = {}
+        for action_type, action_value in action_raw.items():
+            if action_value is not None:
+                action[action_type] = action_value
 
         # Get screenshot filename and convert to URL
         screenshot = action_data.get("screenshot_filename")

@@ -43,19 +43,16 @@ class ExecutionService:
         """
         return Cuid().generate()
 
-    async def execute_task(self, task_identifier: str, run_id: str) -> str:
-        """Execute a task asynchronously with a pre-generated run_id.
+    async def execute_task(self, task_identifier: str) -> None:
+        """Execute a task asynchronously.
 
-        This method starts task execution using PipelineExecutor and returns
-        immediately. The task continues running in the background, writing
-        results to the traversal file with the provided run_id.
+        This method starts task execution using PipelineExecutor. The task
+        runs in the background and writes results incrementally to a traversal
+        file. The library generates its own run_id which can be extracted from
+        the traversal filename.
 
         Args:
             task_identifier (str): Task name, folder name, or CUID
-            run_id (str): Pre-generated run ID that will be used for the traversal file
-
-        Returns:
-            str: The same run ID that was passed in
 
         Raises:
             ValueError: If task not found
@@ -65,16 +62,10 @@ class ExecutionService:
         if not task_info:
             raise ValueError(f"Task '{task_identifier}' not found")
 
-        # Execute task using PipelineExecutor with the provided run_id
-        # We need to modify the task to use this run_id
+        # Execute task using PipelineExecutor
+        # The library will generate its own run_id
         pipeline_executor = PipelineExecutor(self.project_root)
-
-        # TODO: We need to pass run_id through to the NavigatorAgent
-        # For now, execute without it (the agent will generate its own)
-        # This will be fixed in the next iteration
         await pipeline_executor.execute_with_dependencies(task_info, self.task_manager)
-
-        return run_id
 
     def get_task_identifier_by_name(self, task_name: str) -> Optional[str]:
         """Get task identifier by task name.
