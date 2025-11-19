@@ -531,6 +531,20 @@ class TaskExecutor:
         videos_dir.mkdir(parents=True, exist_ok=True)
         return videos_dir
 
+    def _mark_run_pending(self, task_info: "TaskInfo", run_id: Optional[str]) -> None:
+        """Record a pending run entry in run_history."""
+        if not run_id or task_info is None:
+            return
+
+        try:
+            from bugninja_cli.utils.run_history_manager import RunHistoryManager
+
+            history_manager = RunHistoryManager(task_info.task_path)
+            history_manager.start_ai_run(run_id)
+        except Exception:
+            # Non-critical failure: ignore to avoid interrupting task execution
+            pass
+
     def _update_video_recording_config(
         self, config: "BugninjaConfig", video_config: "VideoRecordingConfig"
     ) -> None:
@@ -572,7 +586,11 @@ class TaskExecutor:
             history_manager = RunHistoryManager(task_info.task_path)
 
             if run_type == "ai_navigated":
-                history_manager.add_ai_run(result)
+                run_id = getattr(result, "run_id", None)
+                if run_id:
+                    history_manager.complete_ai_run(run_id, result)
+                else:
+                    history_manager.add_ai_run(result)
             else:  # replay
                 # For replay runs, we need the original traversal ID
                 # This should be passed from the caller, but for now we'll use a placeholder
@@ -609,6 +627,7 @@ class TaskExecutor:
         from bugninja.schemas import TaskExecutionResult
 
         try:
+            self._validate_traversal_for_replay(traversal_path)
             # Load traversal file to get original browser configuration
             traversal_config = self._load_traversal_config(traversal_path)
 
@@ -661,6 +680,20 @@ class TaskExecutor:
                 execution_time=execution_time,
                 traversal_path=None,
                 error_message=error_msg,
+            )
+
+    def _validate_traversal_for_replay(self, traversal_path: Path) -> None:
+        """Ensure traversal file has SUCCESSFUL status before replay."""
+        try:
+            with open(traversal_path, "r", encoding="utf-8") as handle:
+                traversal_data = json.load(handle)
+        except Exception as exc:
+            raise ValueError(f"Failed to read traversal file: {exc}") from exc
+
+        status = traversal_data.get("status") or "SUCCESSFUL"
+        if status != "SUCCESSFUL":
+            raise ValueError(
+                f"Traversal '{traversal_path.name}' is marked as '{status}' and cannot be replayed"
             )
 
     def _load_traversal_config(self, traversal_path: Path) -> Dict[str, Any]:
@@ -792,6 +825,8 @@ class TaskExecutor:
 
             # Create BugninjaTask
             task = self._create_bugninja_task(task_info)
+            run_id = getattr(task, "run_id", None)
+            self._mark_run_pending(task_info, run_id)
 
             # Execute task
             console.print(f"🔄 Executing task: {task_info.name}")
@@ -823,6 +858,7 @@ class TaskExecutor:
                 traversal_path=traversal_path,
                 error_message=str(result.error) if result.error else None,
                 result=result,
+                run_id=run_id,
             )
 
             # Update task metadata
@@ -849,6 +885,7 @@ class TaskExecutor:
                 success=False,
                 execution_time=execution_time,
                 error_message=error_message,
+                run_id=run_id,
             )
 
             # Update task metadata

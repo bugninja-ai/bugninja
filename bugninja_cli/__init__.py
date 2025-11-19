@@ -17,6 +17,7 @@ This module provides a **comprehensive command-line interface** for:
 4. **run** - Task execution and automation
 5. **replay** - Session replay with healing
 6. **stats** - Statistics and reporting
+7. **platform** - Web interface for task management
 
 ## Usage Examples
 
@@ -41,6 +42,9 @@ bugninja replay task-name
 
 # View project statistics
 bugninja stats
+
+# Launch web platform interface
+bugninja platform
 ```
 
 ## Architecture
@@ -58,6 +62,7 @@ import rich_click as click
 from bugninja_cli.add import add
 from bugninja_cli.init import init
 from bugninja_cli.import_cmd import import_cmd
+from bugninja_cli.platform import platform
 from bugninja_cli.replay import replay
 from bugninja_cli.run import run
 from bugninja_cli.stats import stats
@@ -83,6 +88,7 @@ bugninja.add_command(import_cmd)
 bugninja.add_command(run)
 bugninja.add_command(replay)
 bugninja.add_command(stats)
+bugninja.add_command(platform)
 
 if __name__ == "__main__":
     bugninja()

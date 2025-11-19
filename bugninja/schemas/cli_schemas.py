@@ -138,6 +138,7 @@ class TaskExecutionResult(BaseModel):
     result: Optional["BugninjaTaskResult"] = Field(
         default=None, description="Raw Bugninja API result"
     )
+    run_id: Optional[str] = Field(default=None, description="Unique identifier of the executed run")
 
     class Config:
         """Pydantic configuration for TaskExecutionResult model."""

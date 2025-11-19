@@ -39,8 +39,10 @@ from bugninja.schemas.pipeline import (
     BugninjaBrowserConfig,
     BugninjaExtendedAction,
     Traversal,
+    TraversalStatus,
 )
 from bugninja.schemas.test_case_io import TestCaseSchema
+from bugninja.utils.recorder import TraversalRecorder
 from bugninja.utils.logging_config import logger
 from bugninja.utils.screenshot_manager import ScreenshotManager
 
@@ -218,6 +220,8 @@ class NavigatorAgent(BugninjaAgentBase):
             **kwargs,
         )
 
+        self.traversal_recorder: Optional[TraversalRecorder] = None
+
     async def _before_run_hook(self) -> None:
         """Initialize navigation session with event tracking and screenshot management.
 
@@ -309,6 +313,42 @@ class NavigatorAgent(BugninjaAgentBase):
                 logger.bugninja_log(f"🎯 Started navigation run: {self.run_id}")
             except Exception as e:
                 logger.warning(f"Failed to initialize event tracking: {e}")
+
+        if hasattr(self, "browser_session") and self.browser_session:
+            browser_profile = self.browser_session.browser_profile
+            browser_config_snapshot = BugninjaBrowserConfig.from_browser_profile(
+                browser_profile,
+                window_size=ViewportSize(
+                    width=self.bugninja_config.viewport_width,
+                    height=self.bugninja_config.viewport_height,
+                ),
+            )
+            available_files_payload = (
+                [f.model_dump(mode="json") for f in self.available_files]
+                if self.available_files
+                else None
+            )
+            http_auth_payload = (
+                {"username": self.http_auth.username, "password": self.http_auth.password}
+                if self.http_auth
+                else None
+            )
+
+            self.traversal_recorder = TraversalRecorder(
+                output_base_dir=self.output_base_dir,
+                run_id=self.run_id,
+                test_case=self.raw_task,
+                start_url=self.start_url,
+                browser_config=browser_config_snapshot,
+                extra_instructions=self.extra_instructions,
+                secrets=self.original_task_secrets,
+                dependencies=self.dependencies,
+                input_schema=self.io_schema.input_schema if self.io_schema else None,
+                output_schema=self.io_schema.output_schema if self.io_schema else None,
+                available_files=available_files_payload,
+                http_auth=http_auth_payload,
+            )
+            self._persist_traversal_snapshot(TraversalStatus.PENDING)
 
         # Automatically navigate to start_url programmatically
         if self.start_url is None:
@@ -413,8 +453,8 @@ class NavigatorAgent(BugninjaAgentBase):
                     )
                 ]
 
-        # Save agent actions and store traversal
-        self._traversal = self.save_agent_actions()
+        # Persist traversal snapshot after run completion (status finalized later)
+        self._persist_traversal_snapshot(TraversalStatus.PENDING)
 
         # Complete event tracking for navigation run
         if self.event_manager:
@@ -579,6 +619,30 @@ class NavigatorAgent(BugninjaAgentBase):
 
         # ? adding the taken action to the list of agent actions
         self.agent_taken_actions.append(self.current_step_extended_actions[action_idx_in_step])
+        self._persist_traversal_snapshot(TraversalStatus.PENDING)
+
+    def _persist_traversal_snapshot(self, status: TraversalStatus) -> None:
+        """Write the current traversal state to disk with the provided status."""
+        if not self.traversal_recorder:
+            return
+
+        traversal = self.traversal_recorder.record(
+            brain_states=self.agent_brain_states,
+            actions=self.agent_taken_actions,
+            extracted_data=self.extracted_data,
+            status=status,
+        )
+        self._traversal = traversal
+
+    def finalize_traversal(self, status: TraversalStatus) -> None:
+        """Finalize traversal persistence with the provided status."""
+        self._persist_traversal_snapshot(status)
+
+    def get_traversal_path(self) -> Optional[Path]:
+        """Return the path to the traversal file if available."""
+        if self.traversal_recorder:
+            return self.traversal_recorder.traversal_path
+        return None
 
     def save_agent_actions(self, verbose: bool = False) -> Traversal:
         """Save the agent's traversal data to a JSON file for analysis and replay.

@@ -84,6 +84,13 @@ class RunHistoryManager:
         except Exception as e:
             raise ValueError(f"Failed to save run history: {e}")
 
+    def _load_or_create_history(self) -> Dict[str, Any]:
+        try:
+            return self.load_history()
+        except FileNotFoundError:
+            task_id = self._get_task_id_from_toml()
+            return self.create_initial_history(task_id)
+
     def create_initial_history(self, task_id: str) -> Dict[str, Any]:
         """Create initial run history structure.
 
@@ -112,23 +119,41 @@ class RunHistoryManager:
         Args:
             result (TaskExecutionResult): Execution result to add
         """
-        # Load existing history or create new
-        try:
-            history = self.load_history()
-        except FileNotFoundError:
-            # Create initial history if file doesn't exist
-            task_id = self._get_task_id_from_toml()
-            history = self.create_initial_history(task_id)
+        run_id = getattr(result, "run_id", None)
+        if not run_id:
+            run_id = CUID().generate()
+            try:
+                result.run_id = run_id  # type: ignore[attr-defined]
+            except Exception:
+                pass
 
-        # Create run entry
-        run_entry = self._create_ai_run_entry(result)
-        history["ai_navigated_runs"].append(run_entry)
+        self.complete_ai_run(run_id, result)
 
-        # Update summary
-        self._update_summary(history)
+    def start_ai_run(self, run_id: str, traversal_path: Optional[Path] = None) -> None:
+        """Record a pending AI run entry."""
+        history = self._load_or_create_history()
+        entry = {
+            "run_id": run_id,
+            "timestamp": datetime.now(UTC).isoformat(),
+            "status": "pending",
+            "traversal_path": str(traversal_path) if traversal_path else "",
+            "execution_time": 0.0,
+        }
+        self._upsert_run_entry(history, "ai_navigated_runs", entry)
 
-        # Save back
-        self.save_history(history)
+    def complete_ai_run(self, run_id: str, result: TaskExecutionResult) -> None:
+        """Mark a pending AI run as completed."""
+        history = self._load_or_create_history()
+        entry: Dict[str, Any] = {
+            "run_id": run_id,
+            "status": "successful" if result.success else "failed",
+            "traversal_path": str(result.traversal_path) if result.traversal_path else "",
+            "execution_time": result.execution_time,
+        }
+        if result.error_message is not None and result.error_message.strip():
+            entry["error_message"] = result.error_message
+
+        self._upsert_run_entry(history, "ai_navigated_runs", entry)
 
     def add_replay_run(
         self, result: TaskExecutionResult, original_traversal_id: str, healing_enabled: bool
@@ -214,32 +239,6 @@ class RunHistoryManager:
         except Exception:
             return "unknown"
 
-    def _create_ai_run_entry(self, result: TaskExecutionResult) -> Dict[str, Any]:
-        """Create an AI-navigated run entry.
-
-        Args:
-            result (TaskExecutionResult): Execution result
-
-        Returns:
-            Dict[str, Any]: Run entry dictionary
-        """
-        run_id = CUID().generate()
-        timestamp = datetime.now(UTC).isoformat()
-
-        run_entry = {
-            "run_id": run_id,
-            "timestamp": timestamp,
-            "status": "success" if result.success else "failed",
-            "traversal_path": str(result.traversal_path) if result.traversal_path else "",
-            "execution_time": result.execution_time,
-        }
-
-        # Only add error_message if it's not None and not empty
-        if result.error_message is not None and result.error_message.strip():
-            run_entry["error_message"] = result.error_message
-
-        return run_entry
-
     def _create_replay_run_entry(
         self, result: TaskExecutionResult, original_traversal_id: str, healing_enabled: bool
     ) -> Dict[str, Any]:
@@ -259,7 +258,7 @@ class RunHistoryManager:
         replay_entry = {
             "run_id": run_id,
             "timestamp": timestamp,
-            "status": "success" if result.success else "failed",
+            "status": "successful" if result.success else "failed",
             "traversal_path": str(result.traversal_path) if result.traversal_path else "",
             "execution_time": result.execution_time,
             "original_traversal_id": original_traversal_id,
@@ -284,6 +283,29 @@ class RunHistoryManager:
         history["summary"] = {
             "total_ai_runs": len(ai_runs),
             "total_replay_runs": len(replay_runs),
-            "successful_ai_runs": sum(1 for run in ai_runs if run["status"] == "success"),
-            "successful_replay_runs": sum(1 for run in replay_runs if run["status"] == "success"),
+            "successful_ai_runs": sum(
+                1 for run in ai_runs if run["status"] in {"success", "successful"}
+            ),
+            "successful_replay_runs": sum(
+                1 for run in replay_runs if run["status"] in {"success", "successful"}
+            ),
         }
+
+    def _upsert_run_entry(
+        self, history: Dict[str, Any], list_key: str, entry: Dict[str, Any]
+    ) -> None:
+        """Insert or update a run entry identified by run_id."""
+        runs = history.setdefault(list_key, [])
+        for existing in runs:
+            if existing.get("run_id") == entry["run_id"]:
+                if "timestamp" not in entry and existing.get("timestamp"):
+                    entry["timestamp"] = existing["timestamp"]
+                existing.update(entry)
+                break
+        else:
+            if "timestamp" not in entry:
+                entry["timestamp"] = datetime.now(UTC).isoformat()
+            runs.append(entry)
+
+        self._update_summary(history)
+        self.save_history(history)

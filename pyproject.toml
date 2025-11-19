@@ -48,6 +48,7 @@ dependencies = [
     "typer>=0.16.0",
     "types-lxml==2025.3.30",
     "types-pillow==10.2.0.20240822",
+    "uvicorn[standard]>=0.32.1",
     "uvloop>=0.21.0",
 ]
 
@@ -59,8 +60,8 @@ build-backend = "setuptools.build_meta"
 bugninja = "bugninja_cli:bugninja"
 
 [tool.setuptools.packages.find]
-include = ["bugninja*", "bugninja_cli*"]
-exclude = ["tests*", "logs*", "data_dir*", "screenshots*"]
+include = ["bugninja*", "bugninja_cli*", "bugninja_platform*"]
+exclude = ["tests*", "logs*", "data_dir*", "screenshots*", "bugninja_platform.frontend*"]
 
 [tool.setuptools.package-data]
 "bugninja" = ["prompts/*.md"]

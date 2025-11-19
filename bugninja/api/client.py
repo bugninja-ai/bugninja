@@ -56,7 +56,7 @@ from bugninja.schemas.models import (
     OperationType,
     SessionInfo,
 )
-from bugninja.schemas.pipeline import Traversal
+from bugninja.schemas.pipeline import Traversal, TraversalStatus
 from bugninja.utils.logging_config import logger
 
 
@@ -652,20 +652,21 @@ class BugninjaClient:
             # Calculate execution time
             execution_time = time.time() - start_time
 
-            # Determine file paths from most recent files
-            traversal_file = None
+            # Determine file paths from recorder (fallback to filesystem scan)
+            traversal_file = (
+                agent.get_traversal_path() if hasattr(agent, "get_traversal_path") else None
+            )
             screenshots_dir = None
 
-            # Find the most recent traversal file using effective directory
-            effective_traversals_dir = self.config.get_effective_traversals_dir()
-            traversal_files = list(effective_traversals_dir.glob("*.json"))
-            if traversal_files:
-                traversal_file = max(traversal_files, key=lambda f: f.stat().st_mtime)
+            if not traversal_file:
+                effective_traversals_dir = self.config.get_effective_traversals_dir()
+                traversal_files = list(effective_traversals_dir.glob("*.json"))
+                if traversal_files:
+                    traversal_file = max(traversal_files, key=lambda f: f.stat().st_mtime)
 
-                # Create screenshots directory based on traversal file name
-                effective_screenshots_dir = self.config.get_effective_screenshots_dir()
-                if traversal_file and effective_screenshots_dir:
-                    screenshots_dir = effective_screenshots_dir / traversal_file.stem
+            effective_screenshots_dir = self.config.get_effective_screenshots_dir()
+            if traversal_file and effective_screenshots_dir:
+                screenshots_dir = effective_screenshots_dir / traversal_file.stem
 
             # Check if the agent actually succeeded by examining its state
             agent_success = True
@@ -710,6 +711,10 @@ class BugninjaClient:
                     elif hasattr(last_result, "error"):
                         agent_error = last_result.error
 
+            final_status = TraversalStatus.SUCCESSFUL if agent_success else TraversalStatus.FAILED
+            if hasattr(agent, "finalize_traversal"):
+                agent.finalize_traversal(final_status)
+
             return BugninjaTaskResult(
                 success=agent_success,
                 operation_type=OperationType.FIRST_TRAVERSAL,
@@ -750,6 +755,8 @@ class BugninjaClient:
                 "allowed_domains": task.allowed_domains,
                 "has_secrets": task.secrets is not None,
             }
+            if agent and hasattr(agent, "finalize_traversal"):
+                agent.finalize_traversal(TraversalStatus.FAILED)
             return self._create_error_result(
                 e, OperationType.FIRST_TRAVERSAL, context, execution_time
             )

@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from browser_use.agent.views import AgentBrain  # type: ignore
@@ -134,6 +135,14 @@ class BugninjaBrowserConfig(BaseModel):
         )
 
 
+class TraversalStatus(str, Enum):
+    """Enumeration of traversal lifecycle states."""
+
+    PENDING = "PENDING"
+    FAILED = "FAILED"
+    SUCCESSFUL = "SUCCESSFUL"
+
+
 class Traversal(BaseModel):
     """Complete test case data including start URL, browser configuration, brain states, and actions.
 
@@ -174,6 +183,10 @@ class Traversal(BaseModel):
     http_auth: Optional[Dict[str, str]] = Field(
         default=None,
         description="HTTP authentication credentials (stored as username/password dict)",
+    )
+    status: TraversalStatus = Field(
+        default=TraversalStatus.PENDING,
+        description="Current lifecycle status of the traversal recording",
     )
 
     class Config:
