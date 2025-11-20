@@ -71,7 +71,8 @@ class ConfigurationFactory:
 
             # Create settings with TOML values + environment variables
             # This ensures API keys and endpoints come from env vars (security)
-            return BugninjaSettings(**toml_overrides)
+            # Use model_validate to ensure TOML values take precedence over env vars
+            return BugninjaSettings.model_validate(toml_overrides)
         except Exception as e:
             raise ValueError(f"TOML configuration error: {str(e)}")
 
@@ -132,6 +133,12 @@ class ConfigurationFactory:
             "paths.tasks_dir": "tasks_dir",
             # Events configuration
             "events.publishers": "event_publishers",
+            # Jira configuration
+            "jira.server": "jira_server",
+            "jira.user": "jira_user",
+            "jira.api_token": "jira_api_token",
+            "jira.project_key": "jira_project_key",
+            "jira.assignees": "jira_assignees",
         }
 
         pydantic_config = {}
@@ -152,8 +159,24 @@ class ConfigurationFactory:
                     from pathlib import Path
 
                     value = Path(value)
+                elif toml_key == "jira.api_token" and isinstance(value, str):
+                    # Convert Jira API token to SecretStr
+                    from pydantic import SecretStr
 
-                pydantic_config[field_name] = value
+                    value = SecretStr(value)
+
+                # Only set value if it's not None/empty
+                if value is not None and value != "":
+                    pydantic_config[field_name] = value
+                    # Also set using alias name for fields with aliases to ensure Pydantic recognizes them
+                    # This is needed because Pydantic Settings loads from env vars using aliases
+                    if field_name in ["jira_server", "jira_user", "jira_api_token"]:
+                        # Get the alias from the field definition
+                        from bugninja.config.settings import BugninjaSettings
+
+                        field_info = BugninjaSettings.model_fields.get(field_name)
+                        if field_info and field_info.alias:
+                            pydantic_config[field_info.alias] = value
 
         # Add environment variable fallbacks for base URLs
         config_name_env_var_assoc: Dict[str, str] = {

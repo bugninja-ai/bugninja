@@ -321,6 +321,13 @@ def get_default_config_template(project_name: str, **overrides: Dict[str, Any]) 
             "tasks_dir": "./tasks",
         },
         "events": {"publishers": ["null"]},
+        "jira": {
+            "server": "<YOUR_JIRA_BASE_URL>",
+            "user": "<YOUR_JIRA_EMAIL>",
+            "api_token": "<YOUR_API_TOKEN>",
+            "project_key": "<YOUR_PROJECT_KEY>",
+            "assignees": [],
+        },
     }
 
     # Apply overrides

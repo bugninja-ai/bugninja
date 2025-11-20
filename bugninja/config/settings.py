@@ -161,6 +161,23 @@ class BugninjaSettings(BaseSettings):
         description="Replicator configuration settings",
     )
 
+    # Jira Configuration (from TOML and .env)
+    jira_server: Optional[str] = Field(
+        default=None, alias="JIRA_SERVER", description="Jira server base URL"
+    )
+    jira_user: Optional[str] = Field(
+        default=None, alias="JIRA_USER", description="Jira user email (for Cloud) or username"
+    )
+    jira_api_token: Optional[SecretStr] = Field(
+        default=None, alias="JIRA_API_TOKEN", description="Jira API token or Personal Access Token"
+    )
+    jira_project_key: Optional[str] = Field(
+        default=None, description="Jira project key where issues will be created"
+    )
+    jira_assignees: List[str] = Field(
+        default_factory=list, description="List of Jira user names to assign tickets to"
+    )
+
     @field_validator("llm_provider")
     @classmethod
     def validate_llm_provider(cls, v: LLMProvider) -> LLMProvider:
