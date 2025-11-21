@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from cuid2 import Cuid as CUID
 
@@ -173,6 +173,50 @@ class RunHistoryManager:
 
             # Get the latest run (last in the list)
             latest_run: Dict[str, Any] = ai_runs[-1]
+            traversal_path_str: str = latest_run.get("traversal_path", "")
+
+            if not len(traversal_path_str):
+                return None
+
+            # Handle both relative and absolute paths
+            if traversal_path_str.startswith("/"):
+                return Path(traversal_path_str)
+            else:
+                return self.task_path / traversal_path_str
+
+        except (FileNotFoundError, ValueError):
+            return None
+
+    def get_latest_successful_traversal(self) -> Optional[Path]:
+        """Get the path to the latest successful traversal (AI or replay).
+
+        Returns:
+            Optional[Path]: Path to latest successful traversal, or None if no successful runs
+        """
+        try:
+            history = self.load_history()
+            ai_runs = history.get("ai_navigated_runs", [])
+            replay_runs = history.get("replay_runs", [])
+
+            # Combine all runs and sort by timestamp (latest first)
+            all_runs: List[Dict[str, Any]] = []
+
+            for run in ai_runs:
+                if run.get("status") == "success":
+                    all_runs.append(run)
+
+            for run in replay_runs:
+                if run.get("status") == "success":
+                    all_runs.append(run)
+
+            if not all_runs:
+                return None
+
+            # Sort by timestamp (latest first)
+            all_runs.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+
+            # Get the latest successful run
+            latest_run: Dict[str, Any] = all_runs[0]
             traversal_path_str: str = latest_run.get("traversal_path", "")
 
             if not len(traversal_path_str):
