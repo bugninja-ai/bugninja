@@ -33,7 +33,7 @@ server = "<YOUR_JIRA_BASE_URL>"
 user = "<YOUR_JIRA_EMAIL>"
 api_token = "<YOUR_API_TOKEN>"
 project_key = "<YOUR_PROJECT_KEY>"
-assignees = [""]
+assignees = ["<YOUR_JIRA_ASSIGNEE_EMAIL>"]
 
 [llm.azure_openai]
 api_version = "2024-02-15-preview"

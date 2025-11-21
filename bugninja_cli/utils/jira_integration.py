@@ -512,6 +512,7 @@ class JiraIntegration:
             not previous_successful_traversal_path
             or not previous_successful_traversal_path.exists()
         ):
+            logger.bugninja_log("No previous successful traversal found for screenshot lookup")
             return None
 
         try:
@@ -541,46 +542,71 @@ class JiraIntegration:
 
                 matching_action = closest_action
 
-            if not matching_action or not matching_action.screenshot_filename:
+            if not matching_action:
+                logger.bugninja_log(f"No matching action found for index {failed_action_index}")
+                return None
+
+            if not matching_action.screenshot_filename:
+                logger.bugninja_log(
+                    f"Action at index {failed_action_index} has no screenshot_filename"
+                )
                 return None
 
             # Resolve screenshot path
             screenshot_filename = matching_action.screenshot_filename
+            logger.bugninja_log(f"Found screenshot_filename: {screenshot_filename}")
             screenshot_path = Path(screenshot_filename)
 
             # If path is absolute, use as-is
             if screenshot_path.is_absolute():
-                return screenshot_path if screenshot_path.exists() else None
+                if screenshot_path.exists():
+                    logger.bugninja_log(f"Using absolute screenshot path: {screenshot_path}")
+                    return screenshot_path
+                logger.bugninja_log(f"Absolute screenshot path does not exist: {screenshot_path}")
+                return None
 
             # If path is relative, resolve relative to traversal directory
             traversal_dir = previous_successful_traversal_path.parent
             resolved_path = traversal_dir / screenshot_path
+            logger.bugninja_log(f"Trying screenshot path relative to traversal: {resolved_path}")
 
             if resolved_path.exists():
+                logger.bugninja_log(f"Found screenshot at: {resolved_path}")
                 return resolved_path
 
             # Also try resolving relative to task directory
             if task_info:
                 task_dir = task_info.task_path
                 task_resolved_path: Path = task_dir / screenshot_path
+                logger.bugninja_log(
+                    f"Trying screenshot path relative to task: {task_resolved_path}"
+                )
 
                 if task_resolved_path.exists():
+                    logger.bugninja_log(f"Found screenshot at: {task_resolved_path}")
                     return task_resolved_path
 
             # Try screenshots directory from traversal
             screenshots_dir = traversal_dir / "screenshots"
             screenshots_resolved_path = screenshots_dir / screenshot_path
+            logger.bugninja_log(
+                f"Trying screenshot path in screenshots dir: {screenshots_resolved_path}"
+            )
 
             if screenshots_resolved_path.exists():
+                logger.bugninja_log(f"Found screenshot at: {screenshots_resolved_path}")
                 return screenshots_resolved_path
 
             # Try just the filename in traversal directory
             filename_only = screenshot_path.name
             filename_resolved = traversal_dir / filename_only
+            logger.bugninja_log(f"Trying screenshot filename only: {filename_resolved}")
 
             if filename_resolved.exists():
+                logger.bugninja_log(f"Found screenshot at: {filename_resolved}")
                 return filename_resolved
 
+            logger.bugninja_log("Could not find screenshot at any of the tried paths")
             return None
 
         except Exception as e:
@@ -636,7 +662,8 @@ class JiraIntegration:
             if result.result and hasattr(result.result, "steps_completed"):
                 failure_step = result.result.steps_completed
 
-            # Get step number from traversal if available
+            # Get action index and step number from traversal if available
+            failed_action_index = None
             traversal_path = traversal_path_override or result.traversal_path
 
             # If traversal_path is None, try to find the most recent traversal file
@@ -648,6 +675,9 @@ class JiraIntegration:
                         if traversal_files:
                             # Get the most recent file
                             traversal_path = max(traversal_files, key=lambda f: f.stat().st_mtime)
+                            logger.bugninja_log(
+                                f"📂 Found most recent traversal file: {traversal_path}"
+                            )
                 except Exception as e:
                     logger.warning(f"Failed to find traversal file: {str(e)}")
 
@@ -656,42 +686,69 @@ class JiraIntegration:
                     with open(traversal_path, "r", encoding="utf-8") as f:
                         traversal_data = json.load(f)
 
-                    # Find the last action to get step count
+                    # Find the last action to get its index
                     actions = traversal_data.get("actions", {})
                     if actions:
+                        # Get the last action
+                        last_action_key = sorted(actions.keys())[-1]
+                        last_action = actions[last_action_key]
+                        failed_action_index = last_action.get("idx_in_brainstate")
+
                         # If failure_step is not set, use the number of actions as the step number
                         # (since the failure happened after the last completed action)
                         if failure_step is None:
                             failure_step = len(actions)
+
+                        logger.bugninja_log(
+                            f"Extracted failure_step: {failure_step}, failed_action_index: {failed_action_index}, "
+                            f"total_actions: {len(actions)}"
+                        )
                 except Exception as e:
                     logger.warning(f"Failed to extract step info from traversal: {str(e)}")
 
             # Find screenshot from current failed run's traversal
             screenshot_path = None
+            logger.bugninja_log(
+                f"🔍 Looking for screenshot - traversal_path: {traversal_path}, exists: {traversal_path.exists() if traversal_path else False}"
+            )
             if traversal_path and traversal_path.exists():
                 try:
+                    logger.bugninja_log(f"📂 Reading traversal file: {traversal_path}")
                     with open(traversal_path, "r", encoding="utf-8") as f:
                         traversal_data = json.load(f)
 
                     # Get the last action from current failed run
                     actions = traversal_data.get("actions", {})
+                    logger.bugninja_log(f"📋 Found {len(actions)} actions in traversal")
                     if actions:
                         # Get the last action (most recent screenshot)
                         last_action_key = sorted(actions.keys())[-1]
                         last_action = actions[last_action_key]
+                        logger.bugninja_log(f"🎯 Last action key: {last_action_key}")
 
                         # Get screenshot filename from the last action
                         screenshot_filename = last_action.get("screenshot_filename")
+                        logger.bugninja_log(
+                            f"📸 Screenshot filename from last action: {screenshot_filename}"
+                        )
 
                         if screenshot_filename:
+                            logger.bugninja_log(
+                                f"Found screenshot_filename in last action: {screenshot_filename}"
+                            )
+
                             # Resolve screenshot path
                             # screenshot_filename format: "screenshots/{run_id}/filename.png"
                             screenshot_path_obj = Path(screenshot_filename)
 
                             # Try resolving relative to task directory first
                             task_screenshots_path = task_info.task_path / screenshot_path_obj
+                            logger.bugninja_log(
+                                f"🔍 Trying task-relative path: {task_screenshots_path} (exists: {task_screenshots_path.exists()})"
+                            )
                             if task_screenshots_path.exists():
                                 screenshot_path = task_screenshots_path
+                                logger.bugninja_log(f"✅ Found screenshot at: {screenshot_path}")
                             else:
                                 # Try resolving as absolute path (if screenshot_filename is already absolute)
                                 if (
@@ -699,6 +756,9 @@ class JiraIntegration:
                                     and screenshot_path_obj.exists()
                                 ):
                                     screenshot_path = screenshot_path_obj
+                                    logger.bugninja_log(
+                                        f"Found screenshot at absolute path: {screenshot_path}"
+                                    )
                                 else:
                                     # Try extracting run_id and looking in screenshots directory
                                     # Format: screenshots/{run_id}/filename.png
@@ -711,10 +771,35 @@ class JiraIntegration:
                                         )
                                         potential_path = screenshots_dir / filename
 
+                                        logger.bugninja_log(
+                                            f"Trying screenshot path: {potential_path}"
+                                        )
                                         if potential_path.exists():
                                             screenshot_path = potential_path
+                                            logger.bugninja_log(
+                                                f"Found screenshot at: {screenshot_path}"
+                                            )
+                                        else:
+                                            logger.bugninja_log(
+                                                f"Screenshot not found at: {potential_path}"
+                                            )
+                                    else:
+                                        logger.bugninja_log(
+                                            f"Could not parse screenshot path structure: {screenshot_filename}"
+                                        )
+                        else:
+                            logger.bugninja_log("⚠️ Last action has no screenshot_filename")
+                    else:
+                        logger.bugninja_log("⚠️ No actions found in traversal")
                 except Exception as e:
-                    logger.warning(f"Failed to get screenshot from current failed run: {str(e)}")
+                    logger.warning(
+                        f"Failed to get screenshot from current failed run: {str(e)}",
+                        exc_info=True,
+                    )
+            else:
+                logger.bugninja_log(
+                    f"⚠️ Traversal path not available or doesn't exist: {traversal_path}"
+                )
 
             # Create ticket (non-blocking, fire and forget)
             jira.create_ticket_for_failure(
