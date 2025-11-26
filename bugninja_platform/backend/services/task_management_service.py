@@ -234,7 +234,7 @@ class TaskManagementService:
             shutil.rmtree(task_folder)
 
         return {
-            "deleted": True,
+            "message": f"Successfully deleted test case '{task_info.task_id}'",
             "folder_name": task_info.folder_name,
             "task_id": task_info.task_id,
         }

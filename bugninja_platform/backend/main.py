@@ -52,9 +52,11 @@ def create_app(project_root: Optional[Path] = None) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
-            "http://localhost:5173",
-            "http://localhost:3000",
-        ],  # Vite + React dev servers
+            "http://localhost:5173",  # Vite dev server
+            "http://localhost:3000",  # React dev server
+            "http://localhost:8000",  # Self-hosted production build
+            "http://127.0.0.1:8000",  # Self-hosted production build (IP)
+        ],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -67,15 +69,31 @@ def create_app(project_root: Optional[Path] = None) -> FastAPI:
     app.include_router(health.router, prefix="/api/v1", tags=["health"])
     app.include_router(project.router, prefix="/api/v1", tags=["project"])
     app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"])
-    app.include_router(runs.router, tags=["runs"])  # No prefix, uses /test-runs directly
+    app.include_router(runs.router, prefix="/api/v1", tags=["runs"])  # Add /api/v1 prefix
 
     # Serve screenshots as static files
     # Screenshots are in tasks/{name}/screenshots/ directories
     tasks_dir = project_root / "tasks"
     if tasks_dir.exists():
-        # Mount each task's screenshots directory
-        # Frontend expects URLs like /screenshots/runid/001.png
-        # We'll mount the entire tasks directory and let it navigate
         app.mount("/tasks", StaticFiles(directory=str(tasks_dir)), name="tasks")
+
+    # Serve frontend static files (production build)
+    # IMPORTANT: Static files must be mounted AFTER API routes but assets BEFORE catch-all
+    frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
+    if frontend_dist.exists():
+        # First mount assets directory for CSS/JS
+        assets_dir = frontend_dist / "assets"
+        if assets_dir.exists():
+            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+        
+        # Mount other static files (favicon, images, etc.)
+        for static_file in frontend_dist.iterdir():
+            if static_file.is_file() and static_file.name != "index.html":
+                # These will be served by the catch-all below
+                pass
+        
+        # Catch-all route for SPA - MUST BE LAST
+        # This serves index.html for any unmatched routes (React Router)
+        app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")
 
     return app

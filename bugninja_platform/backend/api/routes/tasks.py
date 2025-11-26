@@ -12,6 +12,25 @@ from bugninja_platform.backend.services.task_management_service import TaskManag
 router = APIRouter()
 
 
+# Stub endpoints for browser configs and secrets (to be implemented)
+@router.get("/browser-types")
+async def get_browser_types() -> List[Dict[str, Any]]:
+    """Get available browser types (stub)."""
+    return []
+
+
+@router.get("/browser-configs/project/{project_id}")
+async def get_browser_configs(project_id: str) -> List[Dict[str, Any]]:
+    """Get browser configurations for project (stub)."""
+    return []
+
+
+@router.get("/secret-values/project/{project_id}")
+async def get_secret_values(project_id: str) -> List[Dict[str, Any]]:
+    """Get secret values for project (stub)."""
+    return []
+
+
 # Request/Response models for test case CRUD
 class CreateTestCaseRequest(BaseModel):
     """Request model for creating a new test case."""
@@ -38,26 +57,30 @@ class UpdateTestCaseRequest(BaseModel):
 
 
 @router.get("/tasks")
-async def list_tasks(request: Request) -> List[Dict[str, Any]]:
-    """List all tasks in the current project.
+async def list_tasks(
+    request: Request,
+    page: int = 1,
+    page_size: int = 25,
+) -> Dict[str, Any]:
+    """List all tasks in the current project with pagination support.
 
     Reads all task TOML files from the `tasks/` directory and returns
-    their information in a structured format.
+    their information in a paginated format compatible with the frontend.
 
     Args:
         request (Request): FastAPI request object (provides access to app state)
+        page (int): Page number (1-indexed)
+        page_size (int): Number of items per page
 
     Returns:
-        List[Dict]: List of task information dictionaries, each containing:
-            - id: Task identifier (folder name)
-            - name: Task display name
-            - description: Task description
-            - start_url: Starting URL
-            - folder_name: Task folder name
-            - toml_path: Path to TOML file
-            - created_date: Creation timestamp
-            - extra_instructions: List of extra instructions
-            - dependencies: List of dependent tasks
+        Dict: Paginated response containing:
+            - items: List of task information dictionaries
+            - total_count: Total number of tasks
+            - page: Current page number
+            - page_size: Items per page
+            - total_pages: Total number of pages
+            - has_next: Whether there's a next page
+            - has_previous: Whether there's a previous page
 
     Raises:
         HTTPException: 500 if task listing fails
@@ -66,8 +89,32 @@ async def list_tasks(request: Request) -> List[Dict[str, Any]]:
 
     try:
         service = TaskService(project_root)
-        tasks = service.list_tasks()
-        return tasks
+        all_tasks = service.list_tasks()
+        
+        # Calculate pagination
+        total_count = len(all_tasks)
+        total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 1
+        
+        # Validate page number
+        if page < 1:
+            page = 1
+        if page > total_pages and total_count > 0:
+            page = total_pages
+        
+        # Get page slice
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        items = all_tasks[start_idx:end_idx]
+        
+        return {
+            "items": items,
+            "total_count": total_count,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "has_next": page < total_pages,
+            "has_previous": page > 1,
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list tasks: {str(e)}")
 
@@ -224,7 +271,7 @@ async def delete_test_case(request: Request, task_identifier: str) -> Dict[str, 
 
         return {
             "message": f"Test case '{result['folder_name']}' deleted successfully",
-            "deleted": True,
+            "task_id": result['task_id'],
         }
 
     except ValueError as e:
