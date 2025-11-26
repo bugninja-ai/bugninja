@@ -97,6 +97,10 @@ class BugninjaPipeline:
         # DAG-first API state (optional)
         self._dag_nodes: Dict[str, Union[TaskRef, TaskSpec]] = {}
         self._dag_edges: Dict[str, List[str]] = {}  # child_id -> [parent_ids]
+        # Session reuse tracking: maps task_key -> parent_task_key whose run_id should be reused
+        self._session_reuse_map: Dict[str, str] = {}
+        # Tracks which dependencies have reuse_session flag: child_id -> set of parent_ids with reuse
+        self._reuse_session_edges: Dict[str, Set[str]] = {}
         # Default run configuration for spec-only pipelines
         self._default_run_config: Optional[TaskRunConfig] = default_run_config
         # Task resolver for CLI context (optional)
@@ -301,6 +305,7 @@ class BugninjaPipeline:
         visited = set()
         task_stack = [target_task_identifier]
         task_dependencies = {}  # Store dependencies for later setup
+        task_reuse_flags = {}  # Store which dependencies should reuse sessions
 
         while task_stack:
             current_id = task_stack.pop()
@@ -313,11 +318,26 @@ class BugninjaPipeline:
             task_ref = TaskRef(identifier=current_id)
             pipeline.testcase(current_id, task_ref)
 
-            # Get dependencies and add them to stack
-            dependencies = task_resolver.get_task_dependencies(current_id)
-            task_dependencies[current_id] = dependencies
+            # Get dependencies and parse reuse flags
+            raw_dependencies = task_resolver.get_task_dependencies(current_id)
+            clean_dependencies: List[str] = []
+            reuse_flags: Set[str] = set()
 
-            for dep_id in dependencies:
+            for dep in raw_dependencies:
+                dep_str = str(dep)
+                # Check for :reuse_session suffix
+                if dep_str.endswith(":reuse_session"):
+                    # Extract clean identifier (without suffix)
+                    clean_id = dep_str[:-14]  # Remove ":reuse_session" (14 chars)
+                    clean_dependencies.append(clean_id)
+                    reuse_flags.add(clean_id)
+                else:
+                    clean_dependencies.append(dep_str)
+
+            task_dependencies[current_id] = clean_dependencies
+            task_reuse_flags[current_id] = reuse_flags
+
+            for dep_id in clean_dependencies:
                 if dep_id not in visited:
                     task_stack.append(dep_id)
 
@@ -326,7 +346,154 @@ class BugninjaPipeline:
             if dependencies:
                 pipeline.depends(task_id, dependencies)
 
+        # Phase 3: Store session reuse flags for later use.
+        #
+        # NOTE:
+        # - The actual execution happens on the *materialized* pipeline instance
+        #   created by BugninjaPipeline.materialize().
+        # - We therefore persist the raw reuse-flag information here and let
+        #   the materialized pipeline build its own _session_reuse_map based on
+        #   its final DAG state.
+        pipeline._task_reuse_flags = task_reuse_flags  # type: ignore[attr-defined]
+
         return pipeline
+
+    def _build_session_reuse_map(self, task_reuse_flags: Dict[str, Set[str]]) -> None:
+        """Build session reuse map from dependency reuse flags.
+
+        This method maps tasks to their parent tasks whose sessions should be reused,
+        propagating reuse through the entire dependency chain.
+
+        Args:
+            task_reuse_flags: Dict mapping task_id to set of parent_ids that should share sessions
+        """
+        # First, build a map of which tasks should reuse which parents' sessions
+        # Map: child_task_id -> parent_task_id (whose session to reuse)
+        direct_reuse_map: Dict[str, str] = {}
+
+        for child_id, reuse_parents in task_reuse_flags.items():
+            if not reuse_parents:
+                continue
+
+            # Get all parent task IDs for this child
+            parent_ids = self._dag_edges.get(child_id, [])
+            if not parent_ids:
+                continue
+
+            # Find which parents have reuse flags
+            reuse_parent_ids = [pid for pid in parent_ids if pid in reuse_parents]
+
+            if not reuse_parent_ids:
+                continue
+
+            # If multiple parents with reuse flags, find root ancestor
+            if len(reuse_parent_ids) > 1:
+                # Find root ancestor using topological order
+                root_ancestor = self._find_root_ancestor(reuse_parent_ids)
+                direct_reuse_map[child_id] = root_ancestor
+            else:
+                # Single parent with reuse flag
+                direct_reuse_map[child_id] = reuse_parent_ids[0]
+
+        # Now propagate reuse to all descendants (entire chain shares session)
+        # We need to map task keys (not task IDs) to parent task keys
+        # Build a reverse map: task_id -> task_key
+        id_to_key: Dict[str, str] = {}
+        for task_id, task_payload in self._dag_nodes.items():
+            key = self._node_key(_Node(task=task_payload, depends_on=[]))
+            id_to_key[task_id] = key
+
+        # Build final reuse map: child_key -> parent_key
+        for child_id, parent_id in direct_reuse_map.items():
+            child_key = id_to_key.get(child_id)
+            parent_key = id_to_key.get(parent_id)
+
+            if child_key and parent_key:
+                self._session_reuse_map[child_key] = parent_key
+
+                # Propagate to all descendants
+                self._propagate_session_reuse(child_key, parent_key, id_to_key)
+
+    def _find_root_ancestor(self, task_ids: List[str]) -> str:
+        """Find the root ancestor (earliest in topological order) from a list of task IDs.
+
+        Args:
+            task_ids: List of task IDs to find root ancestor from
+
+        Returns:
+            Root ancestor task ID (earliest in execution order)
+        """
+        # Get topological order
+        topo_order = self._toposort()
+
+        # Build task_id -> task_key mapping
+        id_to_key: Dict[str, str] = {}
+        for task_id, task_payload in self._dag_nodes.items():
+            key = self._node_key(_Node(task=task_payload, depends_on=[]))
+            id_to_key[task_id] = key
+
+        # Build key_to_id reverse mapping
+        key_to_id: Dict[str, str] = {v: k for k, v in id_to_key.items()}
+
+        # Find the earliest task in topological order
+        for key in topo_order:
+            id_of_task = key_to_id.get(key)
+            if id_of_task and id_of_task in task_ids:
+                return id_of_task
+
+        # Fallback: return first task_id if not found in topo order
+        return task_ids[0]
+
+    def _propagate_session_reuse(
+        self, child_key: str, parent_key: str, id_to_key: Dict[str, str]
+    ) -> None:
+        """Propagate session reuse to all descendants of a task.
+
+        Args:
+            child_key: Task key that should reuse parent's session
+            parent_key: Parent task key whose session should be reused
+            id_to_key: Mapping from task_id to task_key
+        """
+        # Find all descendants of child_key
+        # Build reverse edges: parent -> [children]
+        reverse_edges: Dict[str, List[str]] = {}
+        for child_id, parent_ids in self._dag_edges.items():
+            child_key_for_id = id_to_key.get(child_id)
+            if child_key_for_id:
+                for parent_id in parent_ids:
+                    parent_key_for_id = id_to_key.get(parent_id)
+                    if parent_key_for_id:
+                        reverse_edges.setdefault(parent_key_for_id, []).append(child_key_for_id)
+
+        # DFS to find all descendants
+        visited: Set[str] = set()
+        stack = [child_key]
+
+        while stack:
+            current = stack.pop()
+            if current in visited:
+                continue
+            visited.add(current)
+
+            # Mark this descendant to reuse the same parent session
+            if current != child_key:  # Don't overwrite the direct child
+                self._session_reuse_map[current] = parent_key
+
+            # Add children to stack
+            for descendant in reverse_edges.get(current, []):
+                if descendant not in visited:
+                    stack.append(descendant)
+
+    def get_reused_run_id(self, task_key: str) -> Optional[str]:
+        """Get the run_id that a task should reuse, if any.
+
+        Args:
+            task_key: Internal task key (from _node_key)
+
+        Returns:
+            Parent task key whose run_id should be reused, or None
+        """
+        return self._session_reuse_map.get(task_key)
 
     def get_execution_order_folder_names(self) -> List[str]:
         """Get execution order as folder names for CLI compatibility.
@@ -575,6 +742,9 @@ class BugninjaPipeline:
             # Keep track of outputs produced by executed tasks for use by their children
             produced_outputs: Dict[str, Dict[str, str]] = {}
 
+            # Keep track of run_ids for executed tasks (for session reuse)
+            executed_run_ids: Dict[str, str] = {}
+
             # Keep track of execution results
             execution_results: List[Dict[str, Any]] = []
 
@@ -582,18 +752,18 @@ class BugninjaPipeline:
             if client_factory is not None:
                 # CLI mode: each task gets its own client
                 execution_results = await self._execute_with_client_factory(
-                    client_factory, exec_list, parents_map, produced_outputs
+                    client_factory, exec_list, parents_map, produced_outputs, executed_run_ids
                 )
             elif client is not None:
                 # Library mode with provided client
                 execution_results = await self._execute_with_client(
-                    client, exec_list, parents_map, produced_outputs
+                    client, exec_list, parents_map, produced_outputs, executed_run_ids
                 )
             else:
                 # Library mode with default client
                 async with BugninjaClient() as default_client:
                     execution_results = await self._execute_with_client(
-                        default_client, exec_list, parents_map, produced_outputs
+                        default_client, exec_list, parents_map, produced_outputs, executed_run_ids
                     )
 
             return execution_results
@@ -606,6 +776,7 @@ class BugninjaPipeline:
         exec_list: List[Tuple[str, Union[TaskRef, TaskSpec]]],
         parents_map: Dict[str, List[str]],
         produced_outputs: Dict[str, Dict[str, str]],
+        executed_run_ids: Dict[str, str],
     ) -> List[Dict[str, Any]]:
         """Execute pipeline tasks with task-specific clients from factory."""
         execution_results: List[Dict[str, Any]] = []
@@ -619,7 +790,7 @@ class BugninjaPipeline:
 
             # Execute single task with its own client
             result = await self._execute_single_task(
-                task_client, key, payload, parents_map, produced_outputs
+                task_client, key, payload, parents_map, produced_outputs, executed_run_ids
             )
             execution_results.append(result)
 
@@ -631,6 +802,7 @@ class BugninjaPipeline:
         exec_list: List[Tuple[str, Union[TaskRef, TaskSpec]]],
         parents_map: Dict[str, List[str]],
         produced_outputs: Dict[str, Dict[str, str]],
+        executed_run_ids: Dict[str, str],
     ) -> List[Dict[str, Any]]:
         """Execute pipeline tasks with the provided client."""
         execution_results: List[Dict[str, Any]] = []
@@ -641,7 +813,7 @@ class BugninjaPipeline:
 
             # Execute single task
             result = await self._execute_single_task(
-                client, key, payload, parents_map, produced_outputs
+                client, key, payload, parents_map, produced_outputs, executed_run_ids
             )
             execution_results.append(result)
 
@@ -654,6 +826,7 @@ class BugninjaPipeline:
         payload: TaskSpec,
         parents_map: Dict[str, List[str]],
         produced_outputs: Dict[str, Dict[str, str]],
+        executed_run_ids: Dict[str, str],
     ) -> Dict[str, Any]:
         """Execute a single task in the pipeline.
 
@@ -661,6 +834,22 @@ class BugninjaPipeline:
             Dict with task execution metadata including traversal_file path
         """
         parents = parents_map.get(key, [])
+
+        # Check if this task should reuse a parent's session
+        parent_key_to_reuse = self.get_reused_run_id(key)
+        reuse_run_id: Optional[str] = None
+
+        if parent_key_to_reuse:
+            # Look up the parent's run_id from executed tasks
+            reuse_run_id = executed_run_ids.get(parent_key_to_reuse)
+            if reuse_run_id:
+                logger.info(
+                    f"🔄 BugninjaPipeline: Task '{payload.task.description[:40]}...' will reuse session from parent '{parent_key_to_reuse}' (run_id: {reuse_run_id})"
+                )
+            else:
+                logger.warning(
+                    f"⚠️ BugninjaPipeline: Task should reuse session from '{parent_key_to_reuse}' but parent run_id not found. Using new session."
+                )
 
         # Enhanced input merging with comprehensive validation and logging
         merged_inputs: Dict[str, str] = {}
@@ -777,11 +966,20 @@ class BugninjaPipeline:
 
         Console().print(f"🔄 Executing task: {payload.task.description[:50]}...")
 
+        # Track the run_id before execution (in case task fails)
+        # This ensures we have the run_id even if the task fails, for potential child reuse
+        executed_run_ids[key] = payload.task.run_id
+
         # Pass merged inputs separately without modifying task secrets
+        # Pass reuse_run_id if session reuse is active
         result = await client.run_task(
             payload.task,
             runtime_inputs=merged_inputs,
+            reuse_run_id=reuse_run_id,
         )
+
+        # Update the run_id after execution (in case it was overridden during reuse)
+        executed_run_ids[key] = payload.task.run_id
 
         if not result.success:
             # Surface detailed error information to aid debugging

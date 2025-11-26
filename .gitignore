@@ -99,3 +99,6 @@ PROJECT_DESC.md
 
 .scannerwork
 .specstory
+
+# exclude saved browser profiles
+profiles/

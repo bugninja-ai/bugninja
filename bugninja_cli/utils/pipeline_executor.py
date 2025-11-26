@@ -98,6 +98,19 @@ class PipelineExecutor:
             # Show execution plan
             materialized_pipeline.print_plan()
 
+            # Build session reuse map on the materialized pipeline (DAG mode).
+            # The original pipeline (from_task_toml) only stored raw reuse flags,
+            # but the materialized instance owns the final DAG that will be executed.
+            task_reuse_flags = getattr(pipeline, "_task_reuse_flags", None)
+            if task_reuse_flags:
+                try:
+                    materialized_pipeline._build_session_reuse_map(task_reuse_flags)  # type: ignore[attr-defined]
+                    logger.bugninja_log(
+                        "🔄 PipelineExecutor: Session reuse map built for materialized pipeline"
+                    )
+                except Exception as e:
+                    logger.warning(f"⚠️ PipelineExecutor: Failed to build session reuse map: {e}")
+
             # Create client factory that generates task-specific clients
             from browser_use.browser.profile import (  # type: ignore
                 Geolocation,
@@ -150,6 +163,14 @@ class PipelineExecutor:
                     enable_healing=run_config.enable_healing,
                     cli_mode=True,  # Enable CLI mode for proper directory structure
                 )
+
+                # Use a project-local user_data_dir so browser profiles (cookies, etc.)
+                # are stored alongside the CLI testing project instead of OS-level dirs.
+                #
+                # Example for examples/testing/cli:
+                #   <project_root>/.bugninja/profiles
+                local_profiles_dir = self.project_root / ".bugninja" / "profiles"
+                config.user_data_dir = local_profiles_dir
 
                 # Network and location overrides from run_config
                 if getattr(run_config, "proxy_server", None):
