@@ -34,7 +34,7 @@ config = BugninjaConfig(
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Set, Union
 
 from browser_use import BrowserProfile, BrowserSession  # type: ignore
 from browser_use.browser.profile import (  # type: ignore
@@ -331,9 +331,18 @@ class BugninjaTask(BaseModel):
 
     # Task dependency configuration (static, not run-specific)
     # Each entry may be a task folder name or a CUID; resolution prefers folder name, then CUID.
+    # Supports metadata suffix: "task_name:reuse_session" to opt into cookie/session reuse
     dependencies: List[str] = Field(
         default_factory=list,
-        description="List of task identifiers (folder or CUID) this task depends on",
+        description="List of task identifiers (folder or CUID) this task depends on. "
+        "Add ':reuse_session' suffix to share browser cookies/session with that dependency.",
+    )
+
+    # Internal field to track which dependencies should share sessions (not serialized)
+    reuse_session_deps: Set[str] = Field(
+        default_factory=set,
+        exclude=True,
+        description="Set of dependency identifiers that should share browser session",
     )
 
     # I/O Schema support
@@ -368,6 +377,36 @@ class BugninjaTask(BaseModel):
         if v and not v.strip():
             raise ValueError("BugninjaTask description cannot be empty or whitespace-only")
         return v.strip() if v else ""
+
+    @field_validator("dependencies", mode="before")
+    @classmethod
+    def parse_dependency_metadata(cls, v: Any) -> Any:
+        """Parse dependency metadata and extract reuse_session flags.
+
+        This validator processes dependencies before assignment, extracting
+        :reuse_session suffixes and returning clean identifiers.
+
+        Args:
+            v: Dependencies value (list of strings, possibly with :reuse_session suffix)
+
+        Returns:
+            List of clean dependency identifiers (without metadata suffixes)
+        """
+        if not v or not isinstance(v, list):
+            return v
+
+        clean_deps: List[str] = []
+        for dep in v:
+            dep_str = str(dep)
+            # Check for :reuse_session suffix
+            if dep_str.endswith(":reuse_session"):
+                # Extract clean identifier (without suffix)
+                clean_id = dep_str[:-14]  # Remove ":reuse_session" (14 chars)
+                clean_deps.append(clean_id)
+            else:
+                clean_deps.append(dep_str)
+
+        return clean_deps
 
     @field_validator("available_files")
     @classmethod
@@ -459,8 +498,23 @@ class BugninjaTask(BaseModel):
             deps = task_config.get("task.dependencies")
             # Accept only list[str]; ignore invalid forms silently to avoid breaking existing tasks
             if isinstance(deps, list):
-                # keep only string-like identifiers
-                self.dependencies = [str(d) for d in deps]
+                # Parse dependencies and extract reuse_session flags
+                clean_deps: List[str] = []
+                reuse_flags: Set[str] = set()
+
+                for dep in deps:
+                    dep_str = str(dep)
+                    # Check for :reuse_session suffix
+                    if dep_str.endswith(":reuse_session"):
+                        # Extract clean identifier (without suffix)
+                        clean_id = dep_str[:-14]  # Remove ":reuse_session" (14 chars)
+                        clean_deps.append(clean_id)
+                        reuse_flags.add(clean_id)
+                    else:
+                        clean_deps.append(dep_str)
+
+                self.dependencies = clean_deps
+                self.reuse_session_deps = reuse_flags
 
         # Update I/O schemas if present
         io_schema_data = task_config.get("task.io_schema", {})
