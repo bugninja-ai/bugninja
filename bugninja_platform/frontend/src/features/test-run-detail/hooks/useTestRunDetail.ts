@@ -43,18 +43,7 @@ export const useTestRunDetail = (runId?: string): UseTestRunDetailResult => {
     const browserConfig = backendData.browser_config?.browser_config;
     const userAgent = browserConfig?.user_agent || '';
     const viewport = browserConfig?.viewport || { width: 1920, height: 1080 };
-    
-    // Determine browser name from user agent
-    let browserName = 'Unknown Browser';
-    if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) {
-      browserName = 'Safari';
-    } else if (userAgent.includes('Chrome')) {
-      browserName = 'Chrome';
-    } else if (userAgent.includes('Firefox')) {
-      browserName = 'Firefox';
-    } else if (userAgent.includes('Edge')) {
-      browserName = 'Edge';
-    }
+    const browserChannel = browserConfig?.browser_channel || 'chromium';
 
     // Transform brain states to steps
     // For replay runs, we should show simplified steps without AI brain state details
@@ -149,7 +138,7 @@ export const useTestRunDetail = (runId?: string): UseTestRunDetailResult => {
       goal: realTestCase?.test_goal || 'Execute test case objectives',
       browserConfigs: [{
         id: backendData.browser_config?.id || 'unknown',
-        browserChannel: `${browserName} - ${viewport.width}x${viewport.height}`,
+        browserChannel: `${browserChannel} - ${viewport.width}x${viewport.height}`,
         userAgent: userAgent,
         viewport: viewport,
         geolocation: browserConfig?.geolocation
@@ -171,7 +160,7 @@ export const useTestRunDetail = (runId?: string): UseTestRunDetailResult => {
       finishedAt: backendData.finished_at ? new Date(backendData.finished_at) : undefined,
       duration: duration,
       environment: backendData.origin === 'CI/CD' ? 'production' : 'development',
-      browser: browserName,
+      browser: browserChannel, // Use actual browser channel from backend
       userAgent: userAgent,
       totalSteps,
       passedSteps,

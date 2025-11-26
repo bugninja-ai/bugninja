@@ -14,7 +14,8 @@ import { ApiError } from '../../../shared/types';
 
 export class TestCaseService {
   private static readonly ENDPOINTS = {
-    TEST_CASES: '/tasks',  // Backend uses /tasks for test cases
+    TEST_CASES: '/tasks',  // Backend uses /tasks for listing test cases
+    CREATE_TEST_CASE: '/test-cases/',  // Backend uses /test-cases/ for creating
     TEST_RUNS: '/test-runs/test-case/{testCaseId}',  // Backend endpoint for test case runs
     ALL_TEST_RUNS: '/test-runs',  // Backend endpoint for all runs
   };
@@ -238,7 +239,7 @@ export class TestCaseService {
   }> {
     try {
       // Send the payload directly as the backend expects it
-      const response = await apiClient.post<any>(this.ENDPOINTS.TEST_CASES, testCase);
+      const response = await apiClient.post<any>(this.ENDPOINTS.CREATE_TEST_CASE, testCase);
       // Handle the CreateTestCaseResponse format that includes test_case field
       const fullResponse = response.data;
       const testCaseData = fullResponse.test_case || fullResponse;

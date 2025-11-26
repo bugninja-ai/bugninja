@@ -14,9 +14,27 @@ router = APIRouter()
 
 # Stub endpoints for browser configs and secrets (to be implemented)
 @router.get("/browser-types")
-async def get_browser_types() -> List[Dict[str, Any]]:
-    """Get available browser types (stub)."""
-    return []
+async def get_browser_types() -> Dict[str, Any]:
+    """Get available browser types and configuration options."""
+    return {
+        "browser_channels": [
+            "chromium",
+            "firefox",
+            "webkit"
+        ],
+        "user_agents": [
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+        ],
+        "viewport_sizes": [
+            {"width": 1920, "height": 1080},
+            {"width": 1366, "height": 768},
+            {"width": 1440, "height": 900},
+            {"width": 768, "height": 1024},
+            {"width": 375, "height": 667}
+        ]
+    }
 
 
 @router.get("/browser-configs/project/{project_id}")
@@ -42,6 +60,14 @@ class CreateTestCaseRequest(BaseModel):
     allowed_domains: List[str] = []
     priority: str = "medium"
     category: Optional[str] = None
+    # Optional fields for multi-project support (ignored for now)
+    project_id: Optional[str] = None
+    document_id: Optional[str] = None
+    # Browser configs and secrets (stubs for now, not yet implemented)
+    new_browser_configs: Optional[List[Dict[str, Any]]] = None
+    existing_browser_config_ids: Optional[List[str]] = None
+    new_secret_values: Optional[List[Dict[str, Any]]] = None
+    existing_secret_value_ids: Optional[List[str]] = None
 
 
 class UpdateTestCaseRequest(BaseModel):
@@ -190,7 +216,13 @@ async def create_test_case(
         task_service = TaskService(project_root)
         task = task_service.get_task(created_info["folder_name"])
 
-        return task
+        # Return in format expected by frontend
+        # Frontend checks for fullResponse.test_case first, then falls back to fullResponse
+        return {
+            "test_case": task,
+            "created_browser_configs": [],  # Stub for now
+            "created_secret_values": []  # Stub for now
+        }
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
