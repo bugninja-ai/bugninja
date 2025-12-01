@@ -42,6 +42,11 @@ project_id = "<YOUR_PROJECT_ID>"
 tracker_id = 1
 assignees = [""]
 
+[retention_policy]
+max_age_days = 14
+keep_last_runs = 2
+cleanup_traversals = true
+
 [llm.azure_openai]
 api_version = "2024-02-15-preview"
 
