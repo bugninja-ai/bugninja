@@ -178,6 +178,29 @@ class BugninjaSettings(BaseSettings):
         default_factory=list, description="List of Jira user names to assign tickets to"
     )
 
+    # Redmine Configuration (from TOML and .env)
+    redmine_server: Optional[str] = Field(
+        default=None, alias="REDMINE_SERVER", description="Redmine server base URL"
+    )
+    redmine_api_key: Optional[SecretStr] = Field(
+        default=None, alias="REDMINE_API_KEY", description="Redmine API key (preferred auth method)"
+    )
+    redmine_user: Optional[str] = Field(
+        default=None, alias="REDMINE_USER", description="Redmine username (alternative auth)"
+    )
+    redmine_password: Optional[SecretStr] = Field(
+        default=None, alias="REDMINE_PASSWORD", description="Redmine password (alternative auth)"
+    )
+    redmine_project_id: Optional[str] = Field(
+        default=None, description="Redmine project identifier (can be ID or identifier string)"
+    )
+    redmine_tracker_id: Optional[int] = Field(
+        default=None, description="Tracker ID for issues (e.g., Bug tracker)"
+    )
+    redmine_assignees: List[str] = Field(
+        default_factory=list, description="List of Redmine user IDs or usernames"
+    )
+
     @field_validator("llm_provider")
     @classmethod
     def validate_llm_provider(cls, v: LLMProvider) -> LLMProvider:
