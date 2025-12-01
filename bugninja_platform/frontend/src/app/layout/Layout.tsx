@@ -54,24 +54,24 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       <div className="w-full bg-white border border-dashed border-gray-300 rounded-lg px-4 py-3">
         <div className="font-medium text-gray-600 truncate flex items-center">
           {projectLoading ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              <>
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
               Loading project...
-            </>
+              </>
           ) : projectError ? (
-            <>
+          <>
               <AlertCircle className="w-4 h-4 mr-2 text-red-500" />
               <span className="text-red-600">Failed to load</span>
-              <button
+                  <button
                 onClick={refetchProject}
                 className="ml-2 text-indigo-600 hover:text-indigo-700"
                 title="Retry loading project"
               >
                 <RefreshCw className="w-3 h-3" />
-              </button>
-            </>
+                    </button>
+                </>
           ) : project?.name || 'No Project'}
-        </div>
+            </div>
       </div>
     );
   };
@@ -123,7 +123,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           {children}
         </main>
       </div>
-      
+
       {/* Star Request Modal */}
       <StarRequestModal
         isOpen={showStarModal}

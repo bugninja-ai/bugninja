@@ -80,20 +80,23 @@ def create_app(project_root: Optional[Path] = None) -> FastAPI:
     # Serve frontend static files (production build)
     # IMPORTANT: Static files must be mounted AFTER API routes but assets BEFORE catch-all
     frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
+    print(f"📁 Frontend dist path: {frontend_dist}")
+    print(f"📁 Frontend dist exists: {frontend_dist.exists()}")
+    
     if frontend_dist.exists():
+        print(f"✅ Mounting frontend from {frontend_dist}")
+        
         # First mount assets directory for CSS/JS
         assets_dir = frontend_dist / "assets"
         if assets_dir.exists():
+            print(f"✅ Mounting assets from {assets_dir}")
             app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
-        
-        # Mount other static files (favicon, images, etc.)
-        for static_file in frontend_dist.iterdir():
-            if static_file.is_file() and static_file.name != "index.html":
-                # These will be served by the catch-all below
-                pass
         
         # Catch-all route for SPA - MUST BE LAST
         # This serves index.html for any unmatched routes (React Router)
         app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")
+        print("✅ Frontend static files mounted at /")
+    else:
+        print(f"⚠️ Frontend dist not found at {frontend_dist}")
 
     return app

@@ -1,1 +1,0 @@
-uv run bugninja run 4_self_healing

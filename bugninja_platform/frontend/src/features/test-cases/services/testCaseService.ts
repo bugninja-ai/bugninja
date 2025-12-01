@@ -495,17 +495,33 @@ export class TestCaseService {
   }
 
   /**
-   * Check if a test case has successful runs for a specific browser configuration
+   * Check if a test case has successful runs that can be replayed.
+   * 
+   * For replay to be available, we need at least one FINISHED AGENTIC run.
+   * The browser config matching is done by the backend during replay.
+   * 
+   * Note: browserConfigId is currently unused but kept for future use when
+   * we want to match specific browser configurations.
    */
-  static async hasSuccessfulRuns(testCaseId: string, browserConfigId: string): Promise<boolean> {
+  static async hasSuccessfulRuns(testCaseId: string, _browserConfigId: string): Promise<boolean> {
     try {
-      // Check recent test runs for this test case to see if any are successful with this browser config
+      // Check recent test runs for this test case to see if any are successful
+      // We check for ANY successful AGENTIC run since traversal files can be replayed
+      // regardless of the original browser config
       const recentRuns = await this.getRecentTestRuns(testCaseId, 50);
-      return recentRuns.some(run => 
-        run.browser_config_id === browserConfigId && 
+      
+      console.log(`[hasSuccessfulRuns] testCaseId=${testCaseId}, runs=${recentRuns.length}`);
+      recentRuns.forEach((run, i) => {
+        console.log(`  Run ${i}: state=${run.current_state}, type=${run.run_type}`);
+      });
+      
+      const hasSuccess = recentRuns.some(run => 
         run.current_state === 'FINISHED' &&
         run.run_type === 'AGENTIC'
       );
+      
+      console.log(`[hasSuccessfulRuns] result=${hasSuccess}`);
+      return hasSuccess;
     } catch (error: any) {
       console.error('Error checking successful runs:', error);
       return false;

@@ -1,1 +1,0 @@
-uv run bugninja run 11_http_authentication

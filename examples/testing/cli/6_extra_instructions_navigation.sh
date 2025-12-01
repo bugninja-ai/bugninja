@@ -1,1 +1,0 @@
-uv run bugninja run 6_extra_instructions_navigation

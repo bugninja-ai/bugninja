@@ -1,1 +1,0 @@
-uv run bugninja run 10_file_upload

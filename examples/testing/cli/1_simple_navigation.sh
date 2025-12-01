@@ -1,1 +1,0 @@
-uv run bugninja run 1_simple_navigation

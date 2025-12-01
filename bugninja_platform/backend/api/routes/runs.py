@@ -78,6 +78,7 @@ async def execute_test_configuration(
             print(f"⚠️ Warning: No traversal file created after 10s, using fallback run_id: {run_id}")
 
         # Return immediately with RUNNING state and the ACTUAL run_id
+        from datetime import datetime
         return {
             "id": run_id,
             "test_case": {
@@ -87,7 +88,7 @@ async def execute_test_configuration(
                 "test_goal": "",
             },
             "current_state": "RUNNING",
-            "started_at": None,  # Will be populated from file when polling
+            "started_at": datetime.now().isoformat(),  # Provide valid timestamp for frontend
             "finished_at": None,
             "run_type": "AGENTIC",
             "origin": "WEB_UI",
@@ -324,6 +325,7 @@ async def replay_test_run(
             print(f"⚠️ Warning: No replay traversal file created after 10s, using fallback run_id: {new_run_id}")
 
         # Return immediately with RUNNING state
+        from datetime import datetime
         return {
             "id": new_run_id,
             "test_case": {
@@ -333,7 +335,7 @@ async def replay_test_run(
                 "test_goal": "",
             },
             "current_state": "RUNNING",
-            "started_at": None,
+            "started_at": datetime.now().isoformat(),  # Provide valid timestamp for frontend
             "finished_at": None,
             "run_type": "REPLAY",
             "origin": "WEB_UI",

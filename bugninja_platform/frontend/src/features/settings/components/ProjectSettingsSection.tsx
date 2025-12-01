@@ -12,7 +12,7 @@ export const ProjectSettingsSection: React.FC = () => {
     default_start_url: string;
   }>({ name: '', default_start_url: '' });
   const [projectUpdateLoading, setProjectUpdateLoading] = useState(false);
-  
+
   // Initialize editing project data when selectedProject changes
   useEffect(() => {
     if (selectedProject) {

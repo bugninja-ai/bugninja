@@ -36,7 +36,7 @@ export const ProjectProvider: React.FC<ProjectProviderProps> = ({ children }) =>
     loading: true,
     error: null,
   });
-
+  
   const fetchProject = async () => {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));

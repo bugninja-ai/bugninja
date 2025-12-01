@@ -1,1 +1,0 @@
-uv run bugninja run 7_secrets_scrolling_replay

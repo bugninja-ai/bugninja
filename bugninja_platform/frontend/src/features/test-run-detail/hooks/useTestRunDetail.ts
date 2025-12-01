@@ -156,7 +156,7 @@ export const useTestRunDetail = (runId?: string): UseTestRunDetailResult => {
       testCaseId: backendData.test_case?.id || backendData.test_traversal_id,
       testCase,
       status: statusMap[backendData.current_state] || 'pending',
-      startedAt: new Date(backendData.started_at),
+      startedAt: backendData.started_at ? new Date(backendData.started_at) : new Date(),
       finishedAt: backendData.finished_at ? new Date(backendData.finished_at) : undefined,
       duration: duration,
       environment: backendData.origin === 'CI/CD' ? 'production' : 'development',
