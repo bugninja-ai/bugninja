@@ -335,6 +335,11 @@ def get_default_config_template(project_name: str, **overrides: Dict[str, Any]) 
             "tracker_id": 1,  # Bug tracker ID
             "assignees": [],
         },
+        "retention_policy": {
+            "max_age_days": 14,
+            "keep_last_runs": 2,
+            "cleanup_traversals": True,
+        },
     }
 
     # Apply overrides
