@@ -4,7 +4,7 @@
 # Sensitive data (API keys, passwords) should be stored in .env file
 
 [project]
-name = "test_init"
+name = "new-project"
 
 [llm]
 provider = "azure_openai"
@@ -33,7 +33,7 @@ server = "<YOUR_JIRA_BASE_URL>"
 user = "<YOUR_JIRA_EMAIL>"
 api_token = "<YOUR_API_TOKEN>"
 project_key = "<YOUR_PROJECT_KEY>"
-assignees = ["<YOUR_JIRA_ASSIGNEE_EMAIL>"]
+assignees = [""]
 
 [redmine]
 server = "<YOUR_REDMINE_BASE_URL>"
