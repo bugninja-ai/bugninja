@@ -81,7 +81,7 @@ def require_bugninja_project(func: Callable[..., Any]) -> Callable[..., Any]:
             console.print(
                 Panel(
                     Text(
-                        "❌ Not in a Bugninja project.\n\n"
+                        "❌  Not in a Bugninja project.\n\n"
                         "To initialize a new project, run:\n"
                         "  bugninja init --name <project-name>\n\n"
                         "Or navigate to an existing Bugninja project directory.",
@@ -98,7 +98,7 @@ def require_bugninja_project(func: Callable[..., Any]) -> Callable[..., Any]:
             console.print(
                 Panel(
                     Text(
-                        f"❌ Invalid Bugninja project structure in {project_root}\n\n"
+                        f"❌  Invalid Bugninja project structure in {project_root}\n\n"
                         "The project may be corrupted or incomplete.\n"
                         "Try reinitializing with:\n"
                         "  bugninja init --name <project-name> --force",

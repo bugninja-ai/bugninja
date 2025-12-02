@@ -194,7 +194,7 @@ class StatsCollector:
                     stats.average_runtime = "-"
                     stats.latest_runtime = "-"
             else:
-                stats.last_status = "⏸️ Never"
+                stats.last_status = "⏸️  Never"
                 stats.last_run_time = "-"
                 stats.last_run_type = "-"
                 stats.error_type = "-"
@@ -203,7 +203,7 @@ class StatsCollector:
 
         except FileNotFoundError:
             # Handle missing run history files - task has never been run
-            stats.last_status = "⏸️ Never"
+            stats.last_status = "⏸️  Never"
             stats.last_run_time = "-"
             stats.last_run_type = "-"
             stats.error_type = "-"
@@ -211,7 +211,7 @@ class StatsCollector:
             stats.latest_runtime = "-"
         except (ValueError, json.JSONDecodeError):
             # Handle corrupted run history files
-            stats.last_status = "⚠️ Error"
+            stats.last_status = "⚠️  Error"
             stats.last_run_time = "-"
             stats.last_run_type = "-"
             stats.error_type = "-"
