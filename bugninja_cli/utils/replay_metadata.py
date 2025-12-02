@@ -8,7 +8,7 @@ including creating replay run entries and updating task metadata.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from bugninja_cli.utils.run_history_manager import RunHistoryManager
 
@@ -33,7 +33,8 @@ def update_task_metadata_with_replay(
     traversal_path: Path,
     result: TaskExecutionResult,
     healing_enabled: bool,
-) -> None:
+    run_id: Optional[str] = None,
+) -> str:
     """Update task metadata with replay run information.
 
     Args:
@@ -41,6 +42,10 @@ def update_task_metadata_with_replay(
         traversal_path: Path to the original traversal file
         result: The replay execution result
         healing_enabled: Whether healing was enabled during replay
+        run_id: Optional pre-generated run ID. If None, generates a new one.
+
+    Returns:
+        str: The run_id used for this replay entry
 
     Raises:
         ValueError: If run history cannot be updated
@@ -54,7 +59,9 @@ def update_task_metadata_with_replay(
 
         # Use RunHistoryManager to add the replay run
         history_manager = RunHistoryManager(task_dir)
-        history_manager.add_replay_run(result, original_traversal_id, healing_enabled)
+        return history_manager.add_replay_run(
+            result, original_traversal_id, healing_enabled, run_id
+        )
 
     except Exception as e:
         raise ValueError(f"Failed to update task metadata: {e}")

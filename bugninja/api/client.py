@@ -920,6 +920,7 @@ class BugninjaClient:
         pause_after_each_step: bool = False,
         enable_healing: bool = True,
         extra_secrets: Optional[Dict[str, Any]] = None,
+        run_id: Optional[str] = None,
     ) -> BugninjaTaskResult:
         """Replay a recorded browser session.
 
@@ -931,6 +932,8 @@ class BugninjaClient:
             pause_after_each_step (bool): Whether to pause and wait for Enter key after each step.
                                           Defaults to False for automated replay
             enable_healing (bool): Whether to enable healing when actions fail (default: True)
+            extra_secrets (Optional[Dict[str, Any]]): Optional additional secrets to overlay
+            run_id (Optional[str]): Optional pre-generated run ID for this replay
 
         Returns:
             BugninjaTaskResult: Result containing replay status and traversal data
@@ -1002,6 +1005,7 @@ class BugninjaClient:
                 healing_llm_config=self._llm_config,  # Pass client's LLM config
                 output_base_dir=self.config.output_base_dir,
                 overlay_secrets=extra_secrets,
+                run_id=run_id,  # Pass pre-generated run_id if provided
             )
 
             # Override screenshots directory for task-specific organization
@@ -1059,24 +1063,23 @@ class BugninjaClient:
                 )
 
             # Determine traversal file and screenshots directory
-            if isinstance(session, Path):
-                # Check if healing happened and a corrected traversal was saved
+            # Always use the saved_traversal_path from replicator (new file created for all replays)
+            traversal_file = getattr(replicator, "saved_traversal_path", None)
+            
+            # Fallback for backwards compatibility
+            if traversal_file is None and isinstance(session, Path):
                 if replicator.healing_happened:
-                    # ReplicatorRun already saved the corrected traversal to {original}_corrected.json
                     corrected_filename = session.name.replace(".json", "_corrected.json")
                     traversal_file = session.parent / corrected_filename
                 else:
-                    # No healing occurred, use original session file
+                    # This shouldn't happen anymore since we always save
                     traversal_file = session
 
-                # Use the screenshots directory we set earlier
-                screenshots_dir = replicator.screenshot_manager.screenshots_dir
-            else:
-                # For Traversal objects, we don't have a file path
-                traversal_file = None
-                screenshots_dir = None
-                if self.config.screenshots_dir:
-                    screenshots_dir = self.config.screenshots_dir / f"traversal_{replicator.run_id}"
+            # Use the screenshots directory from replicator
+            screenshots_dir = replicator.screenshot_manager.screenshots_dir if hasattr(replicator, "screenshot_manager") else None
+            
+            if screenshots_dir is None and self.config.screenshots_dir:
+                screenshots_dir = self.config.screenshots_dir / f"traversal_{replicator.run_id}"
 
             # Calculate steps completed from the state machine
             steps_completed = 0

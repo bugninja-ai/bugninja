@@ -156,14 +156,22 @@ class RunHistoryManager:
         self._upsert_run_entry(history, "ai_navigated_runs", entry)
 
     def add_replay_run(
-        self, result: TaskExecutionResult, original_traversal_id: str, healing_enabled: bool
-    ) -> None:
+        self,
+        result: TaskExecutionResult,
+        original_traversal_id: str,
+        healing_enabled: bool,
+        run_id: Optional[str] = None,
+    ) -> str:
         """Add a replay run to the history.
 
         Args:
             result (TaskExecutionResult): Execution result to add
             original_traversal_id (str): ID of the original traversal
             healing_enabled (bool): Whether healing was enabled
+            run_id (Optional[str]): Pre-generated run ID. If None, generates a new one.
+
+        Returns:
+            str: The run_id used for this replay entry
         """
         # Load existing history or create new
         try:
@@ -173,8 +181,10 @@ class RunHistoryManager:
             task_id = self._get_task_id_from_toml()
             history = self.create_initial_history(task_id)
 
-        # Create replay entry
-        replay_entry = self._create_replay_run_entry(result, original_traversal_id, healing_enabled)
+        # Create replay entry with optional pre-generated run_id
+        replay_entry = self._create_replay_run_entry(
+            result, original_traversal_id, healing_enabled, run_id
+        )
         history["replay_runs"].append(replay_entry)
 
         # Update summary
@@ -182,6 +192,8 @@ class RunHistoryManager:
 
         # Save back
         self.save_history(history)
+
+        return replay_entry["run_id"]
 
     def get_latest_ai_run_traversal(self) -> Optional[Path]:
         """Get the path to the latest AI-navigated run traversal.
@@ -240,7 +252,11 @@ class RunHistoryManager:
             return "unknown"
 
     def _create_replay_run_entry(
-        self, result: TaskExecutionResult, original_traversal_id: str, healing_enabled: bool
+        self,
+        result: TaskExecutionResult,
+        original_traversal_id: str,
+        healing_enabled: bool,
+        run_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Create a replay run entry.
 
@@ -248,15 +264,17 @@ class RunHistoryManager:
             result (TaskExecutionResult): Execution result
             original_traversal_id (str): ID of the original traversal
             healing_enabled (bool): Whether healing was enabled
+            run_id (Optional[str]): Pre-generated run ID. If None, generates a new one.
 
         Returns:
             Dict[str, Any]: Replay run entry dictionary
         """
-        run_id = CUID().generate()
+        # Use provided run_id or generate a new one
+        actual_run_id = run_id if run_id else CUID().generate()
         timestamp = datetime.now(UTC).isoformat()
 
         replay_entry = {
-            "run_id": run_id,
+            "run_id": actual_run_id,
             "timestamp": timestamp,
             "status": "successful" if result.success else "failed",
             "traversal_path": str(result.traversal_path) if result.traversal_path else "",

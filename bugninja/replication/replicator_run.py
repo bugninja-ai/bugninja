@@ -173,6 +173,7 @@ class ReplicatorRun(ReplicatorNavigator):
 
         self.healing_happened = False
         self._traversal: Optional[Traversal] = None  # Store traversal after successful run
+        self.saved_traversal_path: Optional[Path] = None  # Path to saved replay traversal
 
         self.pause_after_each_step = pause_after_each_step
         self.enable_healing = enable_healing
@@ -391,8 +392,68 @@ class ReplicatorRun(ReplicatorNavigator):
 
         # Store the traversal object for later access
         self._traversal = self.replay_traversal
+        # Store the output path for external access
+        self.saved_traversal_path = Path(output_path) if output_path else None
 
         return self.replay_traversal
+
+    def _save_replay_traversal(self) -> Optional[Path]:
+        """Save a new traversal file for replay runs (without AI brain states).
+
+        This creates a **new traversal file** with the replay's `run_id`, containing:
+        - The executed actions from the replay
+        - Empty brain states (replays don't use AI reasoning)
+        - Updated timestamps and metadata
+
+        Returns:
+            Optional[Path]: Path to the saved traversal file, or None if no file source
+        """
+        if not isinstance(self.traversal_source, str):
+            logger.bugninja_log("💾 No file source - skipping replay traversal save")
+            return None
+
+        source_path = Path(self.traversal_source)
+        if not source_path.exists():
+            return None
+
+        # Build new filename: traverse_YYYYMMDD_HHMMSS_{run_id}.json
+        from datetime import datetime
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        new_filename = f"traverse_{timestamp}_{self.run_id}.json"
+        output_path = source_path.parent / new_filename
+
+        logger.bugninja_log(f"💾 Saving replay traversal to: {output_path}")
+
+        # Build replay traversal data - use passed actions from state machine
+        replay_data = self.replay_traversal.model_dump()
+
+        # Update with replay-specific data
+        replay_data["run_id"] = self.run_id
+        replay_data["run_type"] = "REPLAY"
+        replay_data["status"] = "SUCCESSFUL"  # Will be updated if failed
+        replay_data["timestamp"] = datetime.now().isoformat()
+
+        # Use the actions that were actually executed
+        replay_data["actions"] = {
+            f"action_{i}": action.model_dump()
+            for i, action in enumerate(self.replay_state_machine.passed_actions)
+        }
+
+        # Clear brain states for replay (no AI reasoning)
+        replay_data["brain_states"] = {}
+
+        # Save to file
+        with open(output_path, "w") as f:
+            json.dump(replay_data, f, indent=4, ensure_ascii=False)
+
+        logger.bugninja_log(f"💾 Replay traversal saved: {output_path}")
+
+        # Store for external access
+        self.saved_traversal_path = output_path
+        self._traversal = self.replay_traversal
+
+        return output_path
 
     async def _run(self) -> Tuple[bool, Optional[str]]:
         failed = False
@@ -685,14 +746,14 @@ class ReplicatorRun(ReplicatorNavigator):
         if failed:
             logger.bugninja_log(f"🚨 Failure reason: {failed_reason}")
 
-        # Save corrected traversal if healing happened (regardless of final status)
+        # Always save a new traversal file for replay runs
         if self.healing_happened:
-            logger.bugninja_log("💾 Saving corrected traversal...")
+            logger.bugninja_log("💾 Saving corrected traversal (healing occurred)...")
             self._save_corrected_traversal()
         else:
-            # Store the original traversal if no healing occurred
-            self._traversal = self.replay_traversal
-            logger.warning("⚠️ No healing occurred - using original traversal")
+            # Save a new replay traversal file even without healing
+            logger.bugninja_log("💾 Saving replay traversal...")
+            self._save_replay_traversal()
 
         # Stop video recording if enabled
         if self.video_recording_manager:

@@ -610,12 +610,15 @@ class TaskExecutor:
         traversal_path: Path,
         enable_healing: bool = False,
         extra_secrets: Optional[Dict[str, Any]] = None,
+        run_id: Optional[str] = None,
     ) -> TaskExecutionResult:
         """Replay a recorded traversal.
 
         Args:
             traversal_path: Path to the traversal file to replay
             enable_healing: Whether to enable healing during replay
+            extra_secrets: Optional additional secrets to overlay
+            run_id: Optional pre-generated run ID for this replay
 
         Returns:
             TaskExecutionResult: Replay execution result
@@ -637,7 +640,10 @@ class TaskExecutor:
             # Execute replay using BugninjaClient
             console.print(f"🔄 Replaying traversal: {traversal_path.name}")
             result = await self.client.replay_session(
-                session=traversal_path, enable_healing=enable_healing, extra_secrets=extra_secrets
+                session=traversal_path,
+                enable_healing=enable_healing,
+                extra_secrets=extra_secrets,
+                run_id=run_id,
             )
 
             # Calculate execution time

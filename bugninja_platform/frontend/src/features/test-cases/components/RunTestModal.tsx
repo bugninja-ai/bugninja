@@ -65,19 +65,24 @@ export const RunTestModal: React.FC<RunTestModalProps> = ({
 
     try {
       const result = await TestCaseService.replayTestConfiguration(testCase.id, browserConfig.id);
+      console.log('[Replay] Result:', result);
       
       if (onTestStarted && result?.id) {
         onTestStarted(result.id);
       }
       
-      // Close modal and redirect to test run page
+      // Store the run ID before closing modal
+      const runId = result?.id;
+      
+      // Close modal and reset state
       onClose();
       setRunningConfigs(new Set());
       setReplayingConfigs(new Set());
       
-      // Navigate to the test run detail page
-      if (result?.id) {
-        navigate(`/runs/${result.id}`);
+      // Navigate to the test run detail page after modal closes
+      if (runId) {
+        console.log('[Replay] Navigating to:', `/runs/${runId}`);
+        navigate(`/runs/${runId}`);
       }
     } catch (error: any) {
       console.error('Failed to replay test configuration:', error);

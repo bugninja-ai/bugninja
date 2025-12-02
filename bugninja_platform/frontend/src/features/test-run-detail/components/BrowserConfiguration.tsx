@@ -39,21 +39,21 @@ export const BrowserConfiguration: React.FC<BrowserConfigurationProps> = ({ test
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">User agent</label>
-            <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded text-gray-700 text-xs break-all">
-              {browserInfo.userAgent}
+            <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded text-gray-700 break-all min-h-[38px] flex items-center">
+              {browserInfo.userAgent || 'None'}
             </div>
           </div>
           
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Viewport</label>
-            <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded text-gray-700">
+            <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded text-gray-700 min-h-[38px] flex items-center">
               {browserInfo.viewport.width} × {browserInfo.viewport.height}
             </div>
           </div>
           
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Environment</label>
-            <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded text-gray-700 capitalize">
+            <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded text-gray-700 capitalize min-h-[38px] flex items-center">
               {testRun.environment}
             </div>
           </div>
