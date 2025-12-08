@@ -7,8 +7,9 @@ for the Bugninja web platform interface.
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from bugninja_platform.backend.api.routes import health, project, runs, tasks
@@ -78,7 +79,6 @@ def create_app(project_root: Optional[Path] = None) -> FastAPI:
         app.mount("/tasks", StaticFiles(directory=str(tasks_dir)), name="tasks")
 
     # Serve frontend static files (production build)
-    # IMPORTANT: Static files must be mounted AFTER API routes but assets BEFORE catch-all
     frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
     print(f"📁 Frontend dist path: {frontend_dist}")
     print(f"📁 Frontend dist exists: {frontend_dist.exists()}")
@@ -86,16 +86,29 @@ def create_app(project_root: Optional[Path] = None) -> FastAPI:
     if frontend_dist.exists():
         print(f"✅ Mounting frontend from {frontend_dist}")
         
-        # First mount assets directory for CSS/JS
+        # Mount assets directory for CSS/JS
         assets_dir = frontend_dist / "assets"
         if assets_dir.exists():
             print(f"✅ Mounting assets from {assets_dir}")
             app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
         
-        # Catch-all route for SPA - MUST BE LAST
-        # This serves index.html for any unmatched routes (React Router)
-        app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")
-        print("✅ Frontend static files mounted at /")
+        # Store frontend_dist in app state for the catch-all route
+        app.state.frontend_dist = frontend_dist
+        
+        # SPA catch-all route - serves index.html for all non-API, non-asset routes
+        # This enables client-side routing (React Router) to work on page refresh
+        @app.get("/{full_path:path}")
+        async def serve_spa(request: Request, full_path: str) -> FileResponse:
+            """Serve index.html for SPA routes.
+            
+            This catch-all route enables React Router to handle client-side navigation.
+            On page refresh, the server returns index.html which then bootstraps the
+            React app and React Router takes over.
+            """
+            index_path = app.state.frontend_dist / "index.html"
+            return FileResponse(index_path)
+        
+        print("✅ SPA catch-all route configured")
     else:
         print(f"⚠️ Frontend dist not found at {frontend_dist}")
 

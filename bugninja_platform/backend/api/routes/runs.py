@@ -58,10 +58,10 @@ async def execute_test_configuration(
         # Start execution in background (library will generate its own run_id)
         asyncio.create_task(execute_task_background(project_root, test_case_id))
 
-        # Wait for the NEW traversal file to appear (incremental writes start early)
-        # The library now writes JSON incrementally, so file appears quickly
+        # Wait briefly for the traversal file to appear (incremental writes start early)
+        # The library writes JSON incrementally, so file should appear within 2-3 seconds
         run_id = None
-        for attempt in range(20):  # 20 attempts * 0.5s = 10 seconds max
+        for attempt in range(6):  # 6 attempts * 0.5s = 3 seconds max
             await asyncio.sleep(0.5)
             if traversals_dir.exists():
                 current_files = set(traversals_dir.glob("traverse_*.json"))
@@ -71,15 +71,16 @@ async def execute_test_configuration(
                     # Format: traverse_YYYYMMDD_HHMMSS_<run_id>.json
                     newest = max(new_files, key=lambda p: p.stat().st_mtime)
                     run_id = newest.stem.split("_")[-1]
+                    print(f"✅ Found traversal file after {(attempt+1)*0.5}s, run_id: {run_id}")
                     break
 
-        # Fallback if no file created yet (should rarely happen with incremental writes)
+        # Fallback if no file created yet - generate ID and let polling find the real one
         if not run_id:
             from cuid2 import Cuid
 
             run_id = Cuid().generate()
             print(
-                f"⚠️ Warning: No traversal file created after 10s, using fallback run_id: {run_id}"
+                f"⚠️ Warning: No traversal file after 3s, using fallback run_id: {run_id}"
             )
 
         # Return immediately with RUNNING state and the ACTUAL run_id

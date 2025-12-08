@@ -7,7 +7,7 @@ export const BASE_DOMAIN = 'http://localhost:8000';
 // Create axios instance with default configuration
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 60000, // 60s timeout for long-running operations like test execution
   headers: {
     'Content-Type': 'application/json',
   },
