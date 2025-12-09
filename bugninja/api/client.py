@@ -545,6 +545,7 @@ class BugninjaClient:
         self,
         task: BugninjaTask,
         runtime_inputs: Optional[Dict[str, Any]] = None,
+        reuse_run_id: Optional[str] = None,
     ) -> BugninjaTaskResult:
         """Execute a browser automation task.
 
@@ -553,6 +554,8 @@ class BugninjaClient:
 
         Args:
             task (BugninjaTask): The task to execute, containing description and parameters
+            runtime_inputs (Optional[Dict[str, Any]]): Runtime inputs from parent tasks
+            reuse_run_id (Optional[str]): Run ID to reuse for browser session (for cookie/session sharing)
 
         Returns:
             BugninjaTaskResult: Result containing execution status and traversal data
@@ -595,7 +598,19 @@ class BugninjaClient:
             # Ensure directories exist before starting execution
             self.config.ensure_directories_exist()
 
-            browser_session = self.config.build_bugninja_session_from_config_for_run(task.run_id)
+            # Use reuse_run_id if provided (for session reuse), otherwise use task's run_id
+            effective_run_id = reuse_run_id if reuse_run_id is not None else task.run_id
+
+            if reuse_run_id:
+                logger.info(
+                    f"🔄 Client: Reusing browser session with run_id: {reuse_run_id} (task run_id: {task.run_id})"
+                )
+                # Override task's run_id to match the reused session
+                task.run_id = reuse_run_id
+
+            browser_session = self.config.build_bugninja_session_from_config_for_run(
+                effective_run_id
+            )
 
             # TODO! this is extremely ugly and a strong antipattern, but it works for now, has to get rid of it later
             browser_session.browser_profile.allowed_domains = task.allowed_domains
