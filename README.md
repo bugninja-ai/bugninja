@@ -9,7 +9,7 @@
 *Write tests in plain English. Let AI handle the rest.*
 
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://python.org)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Polyform%20NC-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/Tests-Passing-brightgreen.svg)](#)
 [![Discord](https://img.shields.io/badge/Discord-Join%20Us-7289da.svg)](#join-the-community)
 
@@ -420,6 +420,14 @@ bugninja import --mode generate -n 8 --extra "Focus on e-commerce functionality"
 - **GitHub Discussions**: [Share ideas and ask questions](https://github.com/bugninja-ai)
 - **LinkedIn**: [Follow us](https://www.linkedin.com/company/bugninja-ai/?viewAsMember=true) for professional updates
 - **Blog**: [Read our articles](https://bugninja.ai/blog/) on testing best practices
+
+## License
+
+Bugninja is available under the [Polyform Noncommercial License 1.0.0](LICENSE) for personal, educational, and noncommercial use.
+
+**Commercial use requires a separate license.** If you're using Bugninja within a company or for commercial purposes, please see our [Commercial License](COMMERCIAL_LICENSE.md) page or contact us at [hello@bugninja.ai](mailto:hello@bugninja.ai).
+
+---
 
 <div align="center">
 
