@@ -955,10 +955,15 @@ class TaskExecutor:
 
                     # Save traversal if available
                     if task_result.traversal:
+                        import os
+
                         with open(traversal_path, "w", encoding="utf-8") as f:
                             json.dump(
                                 task_result.traversal.model_dump(), f, indent=2, ensure_ascii=False
                             )
+                            # Ensure data is flushed to disk (critical for Linux)
+                            f.flush()
+                            os.fsync(f.fileno())
 
                 # Create execution result
                 execution_result = TaskExecutionResult(

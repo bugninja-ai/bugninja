@@ -95,9 +95,15 @@ class TraversalRecorder:
         return self._latest_traversal
 
     def _atomic_write(self, payload: Dict[str, Any]) -> None:
+        import os
+
         temp_path = self.traversal_path.with_suffix(".tmp")
         with temp_path.open("w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=4, ensure_ascii=False)
+            # Ensure data is flushed to disk before atomic rename
+            # Critical for Linux where buffering is more aggressive
+            handle.flush()
+            os.fsync(handle.fileno())
         temp_path.replace(self.traversal_path)
 
 

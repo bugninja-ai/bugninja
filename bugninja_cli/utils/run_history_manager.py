@@ -68,6 +68,8 @@ class RunHistoryManager:
         Raises:
             ValueError: If saving fails
         """
+        import os
+
         try:
             # Ensure task directory exists
             self.task_path.mkdir(parents=True, exist_ok=True)
@@ -77,6 +79,10 @@ class RunHistoryManager:
 
             with open(temp_path, "w", encoding="utf-8") as f:
                 json.dump(history_data, f, indent=2, ensure_ascii=False)
+                # Ensure data is flushed to disk before atomic rename
+                # Critical for Linux where buffering is more aggressive
+                f.flush()
+                os.fsync(f.fileno())
 
             # Atomic rename
             temp_path.replace(self.run_history_path)

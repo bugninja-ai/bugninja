@@ -737,6 +737,8 @@ class NavigatorAgent(BugninjaAgentBase):
             ),
         )
 
+        import os
+
         with open(traversal_file, "w") as f:
             json.dump(
                 traversal.model_dump(),
@@ -744,6 +746,9 @@ class NavigatorAgent(BugninjaAgentBase):
                 indent=4,
                 ensure_ascii=False,
             )
+            # Ensure data is flushed to disk (critical for Linux)
+            f.flush()
+            os.fsync(f.fileno())
 
         # Store the traversal object for later access
         self._traversal = traversal

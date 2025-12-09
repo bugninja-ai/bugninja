@@ -379,6 +379,8 @@ class ReplicatorRun(ReplicatorNavigator):
 
         # Save to file if we have a valid path
         if output_path and output_path != "traversal_object":
+            import os
+
             with open(output_path, "w") as f:
                 json.dump(
                     self.replay_traversal.model_dump(),
@@ -386,6 +388,9 @@ class ReplicatorRun(ReplicatorNavigator):
                     indent=4,
                     ensure_ascii=False,
                 )
+                # Ensure data is flushed to disk (critical for Linux)
+                f.flush()
+                os.fsync(f.fileno())
             logger.bugninja_log(f"💾 Corrected traversal saved to: {output_path}")
         else:
             logger.bugninja_log("💾 Corrected traversal built (not saved to file)")
@@ -444,8 +449,13 @@ class ReplicatorRun(ReplicatorNavigator):
         replay_data["brain_states"] = {}
 
         # Save to file
+        import os
+
         with open(output_path, "w") as f:
             json.dump(replay_data, f, indent=4, ensure_ascii=False)
+            # Ensure data is flushed to disk (critical for Linux)
+            f.flush()
+            os.fsync(f.fileno())
 
         logger.bugninja_log(f"💾 Replay traversal saved: {output_path}")
 

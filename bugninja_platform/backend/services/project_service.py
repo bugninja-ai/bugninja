@@ -68,7 +68,10 @@ class ProjectService:
         default_start_url = config.get("project", {}).get("default_start_url", "")
 
         # Convert timestamps to ISO strings (frontend expects this format)
-        created_at = datetime.fromtimestamp(stats.st_birthtime).isoformat()
+        # Note: st_birthtime is macOS-only, Linux doesn't have file birth time
+        created_at = datetime.fromtimestamp(
+            getattr(stats, "st_birthtime", stats.st_mtime)
+        ).isoformat()
         updated_at = datetime.fromtimestamp(stats.st_mtime).isoformat()
 
         return {
