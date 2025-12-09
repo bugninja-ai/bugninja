@@ -56,9 +56,12 @@ def update_task_metadata_with_replay(
         history_manager = RunHistoryManager(task_dir)
         history_manager.add_replay_run(result, original_traversal_id, healing_enabled)
 
-        # Create Jira ticket if replay failed (non-blocking)
+        # Create integration tickets if replay failed (non-blocking)
         if not result.success:
             _create_jira_ticket_for_replay_failure(
+                task_toml_path, result, traversal_path, history_manager
+            )
+            _create_redmine_ticket_for_replay_failure(
                 task_toml_path, result, traversal_path, history_manager
             )
 
@@ -115,3 +118,54 @@ def _create_jira_ticket_for_replay_failure(
         from bugninja.utils.logging_config import logger
 
         logger.error(f"Failed to create Jira ticket for replay failure: {str(e)}")
+
+
+def _create_redmine_ticket_for_replay_failure(
+    task_toml_path: Path,
+    result: TaskExecutionResult,
+    traversal_path: Path,
+    history_manager: RunHistoryManager,
+) -> None:
+    """Create Redmine ticket for failed replay (non-blocking).
+
+    Args:
+        task_toml_path (Path): Path to task TOML file
+        result (TaskExecutionResult): Replay execution result
+        traversal_path (Path): Path to original traversal file
+        history_manager (RunHistoryManager): Run history manager instance
+    """
+    try:
+        import tomli
+
+        from bugninja.schemas import TaskInfo
+        from bugninja_cli.utils.redmine_integration import RedmineIntegration
+
+        # Get task info from TOML file
+        task_dir = task_toml_path.parent
+        with open(task_toml_path, "rb") as f:
+            config = tomli.load(f)
+
+        task_section = config.get("task", {})
+        metadata_section = config.get("metadata", {})
+        task_info = TaskInfo(
+            name=task_section.get("name", "Unknown"),
+            task_id=metadata_section.get("task_id", "Unknown"),
+            folder_name=task_dir.name,
+            task_path=task_dir,
+            toml_path=task_toml_path,
+        )
+
+        # Use shared helper function
+        RedmineIntegration.create_ticket_for_task_failure(
+            task_info=task_info,
+            result=result,
+            run_type="replay",
+            history_manager=history_manager,
+            traversal_path_override=result.traversal_path or traversal_path,
+        )
+
+    except Exception as e:
+        # Log error but don't block execution
+        from bugninja.utils.logging_config import logger
+
+        logger.error(f"Failed to create Redmine ticket for replay failure: {str(e)}")

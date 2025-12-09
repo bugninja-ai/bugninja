@@ -328,6 +328,13 @@ def get_default_config_template(project_name: str, **overrides: Dict[str, Any]) 
             "project_key": "<YOUR_PROJECT_KEY>",
             "assignees": [],
         },
+        "redmine": {
+            "server": "<YOUR_REDMINE_BASE_URL>",
+            "api_key": "<YOUR_API_KEY>",
+            "project_id": "<YOUR_PROJECT_ID>",
+            "tracker_id": 1,  # Bug tracker ID
+            "assignees": [],
+        },
     }
 
     # Apply overrides

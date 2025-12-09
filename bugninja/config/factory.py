@@ -139,6 +139,14 @@ class ConfigurationFactory:
             "jira.api_token": "jira_api_token",
             "jira.project_key": "jira_project_key",
             "jira.assignees": "jira_assignees",
+            # Redmine configuration
+            "redmine.server": "redmine_server",
+            "redmine.api_key": "redmine_api_key",
+            "redmine.user": "redmine_user",
+            "redmine.password": "redmine_password",
+            "redmine.project_id": "redmine_project_id",
+            "redmine.tracker_id": "redmine_tracker_id",
+            "redmine.assignees": "redmine_assignees",
         }
 
         pydantic_config = {}
@@ -164,13 +172,38 @@ class ConfigurationFactory:
                     from pydantic import SecretStr
 
                     value = SecretStr(value)
+                elif toml_key == "redmine.api_key" and isinstance(value, str):
+                    # Convert Redmine API key to SecretStr
+                    from pydantic import SecretStr
+
+                    value = SecretStr(value)
+                elif toml_key == "redmine.password" and isinstance(value, str):
+                    # Convert Redmine password to SecretStr
+                    from pydantic import SecretStr
+
+                    value = SecretStr(value)
+                elif toml_key == "redmine.tracker_id" and isinstance(value, (str, int)):
+                    # Convert tracker ID to integer
+                    try:
+                        value = int(value)
+                    except (ValueError, TypeError):
+                        # Skip invalid tracker ID values
+                        continue
 
                 # Only set value if it's not None/empty
                 if value is not None and value != "":
                     pydantic_config[field_name] = value
                     # Also set using alias name for fields with aliases to ensure Pydantic recognizes them
                     # This is needed because Pydantic Settings loads from env vars using aliases
-                    if field_name in ["jira_server", "jira_user", "jira_api_token"]:
+                    if field_name in [
+                        "jira_server",
+                        "jira_user",
+                        "jira_api_token",
+                        "redmine_server",
+                        "redmine_api_key",
+                        "redmine_user",
+                        "redmine_password",
+                    ]:
                         # Get the alias from the field definition
                         from bugninja.config.settings import BugninjaSettings
 

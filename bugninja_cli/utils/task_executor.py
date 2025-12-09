@@ -584,9 +584,12 @@ class TaskExecutor:
                 f"Updated metadata for task '{task_info.name}' with {run_type} run"
             )
 
-            # Create Jira ticket if task failed (non-blocking)
+            # Create integration tickets if task failed (non-blocking)
             if not result.success:
                 self._create_jira_ticket_for_failure(task_info, result, run_type, history_manager)
+                self._create_redmine_ticket_for_failure(
+                    task_info, result, run_type, history_manager
+                )
 
         except Exception as e:
             raise ValueError(f"Failed to update task metadata: {e}")
@@ -609,6 +612,30 @@ class TaskExecutor:
         from bugninja_cli.utils.jira_integration import JiraIntegration
 
         JiraIntegration.create_ticket_for_task_failure(
+            task_info=task_info,
+            result=result,
+            run_type=run_type,
+            history_manager=history_manager,
+        )
+
+    def _create_redmine_ticket_for_failure(
+        self,
+        task_info: TaskInfo,
+        result: TaskExecutionResult,
+        run_type: str,
+        history_manager: Any,
+    ) -> None:
+        """Create Redmine ticket for failed test case (non-blocking).
+
+        Args:
+            task_info (TaskInfo): Task information object
+            result (TaskExecutionResult): Execution result
+            run_type (str): Type of run ("ai_navigated" or "replay")
+            history_manager: RunHistoryManager instance
+        """
+        from bugninja_cli.utils.redmine_integration import RedmineIntegration
+
+        RedmineIntegration.create_ticket_for_task_failure(
             task_info=task_info,
             result=result,
             run_type=run_type,

@@ -233,14 +233,40 @@ class NavigatorAgent(BugninjaAgentBase):
         logger.bugninja_log("🏁 BEFORE-Run hook called")
 
         # Override user_data_dir with run_id for browser isolation
+        # Skip if user_data_dir is already set correctly (e.g., for session reuse)
         if hasattr(self, "browser_session") and self.browser_session:
-            base_dir = self.browser_session.browser_profile.user_data_dir or Path("./data_dir")
-            if isinstance(base_dir, str):
-                base_dir = Path(base_dir)
-            isolated_dir = base_dir / f"run_{self.run_id}"
-            self.browser_session.browser_profile.user_data_dir = isolated_dir
+            current_user_data_dir = self.browser_session.browser_profile.user_data_dir
+            expected_suffix = f"run_{self.run_id}"
 
-            logger.bugninja_log(f"🔒 Using isolated browser directory: {isolated_dir}")
+            # Check if user_data_dir is already set to the expected isolated directory
+            should_override = True
+            if current_user_data_dir:
+                current_path = (
+                    Path(current_user_data_dir)
+                    if isinstance(current_user_data_dir, (str, Path))
+                    else current_user_data_dir
+                )
+                # If it already ends with the expected run_id suffix, don't override (session reuse)
+                if (
+                    str(current_path).endswith(expected_suffix)
+                    or current_path.name == expected_suffix
+                ):
+                    logger.bugninja_log(
+                        f"🔒 Browser directory already set for session reuse: {current_path}"
+                    )
+                    should_override = False
+
+            if should_override:
+                # Override with isolated directory (normal case or user_data_dir doesn't match)
+                base_dir = current_user_data_dir or Path("./data_dir")
+                if isinstance(base_dir, str):
+                    base_dir = Path(base_dir)
+                # If base_dir already ends with a run_* directory, use its parent
+                if base_dir.name.startswith("run_"):
+                    base_dir = base_dir.parent
+                isolated_dir = base_dir / expected_suffix
+                self.browser_session.browser_profile.user_data_dir = isolated_dir
+                logger.bugninja_log(f"🔒 Using isolated browser directory: {isolated_dir}")
 
         self._traversal: Optional[Traversal] = None  # Store traversal after successful run
         self._video_recording_initialized: bool = (
