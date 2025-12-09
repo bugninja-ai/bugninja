@@ -433,6 +433,4 @@ Bugninja is available under the [Polyform Noncommercial License 1.0.0](LICENSE) 
 
 **Made with ❤️ by the Bugninja team**
 
-*Empowering developers to build better software through intelligent testing*
-
 </div>
